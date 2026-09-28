@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
+import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
 
 // Minimal read-only detail view. No file upload, identifier editing, metadata lookup,
 // or contributor editor yet — those are separate, not-yet-started slices of M1/M2.
@@ -30,6 +31,7 @@ export function WorkDetail() {
               {id.scheme.toUpperCase()}: {id.normalized_value}
             </p>
           ))}
+          <AddIdentifierForm recordId={record.id} />
         </div>
       ))}
     </div>
