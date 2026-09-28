@@ -2,3 +2,9 @@
 .env.*
 !.env.example
 CREDENTIALS.md
+
+node_modules/
+dist/
+coverage/
+*.local
+*.tsbuildinfo

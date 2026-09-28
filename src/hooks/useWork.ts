@@ -1,0 +1,62 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { formatByline, type Credit } from 'shared/names';
+
+interface WorkDetail {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  work_type: string;
+  records: {
+    id: string;
+    record_type: string;
+    publication_date: string | null;
+    publisher: string | null;
+    identifiers: { scheme: string; normalized_value: string }[];
+    record_contributors: {
+      role: string;
+      position: number;
+      credited_as: string | null;
+      contributors: { display_name: string } | null;
+    }[];
+  }[];
+}
+
+export function useWork(workId: string | undefined) {
+  return useQuery({
+    queryKey: ['works', workId],
+    enabled: !!workId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('works')
+        .select(
+          `id, title, subtitle, work_type,
+           records ( id, record_type, publication_date, publisher,
+             identifiers ( scheme, normalized_value ),
+             record_contributors ( role, position, credited_as, contributors ( display_name ) ) )`,
+        )
+        .eq('id', workId!)
+        .single()
+        .returns<WorkDetail>();
+      if (error) throw error;
+      return {
+        ...data,
+        records: data.records.map((record) => ({
+          ...record,
+          byline: formatByline(
+            record.record_contributors
+              .filter((rc) => rc.contributors)
+              .map(
+                (rc): Credit => ({
+                  role: rc.role,
+                  position: rc.position,
+                  credited_as: rc.credited_as,
+                  display_name: rc.contributors!.display_name,
+                }),
+              ),
+          ),
+        })),
+      };
+    },
+  });
+}
