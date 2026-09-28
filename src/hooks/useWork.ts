@@ -10,9 +10,14 @@ interface WorkDetail {
   work_type: string;
   records: {
     id: string;
+    title: string | null;
     record_type: string;
     publication_date: string | null;
     publisher: string | null;
+    edition: string | null;
+    volume: string | null;
+    issue_number: string | null;
+    pages: string | null;
     identifiers: { scheme: string; normalized_value: string }[];
     record_contributors: {
       role: string;
@@ -33,7 +38,7 @@ export function useWork(workId: string | undefined) {
         .from('works')
         .select(
           `id, title, subtitle, work_type,
-           records ( id, record_type, publication_date, publisher,
+           records ( id, title, record_type, publication_date, publisher, edition, volume, issue_number, pages,
              identifiers ( scheme, normalized_value ),
              record_contributors ( role, position, credited_as, contributors ( display_name ) ),
              record_assets ( role, assets ( * ) ) )`,
