@@ -1532,7 +1532,7 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 
 ### M1 — Foundation
 - [ ] Auth (email, magic link, OAuth) — FR-AUTH-1/2
-- [ ] Schema, RLS, storage migrations (§7)
+- [x] Schema, RLS, storage migrations (§7)
 - [ ] Work / record / identifier CRUD — FR-CAT-1..5
 - [ ] Contributors: structured names, paste parsing, ordered credits with roles, editor fallback in bylines — FR-CONTRIB-1..4
 - [ ] Upload flow with verification and dedup — FR-FILE-1..6

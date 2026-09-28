@@ -231,10 +231,18 @@ cd supabase-project && cp .env.example .env
 docker compose pull && docker compose up -d
 ```
 
+Storage caps every upload at 50 MB by default, below the 500 MB `documents`/`staging` bucket limit. Raise it with an override file layered through `COMPOSE_FILE`:
+
+```bash
+printf 'services:\n  storage:\n    environment:\n      FILE_SIZE_LIMIT: 524288000\n' > docker-compose.textus.yml
+sh run.sh config add textus && docker compose up -d storage
+```
+
 ### 2. Migrations
 
 ```bash
-npx supabase db push --db-url "postgresql://postgres:<password>@<host>:5432/postgres"
+# Supavisor listens on 5432; the user is postgres.<POOLER_TENANT_ID>. Drop sslmode=disable once TLS is in front.
+npx supabase db push --db-url "postgresql://postgres.<tenant-id>:<password>@<host>:5432/postgres?sslmode=disable"
 ```
 
 ### 3. Edge Functions

@@ -4,7 +4,7 @@ Textus is a self-hosted library manager for books, research papers, and magazine
 
 **Source of truth:** [ARCHITECTURE_AND_REQUIREMENTS.md](ARCHITECTURE_AND_REQUIREMENTS.md) — requirements (FR/NFR IDs), full schema and RLS, Edge Function contracts, flows, milestones. Read the relevant section before changing the schema, RLS, storage, or a function contract, and update it in the same change when you alter any of them.
 
-**Status:** specification only; implementation begins at milestone M1 (§13).
+**Status:** milestone M1 in progress (§13). Schema, RLS, and storage migrations are in `supabase/migrations/` and applied to the self-hosted server; `supabase/tests/database/` holds the pgTAP RLS isolation test.
 
 ## Commands
 
