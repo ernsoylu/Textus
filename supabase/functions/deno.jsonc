@@ -1,0 +1,8 @@
+// Import map for Edge Functions (Deno). Mirrors the self-hosted server's
+// volumes/functions/deno.jsonc (see README "Edge Functions" deploy section) — kept in the
+// repo so `deno check`/`deno lint` can resolve imports in CI without a live server.
+{
+  "imports": {
+    "@supabase/server": "npm:@supabase/server@^1"
+  }
+}

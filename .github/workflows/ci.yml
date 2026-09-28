@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR instead of letting them pile up.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (type-check, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  database:
+    name: Database (migrations + RLS isolation test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+      # `supabase start` applies every file in supabase/migrations/, in order, against a
+      # fresh local Postgres — the same Postgres distribution (pgtap/pg_trgm/pg_cron
+      # included) as the self-hosted deployment. It fails loudly on a bad migration instead
+      # of that surfacing only when someone runs `db push` against a real server.
+      - run: supabase start
+      # Default local ports/credentials for `supabase start` (stable across CLI versions,
+      # unlike relying on `supabase status`'s output format).
+      - name: Run pgTAP RLS isolation test
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 -f supabase/tests/database/rls_isolation.test.sql | tee pgtap.log
+          if grep -q '^not ok' pgtap.log; then
+            echo "::error::pgTAP reported failing assertions"
+            exit 1
+          fi
+
+  edge-functions:
+    name: Edge Functions (Deno type-check + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: lts
+      - name: deno check
+        run: |
+          for f in supabase/functions/*/index.ts; do
+            echo "::group::deno check $f"
+            deno check --config supabase/functions/deno.jsonc "$f"
+            echo "::endgroup::"
+          done
+      - name: deno lint
+        run: deno lint supabase/functions

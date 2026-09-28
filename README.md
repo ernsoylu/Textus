@@ -2,11 +2,12 @@
 
 > Self-hosted library manager for books, research papers, and magazines.
 
+[![CI](https://github.com/ernsoylu/Textus/actions/workflows/ci.yml/badge.svg)](https://github.com/ernsoylu/Textus/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-Self--hosted-green)](https://supabase.com/docs/guides/self-hosting)
 
-> **Status:** pre-alpha. This repository currently holds the specification; implementation starts with milestone M1.
+> **Status:** pre-alpha, in-house development. Milestone M1 (§13) is functionally complete except OAuth, which is deliberately deferred until release planning.
 > The full specification lives in [ARCHITECTURE_AND_REQUIREMENTS.md](ARCHITECTURE_AND_REQUIREMENTS.md).
 
 ## What is Textus?
