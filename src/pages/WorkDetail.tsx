@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
 import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
 import { UploadForm } from '@/components/library/UploadForm';
@@ -59,6 +59,11 @@ export function WorkDetail() {
                     <p className="text-small text-fg">
                       {role} · {asset.file_format} · {(asset.file_size / 1024).toFixed(0)} KB
                     </p>
+                    {asset.file_format === 'pdf' && (
+                      <Link to={`/library/${data.id}/records/${record.id}/assets/${asset.id}/read`} className="text-small text-green underline">
+                        Read
+                      </Link>
+                    )}
                   </div>
                 ) : null,
               )}

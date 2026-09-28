@@ -202,14 +202,15 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
     .from('record_assets')
     .upsert({ record_id: recordId, asset_id: asset!.id, role }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
 
+  // generate_thumbnail is deliberately not enqueued: thumbnails are captured client-side on
+  // first read instead (Reader.tsx), per §15 Q2 — see job-worker's own note on why.
   if (!isCover) {
-    await ctx.supabaseAdmin.from('jobs').upsert(
-      [
+    await ctx.supabaseAdmin
+      .from('jobs')
+      .upsert(
         { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset!.id }, idempotency_key: `extract_text:${asset!.id}` },
-        { user_id: userId, job_type: 'generate_thumbnail', payload: { asset_id: asset!.id }, idempotency_key: `generate_thumbnail:${asset!.id}` },
-      ],
-      { onConflict: 'idempotency_key', ignoreDuplicates: true },
-    );
+        { onConflict: 'idempotency_key', ignoreDuplicates: true },
+      );
   }
 
   await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath]);

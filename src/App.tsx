@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -7,6 +8,9 @@ import { Library } from '@/pages/Library';
 import { NewWork } from '@/pages/NewWork';
 import { WorkDetail } from '@/pages/WorkDetail';
 import { Placeholder } from '@/pages/Placeholder';
+
+// pdfjs-dist alone is ~1MB — split out so the rest of the app doesn't pay for it upfront.
+const Reader = lazy(() => import('@/pages/Reader').then((m) => ({ default: m.Reader })));
 
 export function App() {
   return (
@@ -19,6 +23,14 @@ export function App() {
             <Route path="library" element={<Library />} />
             <Route path="library/new" element={<NewWork />} />
             <Route path="library/:workId" element={<WorkDetail />} />
+            <Route
+              path="library/:workId/records/:recordId/assets/:assetId/read"
+              element={
+                <Suspense fallback={<p className="text-body text-muted">Loading reader…</p>}>
+                  <Reader />
+                </Suspense>
+              }
+            />
             <Route path="collections" element={<Placeholder title="Collections" />} />
             <Route path="contributors" element={<Placeholder title="Contributors" />} />
             <Route path="serials" element={<Placeholder title="Serials" />} />
