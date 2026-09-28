@@ -1,6 +1,8 @@
 import { useParams } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
 import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
+import { UploadForm } from '@/components/library/UploadForm';
+import { StatusBadge } from '@/components/library/StatusBadge';
 
 // Minimal read-only detail view. No file upload, identifier editing, metadata lookup,
 // or contributor editor yet — those are separate, not-yet-started slices of M1/M2.
@@ -32,6 +34,22 @@ export function WorkDetail() {
             </p>
           ))}
           <AddIdentifierForm recordId={record.id} />
+
+          {record.record_assets.length > 0 && (
+            <div className="flex flex-col gap-1 pt-2">
+              {record.record_assets.map(({ role, assets: asset }) =>
+                asset ? (
+                  <div key={`${asset.id}:${role}`} className="flex items-center gap-2">
+                    <StatusBadge state={asset.processing_state} />
+                    <p className="text-small text-fg">
+                      {role} · {asset.file_format} · {(asset.file_size / 1024).toFixed(0)} KB
+                    </p>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
+          <UploadForm recordId={record.id} />
         </div>
       ))}
     </div>

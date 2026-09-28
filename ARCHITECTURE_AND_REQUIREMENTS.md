@@ -1535,7 +1535,7 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Schema, RLS, storage migrations (§7)
 - [ ] Work / record / identifier CRUD — FR-CAT-1..5
 - [ ] Contributors: structured names, paste parsing, ordered credits with roles, editor fallback in bylines — FR-CONTRIB-1..4
-- [ ] Upload flow with verification and dedup — FR-FILE-1..6
+- [x] Upload flow with verification and dedup — FR-FILE-1..6
 - [ ] Job worker with `extract_text` and `generate_thumbnail`
 - [ ] Basic PDF viewer — FR-READ-1
 - [ ] Search on title and contributor — FR-SRCH-1

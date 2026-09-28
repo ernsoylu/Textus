@@ -247,14 +247,16 @@ npx supabase db push --db-url "postgresql://postgres.<tenant-id>:<password>@<hos
 
 ### 3. Edge Functions
 
-Self-hosted Supabase serves functions from its `volumes/functions/` directory:
+Self-hosted Supabase serves functions from its `volumes/functions/` directory — one subdirectory per function, each with its own `index.ts`, routed by the project's `main/index.ts` (from `setup.sh`, not part of this repo):
 
 ```bash
 cp -r supabase/functions/* /path/to/supabase-project/volumes/functions/
 cd /path/to/supabase-project && docker compose restart functions
 ```
 
-Set function secrets (service role key, optional provider API keys) in the Supabase project's `.env`.
+Functions use [`@supabase/server`](https://github.com/supabase/server)'s `withSupabase()` for auth, CORS, and client creation — `auth: 'user'` requires a caller JWT and gives the handler `ctx.supabase` (RLS-scoped, for ownership checks) and `ctx.supabaseAdmin` (service role, for privileged writes). It needs the new-format API keys and JWT signing keys (`setup.sh` already generates both — see `SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_SECRET_KEYS` / `SUPABASE_JWKS` in the `functions` service's environment in `docker-compose.yml`); legacy `anon`/`service_role` JWT-style keys are not accepted by it.
+
+Provider API keys (Crossref, Semantic Scholar, Google Books) go in the Supabase project's `.env` as function secrets once `metadata-lookup` exists.
 
 ### 4. Frontend
 

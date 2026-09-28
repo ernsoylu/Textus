@@ -4,7 +4,9 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  // supabase/functions/ is Deno, not this Vite/Node project — different globals and lint
+  // rules (deno-lint-ignore, not eslint-disable). Lint it with `deno lint` instead.
+  { ignores: ['dist', 'supabase/functions/**'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatByline, type Credit } from 'shared/names';
+import type { AssetRow } from '@/types';
 
 interface WorkDetail {
   id: string;
@@ -19,6 +20,7 @@ interface WorkDetail {
       credited_as: string | null;
       contributors: { display_name: string } | null;
     }[];
+    record_assets: { role: string; assets: AssetRow | null }[];
   }[];
 }
 
@@ -33,7 +35,8 @@ export function useWork(workId: string | undefined) {
           `id, title, subtitle, work_type,
            records ( id, record_type, publication_date, publisher,
              identifiers ( scheme, normalized_value ),
-             record_contributors ( role, position, credited_as, contributors ( display_name ) ) )`,
+             record_contributors ( role, position, credited_as, contributors ( display_name ) ),
+             record_assets ( role, assets ( * ) ) )`,
         )
         .eq('id', workId!)
         .single()
