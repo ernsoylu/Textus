@@ -28,7 +28,11 @@ const COVER_MIME_TYPES: Record<string, string> = {
 const IntentSchema = z.object({
   uploadId: z.string().uuid(),
   recordId: z.string().uuid(),
-  filename: z.string().min(1).max(255),
+  // Never interpolated into a storage path (see handleIntent) — kept validated anyway as
+  // defense in depth against that constraint being lost in a future edit. Path traversal
+  // (security review, 2026-09-28): a raw client filename in a storage key lets a caller write
+  // outside their own {userId}/{uploadId}/ prefix via "../" segments.
+  filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\') && n !== '.' && n !== '..'),
   size: z.number().int().positive(),
 });
 
@@ -88,12 +92,17 @@ async function assertRecordOwner(ctx: SupabaseContext, recordId: string): Promis
 async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Response> {
   const parsed = IntentSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
-  const { uploadId, recordId, filename, size } = parsed.data;
+  const { uploadId, recordId, size } = parsed.data;
 
   if (!(await assertRecordOwner(ctx, recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
   if (size > MAX_UPLOAD_SIZE) return Response.json({ error: 'file_too_large', limit: MAX_UPLOAD_SIZE }, { status: 400 });
 
-  const path = `${ctx.userClaims!.id}/${uploadId}/${filename}`;
+  // uploadId (a validated UUID) already makes this path unique per upload attempt; the
+  // client's filename plays no role in it (see the schema comment above) — nothing downstream
+  // reads the staging object's name back (handleComplete lists the folder and uses whatever
+  // name storage reports), and the final destination's extension comes from magic-byte
+  // sniffing, not from this filename.
+  const path = `${ctx.userClaims!.id}/${uploadId}/upload`;
   const { data, error } = await ctx.supabaseAdmin.storage.from('staging').createSignedUploadUrl(path);
   if (error) return Response.json({ error: 'storage_error', message: error.message }, { status: 500 });
 
