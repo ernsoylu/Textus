@@ -6,7 +6,7 @@
 // caller (used for ownership checks — a record only comes back if it's theirs). ctx.supabaseAdmin
 // bypasses RLS (used for the privileged writes only the server may do — CLAUDE.md invariants 3/6).
 import { withSupabase, type SupabaseContext } from '@supabase/server';
-import { z } from 'npm:zod@3.23.8';
+import { z } from 'zod';
 
 const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
@@ -219,6 +219,10 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
 }
 
 export default {
+  // async is required by withSupabase's handler type (Promise<Response>, not Response |
+  // Promise<Response>) — this function has no internal await since it just dispatches to
+  // handleIntent/handleComplete, which are themselves async.
+  // deno-lint-ignore require-await
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
     if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
     const { pathname } = new URL(req.url);

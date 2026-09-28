@@ -13,7 +13,7 @@
 // question 2's own proposed resolution — Deno's edge runtime has no canvas to rasterize a
 // PDF page into an image. upload/complete no longer enqueues that job type.
 import { withSupabase } from '@supabase/server';
-import * as pdfjsLib from 'npm:pdfjs-dist@6.3.289/legacy/build/pdf.mjs';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 interface Job {
   id: string;
@@ -41,7 +41,11 @@ async function extractText(admin: any, job: Job) {
   if (downloadError || !file) throw new Error(downloadError?.message ?? 'could not download asset');
   const bytes = new Uint8Array(await file.arrayBuffer());
 
-  const task = pdfjsLib.getDocument({ data: bytes, disableWorker: true, isEvalSupported: false });
+  // No `disableWorker` option exists on DocumentInitParameters (checked against the real
+  // .d.ts, not assumed) — pdfjs falls back to an in-thread "fake worker" automatically
+  // whenever no real worker is configured, which is always true here since GlobalWorkerOptions
+  // is never set in this function.
+  const task = pdfjsLib.getDocument({ data: bytes });
   const doc = await task.promise;
   try {
     const pagesToScan = Math.min(doc.numPages, 8);
@@ -49,7 +53,8 @@ async function extractText(admin: any, job: Job) {
     for (let i = 1; i <= pagesToScan; i++) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
-      text += content.items.map((item: { str?: string }) => item.str ?? '').join(' ') + '\n';
+      // content.items is (TextItem | TextMarkedContent)[] — only TextItem has `str`.
+      text += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n';
     }
 
     // ponytail: a short preview + counts, not the full extracted text — storing an entire

@@ -1,8 +1,12 @@
 // Import map for Edge Functions (Deno). Mirrors the self-hosted server's
-// volumes/functions/deno.jsonc (see README "Edge Functions" deploy section) — kept in the
-// repo so `deno check`/`deno lint` can resolve imports in CI without a live server.
+// volumes/functions/deno.jsonc (see README "Edge Functions" deploy section) plus the
+// per-function npm packages below, kept in the repo so `deno check`/`deno lint` can resolve
+// imports in CI without a live server. `deno lint`'s no-import-prefix rule wants npm:/jsr:
+// specifiers mapped here rather than inlined in source, so pin versions in one place.
 {
   "imports": {
-    "@supabase/server": "npm:@supabase/server@^1"
+    "@supabase/server": "npm:@supabase/server@^1",
+    "zod": "npm:zod@3.23.8",
+    "pdfjs-dist/legacy/build/pdf.mjs": "npm:pdfjs-dist@6.3.289/legacy/build/pdf.mjs"
   }
 }
