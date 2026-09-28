@@ -404,6 +404,11 @@ isOneToOne: false
 "reassign_credits":
 { Args: { "p_from": string,"p_record_ids": (string)[],"p_to": string }; Returns: undefined
                            },
+"search_library":
+{ Args: { "p_limit"?: number,"p_query": string }; Returns: {
+              "rank": number,"record_id": string,"title": string,"work_id": string
+            }[]
+                           },
 "set_record_contributors":
 { Args: { "p_credits": Json,"p_record_id": string }; Returns: undefined
                            },
