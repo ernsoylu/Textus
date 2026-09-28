@@ -5,6 +5,7 @@ import { UploadForm } from '@/components/library/UploadForm';
 import { StatusBadge } from '@/components/library/StatusBadge';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
+import { ContributorEditor } from '@/components/metadata/ContributorEditor';
 
 // FR-CAT-1: full read/update/delete for works and records. No file reader, metadata
 // lookup, or contributor editor yet — separate, not-yet-started slices of M1/M2.
@@ -46,6 +47,8 @@ export function WorkDetail() {
             </p>
           ))}
           <AddIdentifierForm recordId={record.id} />
+
+          <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
 
           {record.record_assets.length > 0 && (
             <div className="flex flex-col gap-1 pt-2">

@@ -23,7 +23,14 @@ interface WorkDetail {
       role: string;
       position: number;
       credited_as: string | null;
-      contributors: { display_name: string } | null;
+      contributors: {
+        display_name: string;
+        kind: string;
+        family_name: string | null;
+        given_names: string | null;
+        particle: string | null;
+        suffix: string | null;
+      } | null;
     }[];
     record_assets: { role: string; assets: AssetRow | null }[];
   }[];
@@ -40,7 +47,8 @@ export function useWork(workId: string | undefined) {
           `id, title, subtitle, work_type,
            records ( id, title, record_type, publication_date, publisher, edition, volume, issue_number, pages,
              identifiers ( scheme, normalized_value ),
-             record_contributors ( role, position, credited_as, contributors ( display_name ) ),
+             record_contributors ( role, position, credited_as,
+               contributors ( display_name, kind, family_name, given_names, particle, suffix ) ),
              record_assets ( role, assets ( * ) ) )`,
         )
         .eq('id', workId!)
