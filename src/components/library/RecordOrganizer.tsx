@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 const DEFAULT_COLOR = '#4ade80';
 
 // FR-ORG-1/2: tag chips (toggle) plus collection membership for one record.
-export function RecordOrganizer({ recordId }: { recordId: string }) {
+export function RecordOrganizer({ recordId }: Readonly<{ recordId: string }>) {
   const tags = useTags();
   const applied = useRecordTags(recordId);
   const createTag = useCreateTag();

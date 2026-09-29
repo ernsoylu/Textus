@@ -39,7 +39,20 @@ export interface FilterableWork {
 }
 
 // Newest first; missing values sort last.
-const desc = (a: string | null, b: string | null) => (a === b ? 0 : a === null ? 1 : b === null ? -1 : a < b ? 1 : -1);
+function desc(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a < b ? 1 : -1;
+}
+
+// Attributed works first, alphabetically by byline.
+function byAuthor(a: FilterableWork, b: FilterableWork): number {
+  if (a.byline && b.byline) return a.byline.localeCompare(b.byline);
+  if (a.byline) return -1;
+  if (b.byline) return 1;
+  return 0;
+}
 
 // `rank` is the search_library() result for `f.q`; undefined while it loads (no filtering yet).
 // ponytail: filters run client-side over the whole library, move them into SQL if it outgrows a few thousand works.
@@ -60,7 +73,7 @@ export function applyFilters<T extends FilterableWork>(items: T[], f: LibraryFil
     relevance: searching ? (a: T, b: T) => (rank!.get(b.workId) ?? 0) - (rank!.get(a.workId) ?? 0) : byAdded,
     added: byAdded,
     title: (a: T, b: T) => a.title.localeCompare(b.title),
-    author: (a: T, b: T) => (a.byline && b.byline ? a.byline.localeCompare(b.byline) : a.byline ? -1 : b.byline ? 1 : 0),
+    author: byAuthor,
     published: (a: T, b: T) => desc(a.publishedAt, b.publishedAt),
     recent: (a: T, b: T) => desc(a.lastReadAt, b.lastReadAt),
   }[f.sort];

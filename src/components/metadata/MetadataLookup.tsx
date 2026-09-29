@@ -15,16 +15,16 @@ type Field = (typeof WORK_FIELDS)[number] | (typeof RECORD_FIELDS)[number];
 const SCHEMES: IdentifierScheme[] = ['isbn', 'doi', 'arxiv', 'pmid', 'issn'];
 function meta(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function locks(value: unknown): string[] { const raw = meta(value).locked_fields; return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []; }
-const AUTHORITY_SCHEMES: AuthorityScheme[] = ['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar'];
+const AUTHORITY_SCHEMES = new Set<string>(['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar']);
 function validIds(value: Record<string, string> | undefined): Record<string, string> {
   return Object.fromEntries(Object.entries(value ?? {}).flatMap(([scheme, raw]) => {
-    if (!AUTHORITY_SCHEMES.includes(scheme as AuthorityScheme)) return [];
+    if (!AUTHORITY_SCHEMES.has(scheme)) return [];
     const normalized = parseAuthorityIdentifier(scheme as AuthorityScheme, raw);
     return normalized ? [[scheme, normalized]] : [];
   }));
 }
 
-export function MetadataLookup({ work, record }: { work: Work; record: RecordValue }) {
+export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: RecordValue }>) {
   const query = useQueryClient();
   const [scheme, setScheme] = useState<IdentifierScheme>('isbn');
   const [value, setValue] = useState('');
@@ -192,6 +192,6 @@ export function MetadataLookup({ work, record }: { work: Work; record: RecordVal
       <Button onClick={apply} isLoading={pending} disabled={!selected.length && !selectedCredits.length && !includeCover}>Apply selected metadata</Button>
     </div>}
     {error && <p className="text-small text-red" role="alert">{error}</p>}
-    {done && <p className="text-small text-green" role="status">{done}</p>}
+    {done && <output className="text-small text-green">{done}</output>}
   </section>;
 }

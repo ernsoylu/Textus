@@ -1,7 +1,7 @@
 import { serialCompleteness, type IssueRef } from '@/lib/serialCompleteness';
 
 // FR-SER-2: what is held and what is missing, per volume.
-export function SerialCompleteness({ issues }: { issues: IssueRef[] }) {
+export function SerialCompleteness({ issues }: Readonly<{ issues: IssueRef[] }>) {
   const { volumes, unnumbered } = serialCompleteness(issues);
   if (!volumes.length && !unnumbered) return <p className="text-small text-muted">No issues yet.</p>;
   return (

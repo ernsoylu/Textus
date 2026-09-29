@@ -135,13 +135,14 @@ SELECT throws_ok($$INSERT INTO storage.objects (bucket_id, name) VALUES ('docume
 SELECT throws_ok('SELECT claim_jobs()', '42501', NULL, 'clients cannot claim jobs');
 
 -- ---------- User B: updates and deletes silently touch nothing ----------
-UPDATE works SET title = 'hacked';
-UPDATE contributors SET display_name = 'hacked';
+-- These are deliberately unscoped (WHERE true): the point is that RLS, not the statement, limits them.
+UPDATE works SET title = 'hacked' WHERE true;
+UPDATE contributors SET display_name = 'hacked' WHERE true;
 UPDATE records SET title = 'hacked' WHERE id = 'a0000000-0000-0000-0000-000000000002';
 DELETE FROM works WHERE user_id = 'aaaaaaaa-0000-0000-0000-000000000000';
-DELETE FROM identifiers; DELETE FROM contributors WHERE user_id <> 'bbbbbbbb-0000-0000-0000-000000000000';
-DELETE FROM record_contributors; DELETE FROM record_assets; DELETE FROM record_tags;
-DELETE FROM collection_records; DELETE FROM reading_states; UPDATE saved_searches SET name = 'hacked'; DELETE FROM saved_searches; DELETE FROM annotations;
+DELETE FROM identifiers WHERE true; DELETE FROM contributors WHERE user_id <> 'bbbbbbbb-0000-0000-0000-000000000000';
+DELETE FROM record_contributors WHERE true; DELETE FROM record_assets WHERE true; DELETE FROM record_tags WHERE true;
+DELETE FROM collection_records WHERE true; DELETE FROM reading_states WHERE true; UPDATE saved_searches SET name = 'hacked' WHERE true; DELETE FROM saved_searches WHERE true; DELETE FROM annotations WHERE true;
 
 RESET ROLE;
 SELECT is((SELECT title FROM works WHERE id = 'a0000000-0000-0000-0000-000000000001'), 'A work', 'A''s work unchanged');

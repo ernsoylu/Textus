@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 // FR-READ-4: color + optional note. `quote` is the selected text for an EPUB highlight.
-export function AnnotationForm({ label, quote, isLoading, onSubmit }: { label: string; quote?: string; isLoading?: boolean; onSubmit: (color: string, note: string) => void }) {
+export function AnnotationForm({ label, quote, isLoading, onSubmit }: Readonly<{ label: string; quote?: string; isLoading?: boolean; onSubmit: (color: string, note: string) => void }>) {
   const [color, setColor] = useState<string>(ANNOTATION_COLORS[0]);
   const [note, setNote] = useState('');
 

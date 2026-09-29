@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 const SCHEMES: AuthorityScheme[] = ['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar'];
 const TYPES = ['variant', 'pseudonym', 'transliteration', 'former'] as const;
 
-export function ContributorIdentityEditor({ id, name }: { id: string; name: string }) {
+export function ContributorIdentityEditor({ id, name }: Readonly<{ id: string; name: string }>) {
   const queryClient = useQueryClient();
   const [nameText, setNameText] = useState('');
   const [nameType, setNameType] = useState<(typeof TYPES)[number]>('variant');

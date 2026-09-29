@@ -13,7 +13,7 @@ export interface RecordCardProps {
   onToggleSelect?: () => void;
 }
 
-export function RecordCard({ workId, title, byline, meta, selected, onToggleSelect }: RecordCardProps) {
+export function RecordCard({ workId, title, byline, meta, selected, onToggleSelect }: Readonly<RecordCardProps>) {
   const body = (
     <>
       <div className="flex h-64 w-full flex-col justify-between rounded-4 bg-green-bg p-4">

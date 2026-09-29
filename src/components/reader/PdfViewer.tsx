@@ -18,7 +18,7 @@ export interface PdfViewerProps {
   onFirstPageRendered?: (canvas: HTMLCanvasElement) => void;
 }
 
-export function PdfViewer({ bucket, storagePath, initialPage = 1, goToPage, onPageChange, onFirstPageRendered }: PdfViewerProps) {
+export function PdfViewer({ bucket, storagePath, initialPage = 1, goToPage, onPageChange, onFirstPageRendered }: Readonly<PdfViewerProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const taskRef = useRef<PDFDocumentLoadingTask | null>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);

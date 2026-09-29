@@ -86,7 +86,7 @@ const namesFor = (credits: CreditRow[], role: string): CitationName[] =>
 
 function isoDate(date: string | null, precision: string | null): string | undefined {
   if (!date) return undefined;
-  const cut = precision === 'year' ? 4 : precision === 'month' ? 7 : 10;
+  const cut = ({ year: 4, month: 7 } as Record<string, number>)[precision ?? ''] ?? 10;
   return date.slice(0, cut);
 }
 
@@ -134,6 +134,12 @@ export function buildSource(row: RecordRowForCitation): CitationSource {
 
 const idOf = (s: CitationSource, scheme: string) => s.identifiers.find((i) => i.scheme === scheme)?.value;
 const fullTitle = (s: CitationSource) => (s.subtitle ? `${s.title}: ${s.subtitle}` : s.title);
+// "12-20" / "12 – 20" → ['12', '20']; a single page or an e-locator such as "e01234" → ['e01234'].
+function pageRange(pages?: string): string[] | undefined {
+  if (!pages) return undefined;
+  const [first, ...rest] = pages.split(/[-–—]+/).map((p) => p.trim());
+  return rest.length ? [first, rest.join('-')] : [first];
+}
 const yearOf = (d?: string) => d?.slice(0, 4);
 const monthOf = (d?: string) => (d && d.length >= 7 ? Number(d.slice(5, 7)) : undefined);
 // For a chapter or article, `editor` in CSL/BibTeX/RIS means the container's editors; they are
@@ -200,15 +206,16 @@ export function bibEscape(text: string): string {
 function bibName(n: CitationName): string {
   if (n.literal) return `{${bibEscape(n.literal)}}`;
   const family = [n.particle, n.family].filter(Boolean).join(' ');
-  return [bibEscape(family), n.suffix ? bibEscape(n.suffix) : '', n.given ? bibEscape(n.given) : ''].filter(Boolean).join(', ');
+  return [family, n.suffix, n.given].filter(Boolean).map((part) => bibEscape(part!)).join(', ');
 }
 
 function bibKey(s: CitationSource, used: Set<string>): string {
   const lead = s.authors[0] ?? editorsOf(s)[0];
   const base = (lead?.family ?? lead?.literal ?? 'anon').normalize('NFKD').replace(/[^A-Za-z0-9]/g, '').toLowerCase() || 'anon';
   const word = s.title.normalize('NFKD').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).find((w) => w.length > 3)?.toLowerCase() ?? '';
-  let key = `${base}${yearOf(s.date) ?? ''}${word}`;
-  for (let n = 2; used.has(key); n++) key = `${base}${yearOf(s.date) ?? ''}${word}${n}`;
+  const stem = `${base}${yearOf(s.date) ?? ''}${word}`;
+  let key = stem;
+  for (let n = 2; used.has(key); n++) key = `${stem}${n}`;
   used.add(key);
   return key;
 }
@@ -232,7 +239,7 @@ export function toBibtex(sources: CitationSource[]): string {
         ['edition', s.edition],
         ['volume', s.volume],
         ['number', s.issue],
-        ['pages', s.pages?.replace(/\s*[-–—]+\s*/, '--')],
+        ['pages', pageRange(s.pages)?.join('--')],
         ['doi', idOf(s, 'doi')],
         ['isbn', idOf(s, 'isbn')],
         ['issn', idOf(s, 'issn')],
@@ -263,7 +270,7 @@ function risName(n: CitationName): string {
 export function toRis(sources: CitationSource[]): string {
   return sources
     .map((s) => {
-      const [startPage, ...rest] = (s.pages ?? '').split(/\s*[-–—]+\s*/);
+      const [startPage, endPage] = pageRange(s.pages) ?? [];
       const lines: [string, string | undefined][] = [
         ['TY', s.recordType === 'issue' ? 'GEN' : (RIS_TYPE[s.workType] ?? 'GEN')],
         ['TI', fullTitle(s)],
@@ -278,7 +285,7 @@ export function toRis(sources: CitationSource[]): string {
         ['VL', s.volume],
         ['IS', s.issue],
         ['SP', startPage || undefined],
-        ['EP', rest.length ? rest.join('-') : undefined],
+        ['EP', endPage],
         ['DO', idOf(s, 'doi')],
         ['SN', idOf(s, 'isbn') ?? idOf(s, 'issn')],
         ['AB', s.abstract],

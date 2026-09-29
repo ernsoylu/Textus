@@ -3,7 +3,7 @@ import { useUploadAsset } from '@/hooks/useUploadAsset';
 
 const ROLES = ['primary', 'supplement', 'cover'] as const;
 
-export function UploadForm({ recordId }: { recordId: string }) {
+export function UploadForm({ recordId }: Readonly<{ recordId: string }>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [role, setRole] = useState<(typeof ROLES)[number]>('primary');
   const mutation = useUploadAsset(recordId);

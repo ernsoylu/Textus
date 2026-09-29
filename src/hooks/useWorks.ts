@@ -49,17 +49,17 @@ function toListItem(work: WorkWithRecords): WorkListItem {
     workId: work.id,
     title: work.title,
     byline: formatByline(credits),
-    meta: record ? `${record.record_type}${year ? ` · ${year}` : ''}` : work.work_type,
+    meta: record ? [record.record_type, year].filter(Boolean).join(' · ') : work.work_type,
     recordIds: work.records.map((r) => r.id),
     workType: work.work_type,
     language: work.language,
     addedAt: work.created_at ?? '',
-    publishedAt: work.records.map((r) => r.publication_date).filter((d): d is string => !!d).sort()[0] ?? null,
+    publishedAt: work.records.map((r) => r.publication_date).filter((d): d is string => !!d).sort((a, b) => a.localeCompare(b))[0] ?? null,
     tagIds: [...new Set(work.records.flatMap((r) => r.record_tags.map((t) => t.tag_id)))],
     collectionIds: [...new Set(work.records.flatMap((r) => r.collection_records.map((c) => c.collection_id)))],
     formats: [...new Set(work.records.flatMap((r) => r.record_assets.flatMap((a) => (a.assets ? [a.assets.file_format] : []))))],
     statuses: [...new Set(work.records.map((r) => r.reading_states[0]?.status ?? 'unread'))],
-    lastReadAt: work.records.flatMap((r) => r.reading_states.map((s) => s.last_read_at)).filter((d): d is string => !!d).sort().at(-1) ?? null,
+    lastReadAt: work.records.flatMap((r) => r.reading_states.map((s) => s.last_read_at)).filter((d): d is string => !!d).sort((a, b) => a.localeCompare(b)).at(-1) ?? null,
   };
 }
 

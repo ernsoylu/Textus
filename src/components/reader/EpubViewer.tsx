@@ -22,7 +22,7 @@ export interface EpubViewerProps {
   onSelect: (sel: { cfi: string; text: string } | null) => void;
 }
 
-export function EpubViewer({ storagePath, initialCfi, goTo, highlights, onProgress, onSelect }: EpubViewerProps) {
+export function EpubViewer({ storagePath, initialCfi, goTo, highlights, onProgress, onSelect }: Readonly<EpubViewerProps>) {
   const hostRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);

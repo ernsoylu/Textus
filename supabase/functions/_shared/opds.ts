@@ -27,6 +27,11 @@ export function xmlEscape(text: string): string {
 
 const tag = (name: string, value: string | undefined) => (value ? `<${name}>${xmlEscape(value)}</${name}>` : '');
 
+function acquisitionXml(a: OpdsAcquisition): string {
+  const length = a.length ? ` length="${a.length}"` : '';
+  return `<link rel="http://opds-spec.org/acquisition" type="${xmlEscape(a.type)}" href="${xmlEscape(a.href)}"${length}/>`;
+}
+
 function entryXml(e: OpdsEntry): string {
   return [
     '<entry>',
@@ -38,7 +43,7 @@ function entryXml(e: OpdsEntry): string {
     tag('dc:publisher', e.publisher),
     tag('dc:issued', e.issued),
     ...e.identifiers.map((i) => tag('dc:identifier', i)),
-    ...e.acquisitions.map((a) => `<link rel="http://opds-spec.org/acquisition" type="${xmlEscape(a.type)}" href="${xmlEscape(a.href)}"${a.length ? ` length="${a.length}"` : ''}/>`),
+    ...e.acquisitions.map(acquisitionXml),
     '</entry>',
   ].join('');
 }

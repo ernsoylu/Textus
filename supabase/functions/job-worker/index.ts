@@ -59,7 +59,7 @@ async function extractText(admin: any, job: Job) {
   if (asset.file_format === 'epub') {
     const result = extractEpub(bytes);
     const found = identifierSuggestions(result.text, filename);
-    const { error: updateError } = await admin.from('assets').update({ metadata: { ...((asset.metadata as object) ?? {}), filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null }, processing_state: 'ready' }).eq('id', assetId);
+    const { error: updateError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null }, processing_state: 'ready' }).eq('id', assetId);
     if (updateError) throw updateError;
     await queueMetadata(admin, asset, found);
     return { textCharCount: result.text.length };
@@ -91,7 +91,7 @@ async function extractText(admin: any, job: Job) {
     const { error: updateError } = await admin
       .from('assets')
       .update({
-        metadata: { ...((asset.metadata as object) ?? {}), filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null },
+        metadata: { ...(asset.metadata as object), filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null },
         processing_state: 'ready',
       })
       .eq('id', assetId);

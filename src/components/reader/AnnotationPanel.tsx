@@ -4,7 +4,7 @@ import { annotationsToJson, annotationsToMarkdown, downloadText } from '@/lib/an
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-function Row({ a, onGoTo }: { a: AnnotationItem; onGoTo?: (a: AnnotationItem) => void }) {
+function Row({ a, onGoTo }: Readonly<{ a: AnnotationItem; onGoTo?: (a: AnnotationItem) => void }>) {
   const update = useUpdateAnnotation();
   const del = useDeleteAnnotation();
   const [note, setNote] = useState(a.note ?? '');
@@ -22,7 +22,7 @@ function Row({ a, onGoTo }: { a: AnnotationItem; onGoTo?: (a: AnnotationItem) =>
 }
 
 // FR-READ-4/5: list, edit, delete and export the annotations of the open asset.
-export function AnnotationPanel({ items, onGoTo }: { items: AnnotationItem[]; onGoTo?: (a: AnnotationItem) => void }) {
+export function AnnotationPanel({ items, onGoTo }: Readonly<{ items: AnnotationItem[]; onGoTo?: (a: AnnotationItem) => void }>) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">

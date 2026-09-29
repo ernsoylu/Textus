@@ -16,7 +16,8 @@ export function annotationsToMarkdown(items: AnnotationItem[]): string {
       const lines = list.map((a) => {
         const loc = location(a);
         const quote = a.highlighted_text ? `> ${a.highlighted_text.replace(/\n+/g, '\n> ')}\n\n` : '';
-        return `${quote}${a.note ?? ''}${loc ? ` *(${loc})*` : ''}`.trim();
+        const where = loc ? ` *(${loc})*` : '';
+    return `${quote}${a.note ?? ''}${where}`.trim();
       });
       return `## ${title(list[0])}\n\n${lines.join('\n\n')}\n`;
     })

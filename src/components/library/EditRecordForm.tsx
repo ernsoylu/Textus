@@ -13,7 +13,7 @@ export function EditRecordForm({
   issueNumber: initialIssueNumber,
   pages: initialPages,
   publicationDate: initialPublicationDate,
-}: {
+}: Readonly<{
   workId: string;
   recordId: string;
   title: string | null;
@@ -23,7 +23,7 @@ export function EditRecordForm({
   issueNumber: string | null;
   pages: string | null;
   publicationDate: string | null;
-}) {
+}>) {
   const [title, setTitle] = useState(initialTitle ?? '');
   const [publisher, setPublisher] = useState(initialPublisher ?? '');
   const [edition, setEdition] = useState(initialEdition ?? '');

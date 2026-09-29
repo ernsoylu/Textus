@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useImport } from '@/hooks/useImport';
 import { Button } from '@/components/ui/button';
 
+const STATUS_COLOR = { imported: 'text-green', skipped: 'text-yellow', failed: 'text-red' } as const;
+
 const HELP = {
   doi: 'One DOI per line. Each is looked up (Crossref) and imported only if the provider returns real data.',
   csv: 'Header row required. Columns: title, authors (separate with ;), year, publisher, doi, isbn, type, language.',
@@ -44,7 +46,7 @@ export function Import() {
       {results.length > 0 && (
         <ul className="flex flex-col gap-1">
           {results.map((r, i) => (
-            <li key={`${r.label}:${i}`} className={`text-small ${r.status === 'imported' ? 'text-green' : r.status === 'skipped' ? 'text-yellow' : 'text-red'}`}>
+            <li key={`${r.label}:${i}`} className={`text-small ${STATUS_COLOR[r.status]}`}>
               {r.status === 'imported' && r.workId ? <Link to={`/library/${r.workId}`} className="underline">{r.label}</Link> : r.label}
               {' — '}{r.status}{r.message ? `: ${r.message}` : ''}
             </li>

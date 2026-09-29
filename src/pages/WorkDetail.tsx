@@ -15,6 +15,14 @@ import { ExportButton } from '@/components/library/ExportButton';
 import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 
+// "edition · 2019", "article_version · preprint", "issue · vol. 3 no. 2 · 2020".
+function recordLabel(record: { record_type: string; metadata: unknown; volume: string | null; issue_number: string | null; publication_date: string | null }): string {
+  const version = (record.metadata as { version?: unknown } | null)?.version;
+  const issue = record.record_type === 'issue' ? [record.volume && `vol. ${record.volume}`, record.issue_number && `no. ${record.issue_number}`].filter(Boolean).join(' ') : '';
+  const year = record.publication_date ? new Date(record.publication_date).getFullYear() : '';
+  return [record.record_type, typeof version === 'string' ? version : '', issue, year].filter(Boolean).join(' · ');
+}
+
 // FR-CAT-1 and M2: catalog editing, identifier lookup, and contributor identity editing.
 export function WorkDetail() {
   const { workId } = useParams<{ workId: string }>();
@@ -42,10 +50,7 @@ export function WorkDetail() {
       {data.records.map((record) => (
         <div key={record.id} className="flex flex-col gap-2 rounded-8 border border-border p-4">
           <p className="text-label text-fg">
-            {record.record_type}
-            {typeof (record.metadata as { version?: unknown } | null)?.version === 'string' && ` · ${(record.metadata as { version: string }).version}`}
-            {record.record_type === 'issue' && (record.volume || record.issue_number) && ` · ${[record.volume && `vol. ${record.volume}`, record.issue_number && `no. ${record.issue_number}`].filter(Boolean).join(' ')}`}
-            {record.publication_date && ` · ${new Date(record.publication_date).getFullYear()}`}
+            {recordLabel(record)}
           </p>
           {record.byline && <p className="text-small text-muted">{record.byline}</p>}
           {record.metadata_source && <p className="text-small text-muted">Metadata from {record.metadata_source}{record.metadata_fetched_at ? ` · fetched ${new Date(record.metadata_fetched_at).toLocaleDateString()}` : ''}</p>}

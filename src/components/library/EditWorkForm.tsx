@@ -12,14 +12,14 @@ export function EditWorkForm({
   abstract: initialAbstract,
   language: initialLanguage,
   workType: initialWorkType,
-}: {
+}: Readonly<{
   workId: string;
   title: string;
   subtitle: string | null;
   abstract: string | null;
   language: string | null;
   workType: string;
-}) {
+}>) {
   const [title, setTitle] = useState(initialTitle);
   const [subtitle, setSubtitle] = useState(initialSubtitle ?? '');
   const [abstract, setAbstract] = useState(initialAbstract ?? '');

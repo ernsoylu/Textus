@@ -41,7 +41,7 @@ function basicCredentials(req: Request): { email: string; password: string } | n
   const header = req.headers.get('authorization') ?? '';
   if (!header.startsWith('Basic ')) return null;
   try {
-    const decoded = new TextDecoder().decode(Uint8Array.from(atob(header.slice(6)), (c) => c.charCodeAt(0)));
+    const decoded = new TextDecoder().decode(Uint8Array.from(atob(header.slice(6)), (c) => c.codePointAt(0)!));
     const at = decoded.indexOf(':');
     return at > 0 ? { email: decoded.slice(0, at), password: decoded.slice(at + 1) } : null;
   } catch {
@@ -58,7 +58,7 @@ export default {
 
     const url = new URL(req.url);
     const root = `${Deno.env.get('SUPABASE_URL') ?? url.origin}/functions/v1/opds`;
-    const rest = url.pathname.split('/opds').pop()?.replace(/^\/+|\/+$/g, '') ?? '';
+    const rest = (url.pathname.split('/opds').pop() ?? '').split('/').filter(Boolean).join('/');
 
     if (rest.startsWith('download/')) {
       const assetId = rest.slice('download/'.length);

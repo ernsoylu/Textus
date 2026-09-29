@@ -27,7 +27,7 @@ export function formatByline(credits: Credit[]): string {
     const inRole = credits.filter((c) => c.role === role).sort((a, b) => a.position - b.position);
     if (inRole.length === 0) continue;
     const names = inRole.map((c) => c.credited_as || c.display_name);
-    const joined = names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+    const joined = names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} & ${names.at(-1)}`;
     return joined + (role === 'author' ? '' : FALLBACK_SUFFIX[role]);
   }
   return '';
@@ -67,7 +67,7 @@ export function isOrganization(name: string): boolean {
   if (!trimmed) return false;
   const words = trimmed.split(/\s+/);
   if (words.length === 1 && /^[A-Z]{2,}$/.test(trimmed)) return true; // single all-caps token, e.g. OECD
-  return words.some((w) => ORG_WORDS.has(w.toLowerCase().replace(/[.,;]+$/, '')));
+  return words.some((w) => ORG_WORDS.has(stripTrailing(w.toLowerCase(), '.,;')));
 }
 
 // ---------------------------------------------------------------------------
@@ -140,8 +140,10 @@ function isAllCaps(s: string): boolean {
 // A trailing "(...)" is either a role marker ((ed.), (auth.), ...) or a fuller-form variant
 // name ((Leslie Clifford)) — never both. Returns the marker's roles, or the variant text.
 function extractTrailingParen(s: string): { rest: string; roles: Role[]; variant: string | null } {
-  const m = /^(.*)\(([^)]*)\)\s*$/.exec(s.trim());
-  if (!m) return { rest: s.trim(), roles: [], variant: null };
+  const trimmed = s.trim();
+  const open = trimmed.endsWith(')') ? trimmed.lastIndexOf('(') : -1;
+  const m = open >= 0 && !trimmed.slice(open + 1, -1).includes(')') ? [trimmed, trimmed.slice(0, open), trimmed.slice(open + 1, -1)] : null;
+  if (!m) return { rest: trimmed, roles: [], variant: null };
   const inner = m[2].trim();
   for (const [pattern, roles] of ROLE_MARKER_RE) {
     if (pattern.test(inner)) return { rest: m[1].trim(), roles, variant: null };
@@ -196,12 +198,12 @@ export function parseName(raw: string): ParseNameResult {
   if (commaParts.length >= 2) {
     // Family, Given[, Suffix][, 1942-]
     let rest = commaParts.slice(1);
-    const last = rest[rest.length - 1];
+    const last = rest.at(-1);
     if (last && /^\d{3,4}-\d{0,4}$/.test(last)) {
-      birthYear = parseInt(last, 10);
+      birthYear = Number.parseInt(last, 10);
       rest = rest.slice(0, -1);
     }
-    const lastAfterYear = rest[rest.length - 1];
+    const lastAfterYear = rest.at(-1);
     if (lastAfterYear && SUFFIX_RE.test(lastAfterYear)) {
       suffix = lastAfterYear;
       rest = rest.slice(0, -1);
@@ -218,12 +220,12 @@ export function parseName(raw: string): ParseNameResult {
       givenNames = tokens[1];
     } else {
       let rest = [...tokens];
-      if (rest.length > 1 && SUFFIX_RE.test(rest[rest.length - 1])) {
-        suffix = rest[rest.length - 1];
+      if (rest.length > 1 && SUFFIX_RE.test(rest.at(-1)!)) {
+        suffix = rest.at(-1)!;
         rest = rest.slice(0, -1);
       }
       // The last token is the family name, preceded by any particles (scan backward from it).
-      familyName = rest[rest.length - 1] ?? working;
+      familyName = rest.at(-1) ?? working;
       const particleTokens: string[] = [];
       let idx = rest.length - 2;
       while (idx >= 0 && PARTICLES.has(rest[idx].toLowerCase())) {
@@ -309,7 +311,7 @@ function processPart(part: string, defaultRoles: Role[]): ParsedCredit[] {
   if (segments.length <= 1) return [makeCredit(working, part, roles)];
 
   let trailingOrg: ParsedCredit | null = null;
-  if (isOrganization(segments[segments.length - 1])) {
+  if (isOrganization(segments.at(-1)!)) {
     trailingOrg = makeCredit(segments.pop()!, part, roles);
   }
 
@@ -322,7 +324,7 @@ function processPart(part: string, defaultRoles: Role[]): ParsedCredit[] {
     if (isSingleWord(seg) && next !== undefined) {
       const maybeYear = segments[i + 2];
       const hasYear = !!maybeYear && /^\d{3,4}-\d{0,4}$/.test(maybeYear);
-      out.push(makeCredit(`${seg}, ${next}`, part, roles, hasYear ? parseInt(maybeYear, 10) : null));
+      out.push(makeCredit(`${seg}, ${next}`, part, roles, hasYear ? Number.parseInt(maybeYear, 10) : null));
       i += hasYear ? 3 : 2;
       continue;
     }
@@ -358,13 +360,32 @@ function dedupeCredits(credits: ParsedCredit[]): ParsedCredit[] {
   return out;
 }
 
+// Strips trailing characters from the given set. Linear, unlike /[.,;]+$/.
+function stripTrailing(text: string, chars: string): string {
+  let end = text.length;
+  while (end > 0 && chars.includes(text[end - 1])) end--;
+  return text.slice(0, end);
+}
+
+// Drops "[...]" runs (Calibre sort hints); an unclosed "[" is kept. Linear, unlike /\[[^\]]*\]/g.
+function removeBracketed(s: string): string {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const open = s.indexOf('[', i);
+    const close = open < 0 ? -1 : s.indexOf(']', open + 1);
+    if (close < 0) return out + s.slice(i);
+    out += s.slice(i, open);
+    i = close + 1;
+  }
+}
+
 export function splitNames(raw: string): ParsedCredit[] {
-  let cleaned = raw
-    .replace(/_/g, '.')
-    .replace(/†/g, '')
-    .replace(/\[[^\]]*\]/g, '') // Calibre sort hints
+  let cleaned = removeBracketed(raw)
+    .replaceAll('_', '.')
+    .replaceAll('†', '')
     .trim();
-  if (cleaned.length >= 2 && (cleaned[0] === '"' || cleaned[0] === "'") && cleaned[cleaned.length - 1] === cleaned[0]) {
+  if (cleaned.length >= 2 && (cleaned[0] === '"' || cleaned[0] === "'") && cleaned.at(-1) === cleaned[0]) {
     cleaned = cleaned.slice(1, -1).trim();
   }
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
@@ -385,7 +406,7 @@ export function splitNames(raw: string): ParsedCredit[] {
   } else if (isOrganization(cleaned)) {
     parts = [cleaned];
   } else {
-    parts = cleaned.split(/\s*&\s*|\s+and\s+|\s+with\s+/i);
+    parts = cleaned.split(/&|\s(?:and|with)\s/i);
   }
   parts = parts.map((p) => p.trim()).filter(Boolean);
 

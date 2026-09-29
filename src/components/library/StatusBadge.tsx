@@ -11,7 +11,7 @@ const STATUS: Record<AssetRow['processing_state'], { label: string; className: s
   failed: { label: 'Failed', className: 'bg-red-bg text-red' },
 };
 
-export function StatusBadge({ state }: { state: AssetRow['processing_state'] }) {
+export function StatusBadge({ state }: Readonly<{ state: AssetRow['processing_state'] }>) {
   const { label, className } = STATUS[state];
   return <span className={cn('inline-block rounded-8 p-3 text-label', className)}>{label}</span>;
 }

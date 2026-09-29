@@ -27,7 +27,7 @@ async function addIdentifier(recordId: string, scheme: IdentifierScheme, raw: st
     const { data: record } = await supabase.from('records').select('metadata').eq('id', recordId).single();
     await supabase
       .from('records')
-      .update({ metadata: { ...((record?.metadata as object) ?? {}), arxiv_version: parsed.arxivVersion } })
+      .update({ metadata: { ...(record?.metadata as object), arxiv_version: parsed.arxivVersion } })
       .eq('id', recordId);
   }
 
@@ -41,7 +41,7 @@ async function addIdentifier(recordId: string, scheme: IdentifierScheme, raw: st
   return { duplicateCount: existingElsewhere?.length ?? 0 };
 }
 
-export function AddIdentifierForm({ recordId }: { recordId: string }) {
+export function AddIdentifierForm({ recordId }: Readonly<{ recordId: string }>) {
   const queryClient = useQueryClient();
   const [scheme, setScheme] = useState<IdentifierScheme>('isbn');
   const [value, setValue] = useState('');

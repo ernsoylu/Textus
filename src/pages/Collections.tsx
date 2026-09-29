@@ -4,7 +4,7 @@ import { useCollections, useCreateCollection, useDeleteCollection, useCollection
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-function CollectionItems({ collectionId }: { collectionId: string }) {
+function CollectionItems({ collectionId }: Readonly<{ collectionId: string }>) {
   const { data } = useCollectionRecords(collectionId);
   const reorder = useReorderCollection(collectionId);
   const remove = useSetCollectionMember();

@@ -11,6 +11,8 @@ const credentialsSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters.'),
 });
 
+const SUBMIT_LABEL = { sign_in: 'Sign in', sign_up: 'Create account', magic_link: 'Send magic link' } as const;
+
 export function Login() {
   const [mode, setMode] = useState<'sign_in' | 'sign_up' | 'magic_link'>('sign_in');
   const [email, setEmail] = useState('');
@@ -88,7 +90,7 @@ export function Login() {
         {magicLinkSent && <p className="text-small text-green">Check your email for a sign-in link.</p>}
 
         <Button type="submit" isLoading={loading}>
-          {loading ? 'Working…' : mode === 'sign_in' ? 'Sign in' : mode === 'sign_up' ? 'Create account' : 'Send magic link'}
+          {loading ? 'Working…' : SUBMIT_LABEL[mode]}
         </Button>
 
         <div className="flex justify-between text-small text-muted">

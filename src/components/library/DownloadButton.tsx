@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 
 // FR-READ-6: formats with no in-browser reader (MOBI/AZW3/CBZ, …) are downloadable.
 // Private bucket (invariant 7): a 300 s signed URL that forces a download, never getPublicUrl().
-export function DownloadButton({ bucket, storagePath }: { bucket: string; storagePath: string }) {
+export function DownloadButton({ bucket, storagePath }: Readonly<{ bucket: string; storagePath: string }>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

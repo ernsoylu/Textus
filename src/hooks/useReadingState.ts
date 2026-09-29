@@ -71,7 +71,9 @@ export function useProgressSaver(recordId: string, assetId: string, status: Read
     if (!p) return;
     pending.current = null;
     const current = statusRef.current ?? 'unread';
-    const next: ReadingStatus = p.percentage >= 100 && current !== 'abandoned' ? 'finished' : current === 'unread' ? 'reading' : current;
+    let next: ReadingStatus = current;
+    if (p.percentage >= 100 && current !== 'abandoned') next = 'finished';
+    else if (current === 'unread') next = 'reading';
     mutate({
       asset_id: assetId,
       progress_percentage: Math.min(100, Math.max(0, Math.round(p.percentage * 100) / 100)),

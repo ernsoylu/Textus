@@ -82,7 +82,7 @@ export function Reader() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link to={`/library/${workId}`} className="text-small text-muted underline">Back to work</Link>
         <label className="flex items-center gap-2 text-small text-fg">
-          Status
+          Status{' '}
           <select
             aria-label="Reading status"
             className="rounded-8 border border-muted bg-dim p-2 text-body text-fg"

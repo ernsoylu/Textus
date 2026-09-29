@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 // FR-SER-1: an issue is a record (record_type 'issue') of a serial work.
-export function AddIssueForm({ workId }: { workId: string }) {
+export function AddIssueForm({ workId }: Readonly<{ workId: string }>) {
   const add = useAddRecord(workId);
   const [volume, setVolume] = useState('');
   const [issue, setIssue] = useState('');

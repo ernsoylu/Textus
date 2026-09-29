@@ -4,7 +4,7 @@ import { useSetContainer } from '@/hooks/useCatalogMutations';
 
 // FR-CONTRIB-10: a chapter or article can be "part of" another record (edited volume, issue).
 // The container's editors are read from the container at citation time, never copied here (§6.3).
-export function ContainerPicker({ workId, recordId, containerId }: { workId: string; recordId: string; containerId: string | null }) {
+export function ContainerPicker({ workId, recordId, containerId }: Readonly<{ workId: string; recordId: string; containerId: string | null }>) {
   const setContainer = useSetContainer(workId);
   const candidates = useQuery({
     queryKey: ['container-candidates'],
@@ -18,7 +18,7 @@ export function ContainerPicker({ workId, recordId, containerId }: { workId: str
     [r.title || r.works?.title || 'Untitled', r.record_type === 'issue' ? [r.volume && `vol. ${r.volume}`, r.issue_number && `no. ${r.issue_number}`].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
   return (
     <label className="flex flex-wrap items-center gap-2 text-small text-fg">
-      Part of
+      Part of{' '}
       <select
         aria-label="Container record"
         className="rounded-8 border border-muted bg-dim p-2 text-body text-fg"

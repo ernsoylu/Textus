@@ -11,7 +11,7 @@ const FORMATS = ['pdf', 'epub'];
 const SELECT = 'rounded-8 border border-muted bg-dim p-3 text-body text-fg';
 
 // FR-ORG-3: filter by work type, tag, collection, reading status, file format, language; sort.
-export function LibraryFilterBar({ filters, languages, onChange }: { filters: LibraryFilters; languages: string[]; onChange: (next: LibraryFilters) => void }) {
+export function LibraryFilterBar({ filters, languages, onChange }: Readonly<{ filters: LibraryFilters; languages: string[]; onChange: (next: LibraryFilters) => void }>) {
   const tags = useTags();
   const collections = useCollections();
   const pick = (key: keyof LibraryFilters, label: string, options: { value: string; label: string }[]) => (

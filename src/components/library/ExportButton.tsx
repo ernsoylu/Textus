@@ -11,7 +11,7 @@ const FORMATS = [
 ] as const;
 
 // FR-RES-1: citations for the given records via the `export` Edge Function (§8.4).
-export function ExportButton({ recordIds }: { recordIds: string[] }) {
+export function ExportButton({ recordIds }: Readonly<{ recordIds: string[] }>) {
   const [format, setFormat] = useState<(typeof FORMATS)[number]['value']>('bibtex');
   const mutation = useMutation({
     mutationFn: () => exportRecords(recordIds, format),

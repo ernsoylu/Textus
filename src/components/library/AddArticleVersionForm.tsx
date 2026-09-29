@@ -3,7 +3,7 @@ import { useAddRecord } from '@/hooks/useCatalogMutations';
 import { Button } from '@/components/ui/button';
 
 // FR-RES-2: a preprint and its published version are two article_version records under one work.
-export function AddArticleVersionForm({ workId }: { workId: string }) {
+export function AddArticleVersionForm({ workId }: Readonly<{ workId: string }>) {
   const add = useAddRecord(workId);
   const [version, setVersion] = useState<'preprint' | 'published'>('published');
   return (

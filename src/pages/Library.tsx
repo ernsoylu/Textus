@@ -32,7 +32,7 @@ export function Library() {
   // facets are filtered client-side over the already-loaded list (FR-ORG-3).
   const rank = useMemo(() => (search.data ? new Map(search.data.map((r) => [r.work_id, r.rank])) : undefined), [search.data]);
   const visible = useMemo(() => (data ? applyFilters(data, filters, rank) : undefined), [data, filters, rank]);
-  const languages = useMemo(() => [...new Set((data ?? []).flatMap((w) => (w.language ? [w.language] : [])))].sort(), [data]);
+  const languages = useMemo(() => [...new Set((data ?? []).flatMap((w) => (w.language ? [w.language] : [])))].sort((a, b) => a.localeCompare(b)), [data]);
   const selected = (data ?? []).filter((w) => selectedIds.has(w.workId));
   const filtered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
 
@@ -80,8 +80,8 @@ export function Library() {
       {isLoading && <p className="text-body text-muted">Loading…</p>}
       {error && <p className="text-body text-red">Could not load your library: {error.message}</p>}
       {search.error && <p className="text-body text-red">Search failed: {search.error.message}</p>}
-      {filtered && visible && visible.length === 0 && <p className="text-body text-muted">Nothing matches these filters.</p>}
-      {!filtered && data && data.length === 0 && <p className="text-body text-muted">Nothing here yet. Add your first work to get started.</p>}
+      {filtered && visible?.length === 0 && <p className="text-body text-muted">Nothing matches these filters.</p>}
+      {!filtered && data?.length === 0 && <p className="text-body text-muted">Nothing here yet. Add your first work to get started.</p>}
 
       <div className="flex flex-wrap gap-6">
         {visible?.map((item) => (

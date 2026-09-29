@@ -1,11 +1,12 @@
 import { inflateRawSync } from 'node:zlib';
 import { parseIdentifier } from '../_shared/identifier.ts';
+import { stripTags, stripTrailing, xmlElementText } from '../_shared/text.ts';
 
 export function identifierSuggestions(text: string, filename = ''): { scheme: 'isbn' | 'doi'; value: string }[] {
   const found: { scheme: 'isbn' | 'doi'; value: string }[] = [];
   const source = `${filename} ${text}`;
-  for (const match of source.matchAll(/(?:ISBN(?:-1[03])?\s*[:]?\s*)?(?:97[89][-\s]?)?\d[-\d\s]{8,20}[\dX]|10\.\d{4,9}\/[^\s,;<>]+/gi)) {
-    const raw = match[0].trim().replace(/[.)\]]+$/, '');
+  for (const match of source.matchAll(/(?:ISBN(?:-1[03])?[:\s]{0,3})?\d[-\d\s]{8,20}[\dX]|10\.\d{4,9}\/[^\s,;<>]+/gi)) {
+    const raw = stripTrailing(match[0].trim(), '.)]');
     const scheme = raw.startsWith('10.') ? 'doi' : 'isbn';
     const parsed = parseIdentifier(scheme, raw);
     if (parsed.ok && !found.some((item) => item.scheme === scheme && item.value === parsed.normalized)) found.push({ scheme, value: parsed.normalized });
@@ -47,13 +48,15 @@ export function extractEpub(bytes: Uint8Array): { text: string; title?: string; 
     const start = local + 30 + u16(local + 26) + u16(local + 28);
     if (start + compressed > bytes.length) continue;
     const raw = bytes.subarray(start, start + compressed);
-    const content = method === 0 ? raw : method === 8 ? inflateRawSync(raw, { maxOutputLength: 2_000_000 }) : null;
+    let content: Uint8Array | null = null;
+    if (method === 0) content = raw;
+    else if (method === 8) content = inflateRawSync(raw, { maxOutputLength: 2_000_000 });
     if (!content || content.length > 2_000_000) continue;
     const markup = decoder.decode(content);
     if (/\.opf$/i.test(name)) opf = markup;
-    else { text += markup.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ') + '\n'; chapters++; }
+    else { text += stripTags(markup, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ') + '\n'; chapters++; }
   }
-  const tag = (name: string) => new RegExp(`<dc:${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/dc:${name}>`, 'i').exec(opf)?.[1]?.trim();
-  text = `${opf.replace(/<[^>]+>/g, ' ')}\n${text}`;
+  const tag = (name: string) => xmlElementText(opf, `dc:${name}`, true)?.trim();
+  text = `${stripTags(opf, ' ')}\n${text}`;
   return { text: text.slice(0, 200_000), title: tag('title'), author: tag('creator') };
 }

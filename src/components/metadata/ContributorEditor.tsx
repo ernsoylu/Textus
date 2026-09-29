@@ -57,7 +57,7 @@ function rowsFromExisting(credits: ExistingCredit[]): Row[] {
 // FR-CONTRIB-2/3: paste text -> preview via shared/names.ts splitNames() -> editable rows ->
 // saved through set_record_contributors() (invariant 8). Seeded from the record's existing
 // credits, since that RPC replaces the whole list — pasting more must add to, not erase, them.
-export function ContributorEditor({ workId, recordId, existingCredits }: { workId: string; recordId: string; existingCredits: ExistingCredit[] }) {
+export function ContributorEditor({ workId, recordId, existingCredits }: Readonly<{ workId: string; recordId: string; existingCredits: ExistingCredit[] }>) {
   const [rows, setRows] = useState<Row[]>(() => rowsFromExisting(existingCredits));
   const [pasteText, setPasteText] = useState('');
   const save = useSaveCredits(workId, recordId);

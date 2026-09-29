@@ -1,6 +1,7 @@
 import { withSupabase } from '@supabase/server';
 import { z } from 'zod';
 import { parseIdentifier } from '../_shared/identifier.ts';
+import { stripTags, xmlElementText } from '../_shared/text.ts';
 
 const RequestSchema = z.object({
   identifier: z.object({ scheme: z.enum(['isbn', 'doi', 'issn', 'arxiv', 'pmid']), value: z.string().min(1).max(300) }),
@@ -46,7 +47,7 @@ function object(value: unknown): Record<string, unknown> { return value && typeo
 function str(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value.trim() : undefined; }
 function first(value: unknown): string | undefined { return Array.isArray(value) ? str(value[0]) : str(value); }
 function year(value: unknown): string | undefined { const n = Number(value); return Number.isInteger(n) && n >= 1000 && n <= 9999 ? `${n}-01-01` : undefined; }
-function xml(value: string, tag: string): string | undefined { return str(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`).exec(value)?.[1]?.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&')); }
+function xml(value: string, tag: string): string | undefined { return str(stripTags(xmlElementText(value, tag) ?? '').replaceAll('&amp;', '&')); }
 
 export async function provider(name: string, id: string): Promise<Lookup> {
   try {
@@ -111,7 +112,7 @@ export async function provider(name: string, id: string): Promise<Lookup> {
         const people = (role: 'author' | 'editor') => (Array.isArray(item[role]) ? item[role] : []).map((raw) => { const p = object(raw); const given = str(p.given); const family = str(p.family); const name = str(p.name) ?? [given, family].filter(Boolean).join(' '); const orcid = str(p.ORCID)?.split('/').at(-1); return { name, given, family, role, identifiers: orcid ? { orcid } : undefined, affiliation: str(object(Array.isArray(p.affiliation) ? p.affiliation[0] : null).name) }; }).filter((p) => p.name);
         const dateParts = object(item.published)['date-parts'];
         const parts = Array.isArray(dateParts) && Array.isArray(dateParts[0]) ? dateParts[0] as number[] : [];
-        data = { title, abstract: str(item.abstract)?.replace(/<[^>]*>/g, ''), publication_date: parts[0] ? `${parts[0]}-${String(parts[1] ?? 1).padStart(2, '0')}-${String(parts[2] ?? 1).padStart(2, '0')}` : undefined, publication_date_precision: parts[0] ? parts.length >= 3 ? 'day' : parts.length === 2 ? 'month' : 'year' : undefined, publisher: str(item.publisher), volume: str(item.volume), issue_number: str(item.issue), pages: str(item.page), contributors: [...people('author'), ...people('editor')], source_provider: name, source_url: str(item.URL), work_type: name === 'crossref_journal' ? 'serial' : str(item.type) === 'book-chapter' ? 'chapter' : /^book/.test(str(item.type) ?? '') ? 'book' : 'article' };
+        data = { title, abstract: (() => { const a = str(item.abstract); return a === undefined ? undefined : stripTags(a); })(), publication_date: parts[0] ? `${parts[0]}-${String(parts[1] ?? 1).padStart(2, '0')}-${String(parts[2] ?? 1).padStart(2, '0')}` : undefined, publication_date_precision: parts[0] ? parts.length >= 3 ? 'day' : parts.length === 2 ? 'month' : 'year' : undefined, publisher: str(item.publisher), volume: str(item.volume), issue_number: str(item.issue), pages: str(item.page), contributors: [...people('author'), ...people('editor')], source_provider: name, source_url: str(item.URL), work_type: name === 'crossref_journal' ? 'serial' : str(item.type) === 'book-chapter' ? 'chapter' : /^book/.test(str(item.type) ?? '') ? 'book' : 'article' };
       } else {
         const title = str(root.title);
         if (!title) return { kind: 'not_found' };
