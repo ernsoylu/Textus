@@ -3,6 +3,7 @@ import { useUpdateRecord, useDeleteRecord } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 
 export function EditRecordForm({
   workId,
@@ -35,6 +36,24 @@ export function EditRecordForm({
   const update = useUpdateRecord(workId);
   const remove = useDeleteRecord(workId);
   const [confirming, setConfirming] = useState(false);
+  const patch = {
+    title: title.trim() || null,
+    publisher: publisher.trim() || null,
+    edition: edition.trim() || null,
+    volume: volume.trim() || null,
+    issue_number: issueNumber.trim() || null,
+    pages: pages.trim() || null,
+    publication_date: publicationDate || null,
+    publication_date_precision: publicationDate ? ('day' as const) : null,
+  };
+  const dirty =
+    patch.title !== (initialTitle?.trim() || null) ||
+    patch.publisher !== (initialPublisher?.trim() || null) ||
+    patch.edition !== (initialEdition?.trim() || null) ||
+    patch.volume !== (initialVolume?.trim() || null) ||
+    patch.issue_number !== (initialIssueNumber?.trim() || null) ||
+    patch.pages !== (initialPages?.trim() || null) ||
+    patch.publication_date !== (initialPublicationDate || null);
 
   return (
     <div className="flex flex-col gap-2">
@@ -51,21 +70,7 @@ export function EditRecordForm({
         <Button
           variant="secondary"
           isLoading={update.isPending}
-          onClick={() =>
-            update.mutate({
-              recordId,
-              patch: {
-                title: title.trim() || null,
-                publisher: publisher.trim() || null,
-                edition: edition.trim() || null,
-                volume: volume.trim() || null,
-                issue_number: issueNumber.trim() || null,
-                pages: pages.trim() || null,
-                publication_date: publicationDate || null,
-                publication_date_precision: publicationDate ? 'day' : null,
-              },
-            })
-          }
+          onClick={() => update.mutate({ recordId, patch })}
         >
           Save
         </Button>
@@ -76,6 +81,7 @@ export function EditRecordForm({
           Delete record
         </Button>
       </div>
+      <UnsavedChangesGuard dirty={dirty} subject="edition" onSave={() => update.mutateAsync({ recordId, patch })} />
       <ConfirmDialog
         open={confirming}
         title="Delete this record?"

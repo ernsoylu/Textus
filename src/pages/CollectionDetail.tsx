@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCollection, useDeleteCollection, useUpdateCollection } from '@/hooks/useCollections';
 import { CollectionItems } from '@/components/library/CollectionItems';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -31,6 +32,8 @@ export function CollectionDetail() {
     if (name.trim()) update.mutate({ name, description }, { onSuccess: () => setSaved(true) });
   }
 
+  const dirty = !!data && (name.trim() !== data.name || description.trim() !== (data.description ?? ''));
+
   if (isLoading) return <p className="text-body text-muted">Loading…</p>;
   if (error || !data) return <p className="text-body text-red">This collection could not be found. <Link to="/collections" className="underline">Back to collections</Link></p>;
 
@@ -51,6 +54,7 @@ export function CollectionDetail() {
         <p className="text-label text-fg">Records</p>
         <CollectionItems collectionId={data.id} />
       </section>
+      <UnsavedChangesGuard dirty={dirty && !!name.trim()} subject="collection" onSave={() => update.mutateAsync({ name, description })} />
       <ConfirmDialog
         open={confirming}
         title={`Delete "${data.name}"?`}

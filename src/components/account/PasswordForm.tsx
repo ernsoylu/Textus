@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { newPasswordSchema } from '@/lib/passwordRules';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/button';
 // password is asked.
 const passwordSchema = z
   .object({
-    password: z.string().min(8, 'Password must be at least 8 characters.'),
+    password: newPasswordSchema,
     confirm: z.string(),
   })
   .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' });

@@ -82,7 +82,8 @@ Built in some form: lookup and its error states, merge, split, distinct, forced 
 - **Phase 1 (housekeeping): done** except SMTP and the public route, which need infrastructure input.
 - **Phase 2 (daily-use gaps): done.** Also fixed along the way: Tailwind's spacing override made `p-4`, `gap-4`, `w-16` and `h-64` a quarter of their intended size.
 - **Phase 3 (reader): done.** PDF text selection and highlights, EPUB table of contents, go-to, text size and theme, keyboard paging, note filter. A canvas re-render race in the PDF viewer was fixed.
-- Phases 4–7 are still ahead.
+- **Phase 4 (account): done.** Two-panel sign-in/sign-up/magic-link screens, Overview (welcome, continue reading, recently added, identities to review), sign-out and unsaved-changes dialogs, Appearance settings, delete account. Also fixed: signing in never left the login page.
+- Phases 5–7 are still ahead.
 
 ## Plan
 

@@ -84,6 +84,20 @@ async function sweepDeletedUsers(admin: Admin): Promise<number> {
   return removed;
 }
 
+// Removes every object under `${userId}/` in all buckets. Used right after an account is deleted;
+// anything it cannot finish is picked up later by the daily sweep of deleted users' folders.
+export async function removeUserObjects(admin: Admin, userId: string): Promise<number> {
+  let removed = 0;
+  for (const bucket of BUCKETS) {
+    for (let round = 0; round < 20; round++) {
+      const files = await walk(admin, bucket, userId);
+      if (!files.length) break;
+      removed += await remove(admin, bucket, files.map((f) => f.path));
+    }
+  }
+  return removed;
+}
+
 export async function runCleanup(admin: Admin, now = Date.now()) {
   return {
     stagingRemoved: await sweepStaging(admin, now),

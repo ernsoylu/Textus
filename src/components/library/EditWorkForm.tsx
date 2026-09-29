@@ -3,6 +3,7 @@ import { useUpdateWork, useDeleteWork } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 
 const WORK_TYPES = ['book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other'] as const;
 
@@ -29,6 +30,8 @@ export function EditWorkForm({
   const update = useUpdateWork(workId);
   const remove = useDeleteWork();
   const [confirming, setConfirming] = useState(false);
+  const patch = { title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType };
+  const dirty = patch.title !== initialTitle || patch.subtitle !== (initialSubtitle?.trim() || null) || patch.abstract !== (initialAbstract?.trim() || null) || patch.language !== (initialLanguage?.trim() || null) || workType !== initialWorkType;
 
   return (
     <div className="flex flex-col gap-2">
@@ -52,7 +55,7 @@ export function EditWorkForm({
           variant="secondary"
           isLoading={update.isPending}
           disabled={!title.trim()}
-          onClick={() => update.mutate({ title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType })}
+          onClick={() => update.mutate(patch)}
         >
           Save
         </Button>
@@ -63,6 +66,7 @@ export function EditWorkForm({
           Delete work
         </Button>
       </div>
+      <UnsavedChangesGuard dirty={dirty && !!title.trim()} subject="work" onSave={() => update.mutateAsync(patch)} />
       <ConfirmDialog
         open={confirming}
         title={`Delete "${initialTitle}"?`}

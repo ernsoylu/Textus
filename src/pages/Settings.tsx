@@ -1,14 +1,19 @@
 import { useState, type FormEvent } from 'react';
 import { supabase, supabaseUrl } from '@/lib/supabase';
+import { SignOutButton } from '@/components/account/SignOutButton';
 import { useAuth } from '@/hooks/useAuth';
 import { PasswordForm } from '@/components/account/PasswordForm';
+import { AppearanceTab } from '@/components/account/AppearanceTab';
+import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { deleteAccount } from '@/lib/functions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-// Figma "settings" and "opds": Account and OPDS tabs. (Appearance and Delete account are designed
-// but not built: preferences have nothing to persist yet, and deleting an account needs a server function.)
+// Figma "settings", "appearance" and "opds": Account, Appearance and OPDS tabs.
 const TABS = [
   { id: 'account', label: 'Account' },
+  { id: 'appearance', label: 'Appearance' },
   { id: 'opds', label: 'OPDS' },
 ] as const;
 
@@ -17,6 +22,11 @@ function AccountTab() {
   const [displayName, setDisplayName] = useState<string>(session?.user.user_metadata?.display_name ?? '');
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const savedName: string = session?.user.user_metadata?.display_name ?? '';
+  const saveName = () => supabase.auth.updateUser({ data: { display_name: displayName.trim() } }).then(({ error }) => { if (error) throw error; });
 
   async function saveProfile(e: FormEvent) {
     e.preventDefault();
@@ -24,8 +34,22 @@ function AccountTab() {
     setProfileMessage(error ? error.message : 'Profile saved.');
   }
 
+  async function confirmDelete() {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount();
+      // The account is gone server-side; drop the local session (its token no longer resolves to a user).
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Could not delete the account.');
+      setDeleteBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      <UnsavedChangesGuard dirty={displayName.trim() !== savedName} subject="profile" onSave={saveName} />
       <form onSubmit={saveProfile} className="flex flex-col gap-3">
         <label className="flex flex-col gap-2 text-small text-fg">
           Display name
@@ -54,9 +78,22 @@ function AccountTab() {
         <p className="text-body text-muted">Only your account can access your records, files and annotations.</p>
       </div>
 
-      <div>
-        <Button variant="secondary" onClick={() => supabase.auth.signOut()}>Sign out</Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <SignOutButton />
+        <Button variant="ghost" onClick={() => setDeleting(true)}>Delete account</Button>
       </div>
+      <ConfirmDialog
+        open={deleting}
+        title="Delete your library and account?"
+        description="All records, reading progress and annotations will be permanently removed. Stored files are removed by background cleanup. This action cannot be undone."
+        confirmLabel="Delete account"
+        cancelLabel="Keep it"
+        requireText="DELETE"
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onClose={() => setDeleting(false)}
+      />
     </div>
   );
 }
@@ -119,7 +156,9 @@ export function Settings() {
           </button>
         ))}
       </div>
-      {tab === 'account' ? <AccountTab /> : <OpdsTab onSetPassword={() => setTab('account')} />}
+      {tab === 'account' && <AccountTab />}
+      {tab === 'appearance' && <AppearanceTab />}
+      {tab === 'opds' && <OpdsTab onSetPassword={() => setTab('account')} />}
     </div>
   );
 }

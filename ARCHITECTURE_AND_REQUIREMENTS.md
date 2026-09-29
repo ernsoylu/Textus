@@ -1345,6 +1345,10 @@ Asset state transitions: `pending` → `processing` (first job claimed) → `rea
 
 `GET /functions/v1/opds[?page=N]` — an OPDS 1.2 acquisition feed (FR-SER-3, 100 entries per page, newest first; records with no primary asset are omitted). E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic with the account email and password, exchanged for a session on the request-scoped client. Every query then runs as that user under RLS; no service-role client is used. Accounts that only use magic-link sign-in have no password and cannot use the feed. Files stay private (invariant 7): entries link to `GET /opds/download/{assetId}`, which re-authenticates and redirects to a fresh 300 s signed URL.
 
+### 8.6 `delete-account`
+
+`POST { confirm: 'DELETE' }` → `{ status: 'deleted', objectsRemoved }`. The signed-in user deletes their own account and library (`user` auth; a caller can only ever delete themselves). `auth.admin.deleteUser()` cascades every table (all `user_id` foreign keys are `ON DELETE CASCADE`), then the function removes the user's `${userId}/` prefix in `documents`, `covers` and `staging`. If the storage step fails, the daily `cleanup` job removes the folder of a user that no longer exists (§15 #9). This is the second function, with `job-worker`, that uses the service role for something a user cannot do.
+
 ---
 
 ## 9. Key flows
@@ -1638,7 +1642,7 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 | 6 | Search across contributors | FR-SRCH-1 needs names; `works.search_vector` does not include them. | A SQL function combining FTS on works/records with trigram on `contributors.display_name`, `contributor_names.name`, and `record_contributors.credited_as`. "Sort by author" uses primary creators (§6.3) computed in the same query; move to a trigger-maintained column only if it misses NFR-PERF-1. |
 | 7 | Metadata locking model | `locked_fields` in `records.metadata` is the simplest option; works fields have no equivalent. | Store `locked_fields` for both levels in their `metadata` (add `metadata` to `works` if needed). |
 | 8 | OPDS authentication | OPDS clients typically use HTTP Basic, not Supabase JWTs. | Decide in M5. |
-| 9 | Account deletion | `ON DELETE CASCADE` removes rows but not storage objects. | `cleanup` job sweeps folders whose user no longer exists. |
+| 9 | ~~Account deletion~~ | `ON DELETE CASCADE` removes rows but not storage objects. | Resolved: `delete-account` (§8.6) sweeps the user's storage immediately, and the `cleanup` job sweeps folders whose user no longer exists. |
 | 10 | Contributor matching calibration | The score constants were validated on one 282-file collection. | Keep them in one constant block; revisit with review-queue accept/reject rates. |
 | 11 | Large-collaboration papers | Papers with thousands of authors make `contributor_candidates()` arrays large and the credit list long. | Store all credits; the byline truncates. Cap evidence arrays if matching gets slow. |
 | 12 | Name order and scripts | Spanish/Portuguese double surnames, East Asian names without separators, and nicknames parse wrongly. | Rely on structured provider data and the editable preview; add locale-aware rules only if users hit them. |

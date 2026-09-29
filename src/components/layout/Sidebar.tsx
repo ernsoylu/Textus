@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { SignOutButton } from '@/components/account/SignOutButton';
 import { useSavedSearches, useDeleteSavedSearch } from '@/hooks/useSavedSearches';
 
 // Figma: "Navigation / Desktop" (node 8:28), 232px, shown ≥768px per the prototype note in
@@ -55,6 +56,7 @@ export function Sidebar() {
       <div className="mt-auto flex flex-col gap-1 border-t border-border pt-4">
         <p className="text-label truncate text-fg">{session?.user.email ?? 'Signed out'}</p>
         <p className="text-small text-muted">Private · self-hosted</p>
+        <div><SignOutButton variant="ghost" /></div>
       </div>
     </nav>
   );

@@ -84,3 +84,8 @@ export interface ExportResponse {
 export function exportRecords(recordIds: string[], format: 'bibtex' | 'ris' | 'csl-json') {
   return callFunction<ExportResponse>('export', { recordIds, format });
 }
+
+// Deletes the signed-in user's account, library and files (§8.6). Irreversible.
+export function deleteAccount() {
+  return callFunction<{ status: 'deleted'; objectsRemoved: number }>('delete-account', { confirm: 'DELETE' });
+}
