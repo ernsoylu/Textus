@@ -104,6 +104,34 @@ async function extractText(admin: any, job: Job) {
   }
 }
 
+const CACHE_TTL_MS = 30 * 86_400_000;
+
+// deno-lint-ignore no-explicit-any
+async function cachedSuggestion(admin: any, scheme: string, value: string) {
+  const { data: cached } = await admin.from('metadata_cache').select('response_data').eq('identifier_scheme', scheme).eq('identifier_value', value).gt('expires_at', new Date().toISOString()).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
+  return cached?.response_data;
+}
+
+// Tries each provider in order and caches the first hit. A provider failure is only raised when
+// nothing succeeded, so a later provider can still rescue the lookup.
+// deno-lint-ignore no-explicit-any
+async function providerSuggestion(admin: any, scheme: 'isbn' | 'doi', value: string) {
+  const providers = scheme === 'isbn' ? ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : [])] : ['crossref', 'semantic_scholar'];
+  let failure = '';
+  for (const name of providers) {
+    const result = await provider(name, name === 'semantic_scholar' ? `DOI:${value}` : value);
+    if (result.kind === 'success') {
+      const { error } = await admin.from('metadata_cache').upsert({ identifier_scheme: scheme, identifier_value: value, provider: name, response_data: result.data, fetched_at: new Date().toISOString(), expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString() }, { onConflict: 'identifier_scheme,identifier_value,provider' });
+      if (error) throw error;
+      return result.data;
+    }
+    if (result.kind === 'provider_error') failure = result.message;
+    if (result.kind === 'rate_limited') failure = `rate limited by ${name}`;
+  }
+  if (failure) throw new Error(failure);
+  return undefined;
+}
+
 // Background enrichment only writes a suggestion; the user still confirms every field.
 // deno-lint-ignore no-explicit-any
 async function fetchMetadata(admin: any, job: Job) {
@@ -111,24 +139,7 @@ async function fetchMetadata(admin: any, job: Job) {
   if (typeof recordId !== 'string' || (scheme !== 'isbn' && scheme !== 'doi') || typeof value !== 'string') throw new Error('invalid fetch_metadata payload');
   const { data: record, error: recordError } = await admin.from('records').select('metadata').eq('id', recordId).single();
   if (recordError || !record) throw new Error('record not found');
-  const { data: cached } = await admin.from('metadata_cache').select('response_data').eq('identifier_scheme', scheme).eq('identifier_value', value).gt('expires_at', new Date().toISOString()).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
-  let suggestion = cached?.response_data;
-  if (!suggestion) {
-    const providers = scheme === 'isbn' ? ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : [])] : ['crossref', 'semantic_scholar'];
-    let failure = '';
-    for (const name of providers) {
-      const result = await provider(name, name === 'semantic_scholar' ? `DOI:${value}` : value);
-      if (result.kind === 'success') {
-        suggestion = result.data;
-        const { error: cacheError } = await admin.from('metadata_cache').upsert({ identifier_scheme: scheme, identifier_value: value, provider: name, response_data: suggestion, fetched_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30 * 86400000).toISOString() }, { onConflict: 'identifier_scheme,identifier_value,provider' });
-        if (cacheError) throw cacheError;
-        break;
-      }
-      if (result.kind === 'provider_error') failure = result.message;
-      if (result.kind === 'rate_limited') failure = `rate limited by ${name}`;
-    }
-    if (!suggestion && failure) throw new Error(failure);
-  }
+  const suggestion = (await cachedSuggestion(admin, scheme, value)) ?? (await providerSuggestion(admin, scheme, value));
   if (!suggestion) return { found: false };
   const metadata = (record.metadata ?? {}) as Record<string, unknown>;
   const suggestions = (metadata.lookup_suggestions ?? {}) as Record<string, unknown>;
@@ -137,31 +148,36 @@ async function fetchMetadata(admin: any, job: Job) {
   return { found: true };
 }
 
-// Provider covers are public bytes but enter the private, content-addressed asset store.
-// deno-lint-ignore no-explicit-any
-async function processCover(admin: any, job: Job) {
-  const recordId = job.payload.record_id;
-  const rawUrl = job.payload.url;
-  if (typeof recordId !== 'string' || typeof rawUrl !== 'string') throw new Error('invalid process_cover payload');
-  let url = new URL(rawUrl);
+const MAX_COVER_BYTES = 5_000_000;
+const COVER_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function coverHostAllowed(hostname: string): boolean {
+  return hostname === 'archive.org' || hostname.endsWith('.us.archive.org') || hostname === 'covers.openlibrary.org';
+}
+
+function parseCoverUrl(rawUrl: string): URL {
+  const url = new URL(rawUrl);
   if (url.protocol !== 'https:' || url.hostname !== 'covers.openlibrary.org') throw new Error('cover host is not allowed');
-  const { data: record, error: recordError } = await admin.from('records').select('id,works(user_id)').eq('id', recordId).single();
-  if (recordError || !record) throw new Error('record not found');
-  const userId = record.works?.user_id;
-  if (!userId) throw new Error('record owner not found');
-  let response: Response;
+  return url;
+}
+
+async function fetchCoverResponse(start: URL): Promise<Response> {
+  let url = start;
   for (let redirects = 0;; redirects++) {
-    response = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: 'manual' });
-    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: 'manual' });
+    if (!COVER_REDIRECT_STATUSES.has(response.status)) return response;
     if (redirects >= 3) throw new Error('too many cover redirects');
     const location = response.headers.get('location');
     if (!location) throw new Error('cover redirect missing location');
     const next = new URL(location, url);
-    if (next.protocol !== 'https:' || !(next.hostname === 'archive.org' || next.hostname.endsWith('.us.archive.org') || next.hostname === 'covers.openlibrary.org')) throw new Error('cover redirect host is not allowed');
+    if (next.protocol !== 'https:' || !coverHostAllowed(next.hostname)) throw new Error('cover redirect host is not allowed');
     url = next;
   }
+}
+
+async function readCoverBytes(response: Response): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.ok) throw new Error(`cover provider HTTP ${response.status}`);
-  if (Number(response.headers.get('content-length') ?? 0) > 5_000_000) throw new Error('cover too large');
+  if (Number(response.headers.get('content-length') ?? 0) > MAX_COVER_BYTES) throw new Error('cover too large');
   const reader = response.body?.getReader();
   if (!reader) throw new Error('empty cover response');
   const chunks: Uint8Array[] = [];
@@ -170,31 +186,59 @@ async function processCover(admin: any, job: Job) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > 5_000_000) { await reader.cancel(); throw new Error('cover too large'); }
+    if (size > MAX_COVER_BYTES) { await reader.cancel(); throw new Error('cover too large'); }
     chunks.push(value);
   }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  const jpg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  const png = bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => bytes[i] === b);
-  if (!jpg && !png) throw new Error('unsupported cover bytes');
+  return bytes;
+}
+
+// Never trust the provider's content type: classify from the bytes (invariant 6).
+function sniffCover(bytes: Uint8Array): { extension: 'jpg' | 'png'; mime: string } {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return { extension: 'jpg', mime: 'image/jpeg' };
+  if (bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => bytes[i] === b)) return { extension: 'png', mime: 'image/png' };
+  throw new Error('unsupported cover bytes');
+}
+
+async function sha256Hex(bytes: BufferSource): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const checksum = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  const path = `${userId}/${checksum}.${jpg ? 'jpg' : 'png'}`;
-  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: jpg ? 'image/jpeg' : 'image/png', upsert: true });
-  if (storageError) throw storageError;
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Content-addressed: the same bytes for the same user are one asset. A concurrent insert that
+// loses the unique-constraint race reads the winner's row instead.
+// deno-lint-ignore no-explicit-any
+async function ensureCoverAsset(admin: any, userId: string, path: string, size: number, checksum: string, mime: string): Promise<{ id: string }> {
   const { data: existing } = await admin.from('assets').select('id').eq('user_id', userId).eq('checksum_sha256', checksum).maybeSingle();
-  let asset = existing;
-  if (!asset) {
-    const { data: created, error: assetError } = await admin.from('assets').insert({ user_id: userId, bucket: 'covers', storage_path: path, file_size: bytes.length, checksum_sha256: checksum, mime_type: jpg ? 'image/jpeg' : 'image/png', file_format: 'image', processing_state: 'ready' }).select('id').single();
-    if (assetError) {
-      if (assetError.code !== '23505') throw assetError;
-      const { data: raced, error: raceError } = await admin.from('assets').select('id').eq('user_id', userId).eq('checksum_sha256', checksum).single();
-      if (raceError) throw raceError;
-      asset = raced;
-    } else asset = created;
-  }
+  if (existing) return existing;
+  const { data: created, error } = await admin.from('assets').insert({ user_id: userId, bucket: 'covers', storage_path: path, file_size: size, checksum_sha256: checksum, mime_type: mime, file_format: 'image', processing_state: 'ready' }).select('id').single();
+  if (!error) return created;
+  if (error.code !== '23505') throw error;
+  const { data: raced, error: raceError } = await admin.from('assets').select('id').eq('user_id', userId).eq('checksum_sha256', checksum).single();
+  if (raceError) throw raceError;
+  return raced;
+}
+
+// Provider covers are public bytes but enter the private, content-addressed asset store.
+// deno-lint-ignore no-explicit-any
+async function processCover(admin: any, job: Job) {
+  const recordId = job.payload.record_id;
+  const rawUrl = job.payload.url;
+  if (typeof recordId !== 'string' || typeof rawUrl !== 'string') throw new Error('invalid process_cover payload');
+  const coverUrl = parseCoverUrl(rawUrl);
+  const { data: record, error: recordError } = await admin.from('records').select('id,works(user_id)').eq('id', recordId).single();
+  if (recordError || !record) throw new Error('record not found');
+  const userId = record.works?.user_id;
+  if (!userId) throw new Error('record owner not found');
+  const bytes = await readCoverBytes(await fetchCoverResponse(coverUrl));
+  const { extension, mime } = sniffCover(bytes);
+  const checksum = await sha256Hex(bytes);
+  const path = `${userId}/${checksum}.${extension}`;
+  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: mime, upsert: true });
+  if (storageError) throw storageError;
+  const asset = await ensureCoverAsset(admin, userId, path, bytes.length, checksum, mime);
   const { error: linkError } = await admin.from('record_assets').upsert({ record_id: recordId, asset_id: asset.id, role: 'cover' }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
   if (linkError) throw linkError;
   return { asset_id: asset.id };

@@ -90,6 +90,19 @@ function isoDate(date: string | null, precision: string | null): string | undefi
   return date.slice(0, cut);
 }
 
+// The container record when linked (§6.3); otherwise a bare title kept in metadata.container_title.
+function containerOf(row: RecordRowForCitation, meta: Record<string, unknown>): CitationContainer | undefined {
+  if (row.container) {
+    return {
+      title: row.container.title ?? row.container.works?.title,
+      editors: namesFor(row.container.record_contributors, 'editor'),
+      publisher: row.container.publisher ?? undefined,
+      date: isoDate(row.container.publication_date, row.container.publication_date_precision),
+    };
+  }
+  return typeof meta.container_title === 'string' ? { title: meta.container_title, editors: [] } : undefined;
+}
+
 export function buildSource(row: RecordRowForCitation): CitationSource {
   const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
   const credits = row.record_contributors;
@@ -97,16 +110,7 @@ export function buildSource(row: RecordRowForCitation): CitationSource {
   const ownEditors = row.record_type === 'edition' || row.record_type === 'issue' ? namesFor(credits, 'editor') : [];
   const authors = namesFor(credits, 'author');
   const fallback = authors.length || ownEditors.length ? [] : [namesFor(credits, 'compiler'), namesFor(credits, 'translator')].find((l) => l.length) ?? [];
-  const container = row.container
-    ? {
-        title: row.container.title ?? row.container.works?.title,
-        editors: namesFor(row.container.record_contributors, 'editor'),
-        publisher: row.container.publisher ?? undefined,
-        date: isoDate(row.container.publication_date, row.container.publication_date_precision),
-      }
-    : typeof meta.container_title === 'string'
-      ? { title: meta.container_title, editors: [] }
-      : undefined;
+  const container = containerOf(row, meta);
   return {
     id: row.id,
     workType: row.works?.work_type ?? 'other',
@@ -199,8 +203,10 @@ export function toCslJson(sources: CitationSource[]): string {
 const BIB_TYPE: Record<string, string> = { book: 'book', article: 'article', chapter: 'incollection', thesis: 'phdthesis', report: 'techreport', serial: 'misc' };
 
 // Escapes what BibTeX treats specially. Braces are escaped too, so a title cannot break the entry.
+const BACKSLASH = String.fromCodePoint(92);
+
 export function bibEscape(text: string): string {
-  return text.replace(/[\\{}]/g, (c) => (c === '\\' ? '\\textbackslash{}' : `\\${c}`)).replace(/[&%$#_]/g, (c) => `\\${c}`);
+  return text.replace(/[\\{}]/g, (c) => (c === BACKSLASH ? `${BACKSLASH}textbackslash{}` : BACKSLASH + c)).replace(/[&%$#_]/g, (c) => BACKSLASH + c);
 }
 
 function bibName(n: CitationName): string {
@@ -215,7 +221,8 @@ function bibKey(s: CitationSource, used: Set<string>): string {
   const word = s.title.normalize('NFKD').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).find((w) => w.length > 3)?.toLowerCase() ?? '';
   const stem = `${base}${yearOf(s.date) ?? ''}${word}`;
   let key = stem;
-  for (let n = 2; used.has(key); n++) key = `${stem}${n}`;
+  let n = 1;
+  while (used.has(key)) key = `${stem}${++n}`;
   used.add(key);
   return key;
 }

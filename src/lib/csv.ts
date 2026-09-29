@@ -4,29 +4,31 @@ export function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let field = '';
   let quoted = false;
+  const endField = () => {
+    row.push(field);
+    field = '';
+  };
+  const endRow = () => {
+    endField();
+    if (row.some((f) => f.trim())) rows.push(row);
+    row = [];
+  };
   const src = text.replace(/^\u{FEFF}/u, '');
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
     if (quoted) {
-      if (c === '"' && src[i + 1] === '"') {
+      if (c !== '"') field += c;
+      else if (src[i + 1] === '"') {
         field += '"';
         i++;
-      } else if (c === '"') quoted = false;
-      else field += c;
+      } else quoted = false;
     } else if (c === '"') quoted = true;
-    else if (c === ',') {
-      row.push(field);
-      field = '';
-    }
+    else if (c === ',') endField();
     else if (c === '\n' || c === '\r') {
       if (c === '\r' && src[i + 1] === '\n') i++;
-      row.push(field);
-      field = '';
-      if (row.some((f) => f.trim())) rows.push(row);
-      row = [];
+      endRow();
     } else field += c;
   }
-  row.push(field);
-  if (row.some((f) => f.trim())) rows.push(row);
+  endRow();
   return rows;
 }

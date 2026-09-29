@@ -165,19 +165,78 @@ export interface ParseNameResult {
   extraRoles: Role[]; // from a trailing "(ed.)"-style marker on this specific name
 }
 
+interface PersonFields {
+  familyName: string;
+  givenNames: string | null;
+  particle: string | null;
+  suffix: string | null;
+  birthYear: number | null;
+}
+
+function stripHonorifics(name: string): string {
+  let working = name;
+  for (;;) {
+    const firstSpace = working.indexOf(' ');
+    if (firstSpace === -1) return working;
+    const firstToken = working.slice(0, firstSpace).replace(/\.$/, '');
+    if (!HONORIFICS.has(firstToken.toLowerCase())) return working;
+    working = working.slice(firstSpace + 1).trim();
+  }
+}
+
+// "Family, Given[, Suffix][, 1942-]"
+function parseCommaForm(commaParts: string[]): PersonFields {
+  let rest = commaParts.slice(1);
+  let birthYear: number | null = null;
+  let suffix: string | null = null;
+  const last = rest.at(-1);
+  if (last && /^\d{3,4}-\d{0,4}$/.test(last)) {
+    birthYear = Number.parseInt(last, 10);
+    rest = rest.slice(0, -1);
+  }
+  const lastAfterYear = rest.at(-1);
+  if (lastAfterYear && SUFFIX_RE.test(lastAfterYear)) {
+    suffix = lastAfterYear;
+    rest = rest.slice(0, -1);
+  }
+  const { particle, family } = splitParticle(commaParts[0]);
+  return { familyName: family, givenNames: rest.length ? rest.join(', ') : null, particle, suffix, birthYear };
+}
+
+// "Given [particle] Family [Suffix]", or family-first initials ("Bergman T.L.").
+function parseSpaceForm(working: string): PersonFields {
+  const tokens = working.split(/\s+/).filter(Boolean);
+  const isInitials = (t: string) => /^([A-Z]\.){1,4}$/.test(t);
+  if (tokens.length === 2 && !isInitials(tokens[0]) && isInitials(tokens[1])) {
+    return { familyName: tokens[0], givenNames: tokens[1], particle: null, suffix: null, birthYear: null };
+  }
+  let rest = [...tokens];
+  let suffix: string | null = null;
+  if (rest.length > 1 && SUFFIX_RE.test(rest.at(-1)!)) {
+    suffix = rest.at(-1)!;
+    rest = rest.slice(0, -1);
+  }
+  // The last token is the family name, preceded by any particles (scan backward from it).
+  const familyName = rest.at(-1) ?? working;
+  const particleTokens: string[] = [];
+  let idx = rest.length - 2;
+  while (idx >= 0 && PARTICLES.has(rest[idx].toLowerCase())) {
+    particleTokens.unshift(rest[idx]);
+    idx--;
+  }
+  const givenTokens = rest.slice(0, idx + 1);
+  return {
+    familyName,
+    givenNames: givenTokens.length ? givenTokens.join(' ') : null,
+    particle: particleTokens.length ? particleTokens.join(' ') : null,
+    suffix,
+    birthYear: null,
+  };
+}
+
 export function parseName(raw: string): ParseNameResult {
   const { rest: afterParen, roles: extraRoles, variant } = extractTrailingParen(raw);
-
-  let working = afterParen;
-  while (true) {
-    const firstSpace = working.indexOf(' ');
-    const firstToken = (firstSpace === -1 ? working : working.slice(0, firstSpace)).replace(/\.$/, '');
-    if (HONORIFICS.has(firstToken.toLowerCase()) && firstSpace !== -1) {
-      working = working.slice(firstSpace + 1).trim();
-    } else {
-      break;
-    }
-  }
+  const working = stripHonorifics(afterParen);
 
   if (isOrganization(working)) {
     const displayName = working;
@@ -188,55 +247,10 @@ export function parseName(raw: string): ParseNameResult {
   }
 
   const wasAllCaps = isAllCaps(working);
-  let familyName: string;
-  let givenNames: string | null;
-  let particle: string | null = null;
-  let suffix: string | null = null;
-  let birthYear: number | null = null;
-
   const commaParts = working.split(',').map((p) => p.trim()).filter(Boolean);
-  if (commaParts.length >= 2) {
-    // Family, Given[, Suffix][, 1942-]
-    let rest = commaParts.slice(1);
-    const last = rest.at(-1);
-    if (last && /^\d{3,4}-\d{0,4}$/.test(last)) {
-      birthYear = Number.parseInt(last, 10);
-      rest = rest.slice(0, -1);
-    }
-    const lastAfterYear = rest.at(-1);
-    if (lastAfterYear && SUFFIX_RE.test(lastAfterYear)) {
-      suffix = lastAfterYear;
-      rest = rest.slice(0, -1);
-    }
-    const { particle: p, family } = splitParticle(commaParts[0]);
-    particle = p;
-    familyName = family;
-    givenNames = rest.length ? rest.join(', ') : null;
-  } else {
-    const tokens = working.split(/\s+/).filter(Boolean);
-    // Family-first initials: "Bergman T.L." — a word, then only initials with no space to it.
-    if (tokens.length === 2 && !/^([A-Z]\.){1,4}$/.test(tokens[0]) && /^([A-Z]\.){1,4}$/.test(tokens[1])) {
-      familyName = tokens[0];
-      givenNames = tokens[1];
-    } else {
-      let rest = [...tokens];
-      if (rest.length > 1 && SUFFIX_RE.test(rest.at(-1)!)) {
-        suffix = rest.at(-1)!;
-        rest = rest.slice(0, -1);
-      }
-      // The last token is the family name, preceded by any particles (scan backward from it).
-      familyName = rest.at(-1) ?? working;
-      const particleTokens: string[] = [];
-      let idx = rest.length - 2;
-      while (idx >= 0 && PARTICLES.has(rest[idx].toLowerCase())) {
-        particleTokens.unshift(rest[idx]);
-        idx--;
-      }
-      particle = particleTokens.length ? particleTokens.join(' ') : null;
-      const givenTokens = rest.slice(0, idx + 1);
-      givenNames = givenTokens.length ? givenTokens.join(' ') : null;
-    }
-  }
+  const fields = commaParts.length >= 2 ? parseCommaForm(commaParts) : parseSpaceForm(working);
+  let { familyName, givenNames, particle } = fields;
+  const { suffix, birthYear } = fields;
 
   if (wasAllCaps) {
     familyName = titleCase(familyName);
@@ -296,25 +310,9 @@ function makeCredit(nameStr: string, raw: string, roles: Role[], birthYearOverri
   return { raw, parts, roles: extraRoles.length ? extraRoles : roles, rejected: false };
 }
 
-function processPart(part: string, defaultRoles: Role[]): ParsedCredit[] {
-  const { rest, roles: markerRoles, variant } = extractTrailingParen(part);
-  // A non-role trailing paren here (a fuller-form variant) belongs to parseName, not this
-  // part-level step — put it back so parseName sees it.
-  const working = variant ? part.trim() : rest;
-  const roles = markerRoles.length ? markerRoles : defaultRoles.length ? defaultRoles : (['author'] as Role[]);
-
-  const segments = working.split(',').map((s) => s.trim()).filter(Boolean);
-  // Only test the whole string against the organization word list when there's no comma to
-  // segment on — with commas present, only a *trailing* segment gets peeled off as an org
-  // below, so "Rutkowski, Hank, Air Conditioning Contractors of America" isn't swallowed
-  // whole just because "Contractors" appears somewhere in it.
-  if (segments.length <= 1) return [makeCredit(working, part, roles)];
-
-  let trailingOrg: ParsedCredit | null = null;
-  if (isOrganization(segments.at(-1)!)) {
-    trailingOrg = makeCredit(segments.pop()!, part, roles);
-  }
-
+// Comma-separated segments -> credits: "Family, Given[, 1942-]" pairs, "Given Family, Given Family"
+// lists, and dropped truncated initials.
+function creditsFromSegments(segments: string[], part: string, roles: Role[]): ParsedCredit[] {
   const out: ParsedCredit[] = [];
   let i = 0;
   while (i < segments.length) {
@@ -340,6 +338,31 @@ function processPart(part: string, defaultRoles: Role[]): ParsedCredit[] {
     out.push(makeCredit(seg, part, roles));
     i += 1;
   }
+  return out;
+}
+
+function processPart(part: string, defaultRoles: Role[]): ParsedCredit[] {
+  const { rest, roles: markerRoles, variant } = extractTrailingParen(part);
+  // A non-role trailing paren here (a fuller-form variant) belongs to parseName, not this
+  // part-level step — put it back so parseName sees it.
+  const working = variant ? part.trim() : rest;
+  let roles: Role[] = ['author'];
+  if (markerRoles.length) roles = markerRoles;
+  else if (defaultRoles.length) roles = defaultRoles;
+
+  const segments = working.split(',').map((s) => s.trim()).filter(Boolean);
+  // Only test the whole string against the organization word list when there's no comma to
+  // segment on — with commas present, only a *trailing* segment gets peeled off as an org
+  // below, so "Rutkowski, Hank, Air Conditioning Contractors of America" isn't swallowed
+  // whole just because "Contractors" appears somewhere in it.
+  if (segments.length <= 1) return [makeCredit(working, part, roles)];
+
+  let trailingOrg: ParsedCredit | null = null;
+  if (isOrganization(segments.at(-1)!)) {
+    trailingOrg = makeCredit(segments.pop()!, part, roles);
+  }
+
+  const out = creditsFromSegments(segments, part, roles);
   if (trailingOrg) out.push(trailingOrg);
   return out;
 }
@@ -385,7 +408,7 @@ export function splitNames(raw: string): ParsedCredit[] {
     .replaceAll('_', '.')
     .replaceAll('†', '')
     .trim();
-  if (cleaned.length >= 2 && (cleaned[0] === '"' || cleaned[0] === "'") && cleaned.at(-1) === cleaned[0]) {
+  if (cleaned.length >= 2 && (cleaned.startsWith('"') || cleaned.startsWith("'")) && cleaned.at(-1) === cleaned[0]) {
     cleaned = cleaned.slice(1, -1).trim();
   }
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
@@ -438,7 +461,7 @@ export function compareGiven(a: string | null | undefined, b: string | null | un
     if (x === y) continue;
     const xInit = x.length === 1;
     const yInit = y.length === 1;
-    if ((xInit && y[0] === x) || (yInit && x[0] === y)) {
+    if ((xInit && y.startsWith(x)) || (yInit && x.startsWith(y))) {
       sawInitialMatch = true;
       continue;
     }
@@ -474,7 +497,8 @@ export function chooseImportedContributor(
     const compatibility = incoming.kind === 'organization' ? 'exact' : compareGiven(candidate.given_names, incoming.givenNames);
     const shared = candidate.coauthor_keys.filter((key) => incoming.coauthorKeys?.includes(key)).length;
     const affiliation = incoming.affiliation && candidate.affiliations.some((a) => fold(a) === fold(incoming.affiliation!));
-    return { candidate, compatibility, score: (compatibility === 'exact' ? 3 : compatibility === 'full' ? 2 : 1) +
+    const compatibilityScore = compatibility === 'exact' ? 3 : Number(compatibility === 'full') + 1;
+    return { candidate, compatibility, score: compatibilityScore +
       (incoming.workId && candidate.work_ids.includes(incoming.workId) ? 4 : 0) + Math.min(shared, 2) * 2 + (affiliation ? 2 : 0) };
   }).filter((x) => x.compatibility !== 'incompatible').sort((a, b) => b.score - a.score);
   const best = scored[0];

@@ -38,10 +38,8 @@ async function resolveContributor(userId: string, row: CreditInput): Promise<{ i
   if (compatible.length === 1) return { id: compatible[0].id, resolvedBy: 'match' };
 
   const displayName = canonicalName(row);
-  const sortName =
-    row.kind === 'organization'
-      ? displayName
-      : [row.particle, row.familyName].filter(Boolean).join(' ') + (row.givenNames ? `, ${row.givenNames}` : '');
+  const givenSuffix = row.givenNames ? `, ${row.givenNames}` : '';
+  const sortName = row.kind === 'organization' ? displayName : [row.particle, row.familyName].filter(Boolean).join(' ') + givenSuffix;
   const { data: created, error: insertError } = await supabase
     .from('contributors')
     .insert({

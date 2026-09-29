@@ -110,6 +110,44 @@ async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Respons
   return Response.json({ path: data.path, token: data.token });
 }
 
+interface NewAsset {
+  userId: string;
+  bucket: string;
+  destPath: string;
+  size: number;
+  checksum: string;
+  mimeType: string;
+  fileFormat: string;
+  processingState: 'ready' | 'pending';
+}
+
+// ON CONFLICT semantics by hand: the same bytes for the same user are one asset (UNIQUE
+// (user_id, checksum_sha256)). A concurrent insert that loses the race reads the winner's row.
+async function findOrCreateAsset(ctx: SupabaseContext, a: NewAsset) {
+  const { data: existing } = await ctx.supabaseAdmin.from('assets').select('*').eq('user_id', a.userId).eq('checksum_sha256', a.checksum).maybeSingle();
+  if (existing) return { asset: existing, deduplicated: true };
+
+  const { data: inserted, error: insertError } = await ctx.supabaseAdmin
+    .from('assets')
+    .insert({
+      user_id: a.userId,
+      bucket: a.bucket,
+      storage_path: a.destPath,
+      file_size: a.size,
+      checksum_sha256: a.checksum,
+      mime_type: a.mimeType,
+      file_format: a.fileFormat,
+      processing_state: a.processingState,
+    })
+    .select('*')
+    .single();
+  if (!insertError) return { asset: inserted, deduplicated: false };
+  if (insertError.code !== '23505') return Response.json({ error: 'db_error', message: insertError.message }, { status: 500 });
+
+  const { data: raced } = await ctx.supabaseAdmin.from('assets').select('*').eq('user_id', a.userId).eq('checksum_sha256', a.checksum).single();
+  return { asset: raced!, deduplicated: true };
+}
+
 async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Response> {
   const parsed = CompleteSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
@@ -159,49 +197,22 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
 
   const fileFormat = isCover ? 'image' : ext;
 
-  const { data: existing } = await ctx.supabaseAdmin
-    .from('assets')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('checksum_sha256', checksum)
-    .maybeSingle();
-
-  let asset = existing;
-  let deduplicated = !!existing;
-  if (!asset) {
-    const { data: inserted, error: insertError } = await ctx.supabaseAdmin
-      .from('assets')
-      .insert({
-        user_id: userId,
-        bucket,
-        storage_path: destPath,
-        file_size: bytes.length,
-        checksum_sha256: checksum,
-        mime_type: sniffed.mimeType,
-        file_format: fileFormat,
-        processing_state: isCover ? 'ready' : 'pending',
-      })
-      .select('*')
-      .single();
-    if (insertError?.code === '23505') {
-      const { data: raced } = await ctx.supabaseAdmin
-        .from('assets')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('checksum_sha256', checksum)
-        .single();
-      asset = raced;
-      deduplicated = true;
-    } else if (insertError) {
-      return Response.json({ error: 'db_error', message: insertError.message }, { status: 500 });
-    } else {
-      asset = inserted;
-    }
-  }
+  const outcome = await findOrCreateAsset(ctx, {
+    userId,
+    bucket,
+    destPath,
+    size: bytes.length,
+    checksum,
+    mimeType: sniffed.mimeType,
+    fileFormat,
+    processingState: isCover ? 'ready' : 'pending',
+  });
+  if (outcome instanceof Response) return outcome;
+  const { asset, deduplicated } = outcome;
 
   await ctx.supabaseAdmin
     .from('record_assets')
-    .upsert({ record_id: recordId, asset_id: asset!.id, role }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
+    .upsert({ record_id: recordId, asset_id: asset.id, role }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
 
   // generate_thumbnail is deliberately not enqueued: thumbnails are captured client-side on
   // first read instead (Reader.tsx), per §15 Q2 — see job-worker's own note on why.
@@ -209,7 +220,7 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
     await ctx.supabaseAdmin
       .from('jobs')
       .upsert(
-        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset!.id, filename: parsed.data.filename ?? '' }, idempotency_key: `extract_text:${asset!.id}` },
+        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset.id, filename: parsed.data.filename ?? '' }, idempotency_key: `extract_text:${asset.id}` },
         { onConflict: 'idempotency_key', ignoreDuplicates: true },
       );
   }

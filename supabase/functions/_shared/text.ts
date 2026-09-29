@@ -26,7 +26,7 @@ export function xmlElementText(xml: string, tag: string, ignoreCase = false): st
     if (start < 0) return undefined;
     const after = haystack[start + open.length];
     from = start + open.length;
-    if (after !== '>' && !(after !== undefined && after.trim() === '')) continue;
+    if (after !== '>' && after?.trim() !== '') continue;
     const gt = haystack.indexOf('>', from);
     const end = gt < 0 ? -1 : haystack.indexOf(`</${name}>`, gt + 1);
     return end < 0 ? undefined : xml.slice(gt + 1, end);
