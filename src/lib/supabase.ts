@@ -8,7 +8,8 @@ import type { Database } from '@/types/database';
 // image's nginx proxies /auth, /rest, /storage and /functions to Supabase over the internal
 // Docker network (deploy/nginx.conf).
 export const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || globalThis.location.origin;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const supabaseAnonKey: string = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const anonKey = supabaseAnonKey;
 
 if (!anonKey) {
   throw new Error('VITE_SUPABASE_ANON_KEY must be set (see .env.example).');

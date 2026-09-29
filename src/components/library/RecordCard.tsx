@@ -9,21 +9,28 @@ export interface RecordCardProps {
   title: string;
   byline: string;
   meta: string;
+  detail?: string;
+  coverUrl?: string;
   selected?: boolean;
   onToggleSelect?: () => void;
 }
 
-export function RecordCard({ workId, title, byline, meta, selected, onToggleSelect }: Readonly<RecordCardProps>) {
+export function RecordCard({ workId, title, byline, meta, detail, coverUrl, selected, onToggleSelect }: Readonly<RecordCardProps>) {
   const body = (
     <>
-      <div className="flex h-64 w-full flex-col justify-between rounded-4 bg-green-bg p-4">
-        <p className="text-small w-full text-muted">TEXTUS / LIBRARY</p>
-        <p className="text-heading w-full text-fg">{title}</p>
-        <p className="text-small w-full text-fg">{byline || 'Unattributed'}</p>
-      </div>
+      {coverUrl ? (
+        <img src={coverUrl} alt="" loading="lazy" className="h-[260px] w-full rounded-4 bg-green-bg object-cover" />
+      ) : (
+        <div className="flex h-[260px] w-full flex-col justify-between rounded-4 bg-green-bg p-4">
+          <p className="text-small w-full text-muted">TEXTUS / LIBRARY</p>
+          <p className="text-heading w-full text-fg">{title}</p>
+          <p className="text-small w-full text-fg">{byline || 'Unattributed'}</p>
+        </div>
+      )}
       <p className="text-label w-full text-fg">{title}</p>
       <p className="text-small w-full text-muted">{byline || 'Unattributed'}</p>
       <p className="text-small w-full text-green">{meta}</p>
+      {detail && <p className="text-small w-full text-muted">{detail}</p>}
     </>
   );
   if (!onToggleSelect) {

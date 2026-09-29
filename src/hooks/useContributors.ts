@@ -121,3 +121,11 @@ export function useSplitCredits() {
     if (error) throw error;
   });
 }
+
+// Credits go with the contributor (record_contributors ON DELETE CASCADE), so the UI warns first.
+export function useDeleteContributor() {
+  return useInvalidatingMutation(async (id: string) => {
+    const { error } = await supabase.from('contributors').delete().eq('id', id);
+    if (error) throw error;
+  });
+}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUpdateWork, useDeleteWork } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 const WORK_TYPES = ['book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other'] as const;
 
@@ -27,6 +28,7 @@ export function EditWorkForm({
   const [workType, setWorkType] = useState(initialWorkType);
   const update = useUpdateWork(workId);
   const remove = useDeleteWork();
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
@@ -56,18 +58,22 @@ export function EditWorkForm({
         </Button>
         <Button
           variant="danger"
-          isLoading={remove.isPending}
-          onClick={() => {
-            if (confirm(`Delete "${initialTitle}" and all its records, files, and credits? This cannot be undone.`)) {
-              remove.mutate(workId);
-            }
-          }}
+          onClick={() => setConfirming(true)}
         >
           Delete work
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        title={`Delete "${initialTitle}"?`}
+        description="This removes the work with all its records, identifiers, credits, notes and reading progress. Its files are deleted from storage within a day. This cannot be undone."
+        confirmLabel="Delete work"
+        busy={remove.isPending}
+        error={remove.error?.message}
+        onConfirm={() => remove.mutate(workId, { onSettled: () => setConfirming(false) })}
+        onClose={() => setConfirming(false)}
+      />
       {update.isError && <p className="text-small text-red">{update.error.message}</p>}
-      {remove.isError && <p className="text-small text-red">{remove.error.message}</p>}
     </div>
   );
 }

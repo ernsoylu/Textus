@@ -115,3 +115,34 @@ export function useSetContainer(workId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['works', workId] }),
   });
 }
+
+// FR-FILE-4: detach a file from a record. The asset itself is immutable and may be shared through
+// deduplication (FR-FILE-3), so only the link goes; the `cleanup` job deletes assets nothing links to.
+export function useRemoveAssetLink(workId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ recordId, assetId, role }: { recordId: string; assetId: string; role: string }) => {
+      const { error } = await supabase.from('record_assets').delete().eq('record_id', recordId).eq('asset_id', assetId).eq('role', role);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['works', workId] });
+      queryClient.invalidateQueries({ queryKey: ['works'] });
+    },
+  });
+}
+
+// FR-CAT-4: remove an identifier from a record (identifiers_delete, RLS).
+export function useRemoveIdentifier(workId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ recordId, scheme, value }: { recordId: string; scheme: string; value: string }) => {
+      const { error } = await supabase.from('identifiers').delete().eq('record_id', recordId).eq('scheme', scheme).eq('normalized_value', value);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['works', workId] });
+      queryClient.invalidateQueries({ queryKey: ['works'] });
+    },
+  });
+}

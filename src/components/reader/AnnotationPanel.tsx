@@ -3,11 +3,13 @@ import { useUpdateAnnotation, useDeleteAnnotation, type AnnotationItem } from '@
 import { annotationsToJson, annotationsToMarkdown, downloadText } from '@/lib/annotationExport';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 function Row({ a, onGoTo }: Readonly<{ a: AnnotationItem; onGoTo?: (a: AnnotationItem) => void }>) {
   const update = useUpdateAnnotation();
   const del = useDeleteAnnotation();
   const [note, setNote] = useState(a.note ?? '');
+  const [confirming, setConfirming] = useState(false);
   const page = a.anchor_type === 'pdf_page' ? (a.anchor_data as { page?: number }).page : undefined;
   return (
     <li className="flex flex-col gap-1 rounded-8 border border-border p-3" style={{ borderLeft: `4px solid ${a.color ?? 'yellow'}` }}>
@@ -15,8 +17,18 @@ function Row({ a, onGoTo }: Readonly<{ a: AnnotationItem; onGoTo?: (a: Annotatio
       <Input aria-label="Note" value={note} placeholder="Note" onChange={(e) => setNote(e.target.value)} onBlur={() => note !== (a.note ?? '') && update.mutate({ id: a.id, note })} />
       <div className="flex items-center gap-2">
         {onGoTo && <Button variant="ghost" onClick={() => onGoTo(a)}>{page ? `Page ${page}` : 'Go to'}</Button>}
-        <Button variant="ghost" isLoading={del.isPending} onClick={() => del.mutate(a.id)}>Delete</Button>
+        <Button variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this note?"
+        description={a.highlighted_text ? `The highlight “${a.highlighted_text.slice(0, 80)}” and its note are removed.` : 'The note is removed.'}
+        confirmLabel="Delete note"
+        busy={del.isPending}
+        error={del.error?.message}
+        onConfirm={() => del.mutate(a.id, { onSettled: () => setConfirming(false) })}
+        onClose={() => setConfirming(false)}
+      />
     </li>
   );
 }

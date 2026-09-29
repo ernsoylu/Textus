@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUpdateRecord, useDeleteRecord } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 export function EditRecordForm({
   workId,
@@ -33,6 +34,7 @@ export function EditRecordForm({
   const [publicationDate, setPublicationDate] = useState(initialPublicationDate ?? '');
   const update = useUpdateRecord(workId);
   const remove = useDeleteRecord(workId);
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,18 +71,22 @@ export function EditRecordForm({
         </Button>
         <Button
           variant="danger"
-          isLoading={remove.isPending}
-          onClick={() => {
-            if (confirm('Delete this record and its identifiers, credits, and file links? This cannot be undone.')) {
-              remove.mutate(recordId);
-            }
-          }}
+          onClick={() => setConfirming(true)}
         >
           Delete record
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this record?"
+        description="This removes the record with its identifiers, credits and file links. Files no other record uses are deleted from storage within a day. This cannot be undone."
+        confirmLabel="Delete record"
+        busy={remove.isPending}
+        error={remove.error?.message}
+        onConfirm={() => remove.mutate(recordId, { onSettled: () => setConfirming(false) })}
+        onClose={() => setConfirming(false)}
+      />
       {update.isError && <p className="text-small text-red">{update.error.message}</p>}
-      {remove.isError && <p className="text-small text-red">{remove.error.message}</p>}
     </div>
   );
 }

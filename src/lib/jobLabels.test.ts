@@ -1,0 +1,18 @@
+import { describe, expect, it } from 'vitest';
+import { jobLabel, statusText } from './jobLabels';
+import type { JobItem } from '@/hooks/useJobs';
+
+const job = (over: Partial<JobItem>): JobItem => ({ id: '1', job_type: 'cleanup', status: 'queued', attempts: 0, max_attempts: 3, last_error: null, payload: {}, created_at: null, completed_at: null, ...over });
+
+describe('jobLabel', () => {
+  it('names the work in plain words', () => {
+    expect(jobLabel(job({ job_type: 'extract_text', payload: { filename: 'dune.epub' } }))).toBe('Reading dune.epub');
+    expect(jobLabel(job({ job_type: 'fetch_metadata', payload: { scheme: 'doi', value: '10.1/x' } }))).toBe('Looking up DOI 10.1/x');
+    expect(jobLabel(job({ job_type: 'process_cover' }))).toBe('Fetching a cover');
+  });
+  it('falls back to the raw type and status', () => {
+    expect(jobLabel(job({ job_type: 'mystery' }))).toBe('mystery');
+    expect(statusText('succeeded')).toBe('Done');
+    expect(statusText('weird')).toBe('weird');
+  });
+});

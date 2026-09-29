@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useContributor, useContributors, useMergeContributors, useSplitCredits, useConfirmContributor } from '@/hooks/useContributors';
+import { useContributor, useContributors, useMergeContributors, useSplitCredits, useConfirmContributor, useDeleteContributor } from '@/hooks/useContributors';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { authorityUrl } from '@/lib/authorityLinks';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,8 @@ export function ContributorDetail() {
   const merge = useMergeContributors();
   const split = useSplitCredits();
   const confirm = useConfirmContributor();
+  const del = useDeleteContributor();
+  const [deleting, setDeleting] = useState(false);
   const [mergeId, setMergeId] = useState('');
   const [splitTo, setSplitTo] = useState('');
   const [newName, setNewName] = useState('');
@@ -122,7 +125,20 @@ export function ContributorDetail() {
         {merge.error && <p className="text-small text-red">{conflict ? 'These have conflicting external identifiers; they look like different people.' : merge.error.message}</p>}
       </section>
 
-      <div><Button variant="ghost" onClick={() => navigate('/contributors')}>Back to contributors</Button></div>
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={() => navigate('/contributors')}>Back to contributors</Button>
+        <Button variant="danger" onClick={() => setDeleting(true)}>Delete contributor</Button>
+      </div>
+      <ConfirmDialog
+        open={deleting}
+        title={`Delete ${data.display_name}?`}
+        description={data.record_contributors.length ? `This removes ${data.record_contributors.length} ${data.record_contributors.length === 1 ? 'credit' : 'credits'} from your records, along with their names and identifiers. Merge instead if this is a duplicate.` : 'This contributor has no credits. Their names and identifiers are removed too.'}
+        confirmLabel="Delete contributor"
+        busy={del.isPending}
+        error={del.error?.message}
+        onConfirm={() => del.mutate(data.id, { onSuccess: () => navigate('/contributors'), onSettled: () => setDeleting(false) })}
+        onClose={() => setDeleting(false)}
+      />
     </div>
   );
 }

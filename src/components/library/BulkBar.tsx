@@ -4,6 +4,7 @@ import { useCollections } from '@/hooks/useCollections';
 import { useBulkActions } from '@/hooks/useBulkActions';
 import { Button } from '@/components/ui/button';
 import { ExportButton } from '@/components/library/ExportButton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { WorkListItem } from '@/hooks/useWorks';
 
 // FR-ORG-4: bulk tag / add to collection / export / delete for the selected works.
@@ -13,6 +14,7 @@ export function BulkBar({ selected, onDone }: Readonly<{ selected: WorkListItem[
   const { tag, addToCollection, deleteWorks } = useBulkActions();
   const [tagId, setTagId] = useState('');
   const [collectionId, setCollectionId] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const recordIds = selected.flatMap((w) => w.recordIds);
   const error = tag.error ?? addToCollection.error ?? deleteWorks.error;
   const SELECT = 'rounded-8 border border-muted bg-dim p-3 text-body text-fg';
@@ -34,14 +36,21 @@ export function BulkBar({ selected, onDone }: Readonly<{ selected: WorkListItem[
       <Button
         variant="danger"
         disabled={!selected.length}
-        isLoading={deleteWorks.isPending}
-        onClick={() => {
-          if (window.confirm(`Delete ${selected.length} work(s), their records and files? This cannot be undone.`)) deleteWorks.mutate(selected.map((w) => w.workId), { onSuccess: onDone });
-        }}
+        onClick={() => setConfirming(true)}
       >
         Delete
       </Button>
       <Button variant="ghost" onClick={onDone}>Cancel</Button>
+      <ConfirmDialog
+        open={confirming}
+        title={`Delete ${selected.length} ${selected.length === 1 ? 'work' : 'works'}?`}
+        description="Their records, credits, notes and reading progress are removed, and their files are deleted from storage within a day. This cannot be undone."
+        confirmLabel="Delete"
+        busy={deleteWorks.isPending}
+        error={deleteWorks.error?.message}
+        onConfirm={() => deleteWorks.mutate(selected.map((w) => w.workId), { onSuccess: onDone, onSettled: () => setConfirming(false) })}
+        onClose={() => setConfirming(false)}
+      />
       {error && <p className="w-full text-small text-red">{error.message}</p>}
     </div>
   );

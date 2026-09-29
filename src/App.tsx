@@ -15,8 +15,11 @@ import { Serials } from '@/pages/Serials';
 import { Import } from '@/pages/Import';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { ResetPassword } from '@/pages/ResetPassword';
+import { NotFound } from '@/pages/NotFound';
+import { Tags } from '@/pages/Tags';
+import { CollectionDetail } from '@/pages/CollectionDetail';
 import { Settings } from '@/pages/Settings';
-import { Placeholder } from '@/pages/Placeholder';
+import { Activity } from '@/pages/Activity';
 
 // pdfjs-dist alone is ~1MB — split out so the rest of the app doesn't pay for it upfront.
 const Reader = lazy(() => import('@/pages/Reader').then((m) => ({ default: m.Reader })));
@@ -43,13 +46,16 @@ export function App() {
               }
             />
             <Route path="collections" element={<Collections />} />
+            <Route path="collections/:collectionId" element={<CollectionDetail />} />
+            <Route path="tags" element={<Tags />} />
             <Route path="contributors" element={<Contributors />} />
             <Route path="contributors/:contributorId" element={<ContributorDetail />} />
             <Route path="serials" element={<Serials />} />
             <Route path="notes" element={<Notes />} />
             <Route path="import" element={<Import />} />
-            <Route path="activity" element={<Placeholder title="Activity" />} />
+            <Route path="activity" element={<Activity />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Route>
       </Routes>

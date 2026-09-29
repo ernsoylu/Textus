@@ -38,7 +38,7 @@ export function useCreateTag() {
       if (error) throw error.code === '23505' ? new Error('You already have a tag with that name.') : error;
       return data.id;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tags'] }),
+    onSuccess: () => invalidateTags(queryClient),
   });
 }
 
@@ -52,5 +52,44 @@ export function useSetRecordTag(recordId: string) {
       if (error && error.code !== '23505') throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['record-tags', recordId] }),
+  });
+}
+
+// Tags page: every tag with how many records carry it.
+export function useTagList() {
+  return useQuery({
+    queryKey: ['tag-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('tags').select('id, name, color, record_tags(count)').order('name');
+      if (error) throw error;
+      return data.map((t) => ({ id: t.id, name: t.name, color: t.color, count: t.record_tags[0]?.count ?? 0 }));
+    },
+  });
+}
+
+function invalidateTags(queryClient: ReturnType<typeof useQueryClient>) {
+  for (const key of ['tags', 'tag-list', 'record-tags', 'works']) queryClient.invalidateQueries({ queryKey: [key] });
+}
+
+export function useUpdateTag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
+      const { error } = await supabase.from('tags').update({ name: name.trim(), color }).eq('id', id);
+      if (error) throw error.code === '23505' ? new Error('You already have a tag with that name.') : error;
+    },
+    onSuccess: () => invalidateTags(queryClient),
+  });
+}
+
+// record_tags rows go with the tag (ON DELETE CASCADE); the records themselves are untouched.
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('tags').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => invalidateTags(queryClient),
   });
 }

@@ -1,12 +1,12 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
 import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
 import { UploadForm } from '@/components/library/UploadForm';
-import { StatusBadge } from '@/components/library/StatusBadge';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
-import { DownloadButton } from '@/components/library/DownloadButton';
+import { IdentifierList } from '@/components/library/IdentifierList';
+import { FileList } from '@/components/library/FileList';
 import { AddArticleVersionForm } from '@/components/library/AddArticleVersionForm';
 import { AddIssueForm } from '@/components/library/AddIssueForm';
 import { SerialCompleteness } from '@/components/library/SerialCompleteness';
@@ -71,38 +71,14 @@ export function WorkDetail() {
             publicationDate={record.publication_date}
           />
 
-          {record.identifiers.map((id) => (
-            <p key={`${id.scheme}:${id.normalized_value}`} className="text-small text-green">
-              {id.scheme.toUpperCase()}: {id.normalized_value}
-            </p>
-          ))}
+          <IdentifierList workId={data.id} recordId={record.id} identifiers={record.identifiers} />
           <AddIdentifierForm recordId={record.id} />
           <RecordOrganizer recordId={record.id} />
           <MetadataLookup work={data} record={record} />
 
           <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
 
-          {record.record_assets.length > 0 && (
-            <div className="flex flex-col gap-1 pt-2">
-              {record.record_assets.map(({ role, assets: asset }) =>
-                asset ? (
-                  <div key={`${asset.id}:${role}`} className="flex items-center gap-2">
-                    <StatusBadge state={asset.processing_state} />
-                    <p className="text-small text-fg">
-                      {role} · {asset.file_format} · {(asset.file_size / 1024).toFixed(0)} KB
-                    </p>
-                    {(asset.file_format === 'pdf' || asset.file_format === 'epub') ? (
-                      <Link to={`/library/${data.id}/records/${record.id}/assets/${asset.id}/read`} className="text-small text-green underline">
-                        Read
-                      </Link>
-                    ) : (
-                      <DownloadButton bucket={asset.bucket} storagePath={asset.storage_path} />
-                    )}
-                  </div>
-                ) : null,
-              )}
-            </div>
-          )}
+          <FileList workId={data.id} recordId={record.id} files={record.record_assets} />
           <UploadForm recordId={record.id} />
         </div>
       ))}

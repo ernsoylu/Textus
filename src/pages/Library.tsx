@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useWorks } from '@/hooks/useWorks';
 import { useSearch } from '@/hooks/useSearch';
+import { useCoverUrls } from '@/hooks/useCoverUrls';
 import { useSavedSearches, useSaveSearch } from '@/hooks/useSavedSearches';
 import { applyFilters, EMPTY_FILTERS, type LibraryFilters } from '@/lib/libraryFilters';
 import { RecordCard } from '@/components/library/RecordCard';
@@ -18,10 +19,16 @@ export function Library() {
   const [params] = useSearchParams();
   const { data, isLoading, error } = useWorks();
   const search = useSearch(filters.q);
+  const coverUrls = useCoverUrls((data ?? []).flatMap((w) => (w.coverPath ? [w.coverPath] : [])));
   const saved = useSavedSearches();
   const saveSearch = useSaveSearch();
 
   // FR-ORG-5: /library?saved=<id> opens a saved search (virtual library).
+  const qParam = params.get('q');
+  useEffect(() => {
+    if (qParam !== null) setFilters((f) => ({ ...f, q: qParam }));
+  }, [qParam]);
+
   const savedId = params.get('saved');
   const savedFilters = saved.data?.find((s) => s.id === savedId)?.filters;
   useEffect(() => {
@@ -58,6 +65,9 @@ export function Library() {
         <p className="text-heading text-fg">Library</p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => (selecting ? stopSelecting() : setSelecting(true))}>{selecting ? 'Done selecting' : 'Select'}</Button>
+          <Link to="/tags">
+            <Button variant="secondary">Tags</Button>
+          </Link>
           <Link to="/library/new">
             <Button>Add work</Button>
           </Link>
@@ -91,6 +101,8 @@ export function Library() {
             title={item.title}
             byline={item.byline}
             meta={item.meta}
+            detail={item.detail}
+            coverUrl={item.coverPath ? coverUrls.data?.get(item.coverPath) : undefined}
             selected={selectedIds.has(item.workId)}
             onToggleSelect={selecting ? () => toggle(item.workId) : undefined}
           />

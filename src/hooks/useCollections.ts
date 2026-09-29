@@ -110,3 +110,29 @@ export function useReorderCollection(collectionId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['collection-records', collectionId] }),
   });
 }
+
+export function useCollection(id: string | undefined) {
+  return useQuery({
+    queryKey: ['collection', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('collections').select('id, name, description').eq('id', id!).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateCollection(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: { name: string; description: string }) => {
+      const { error } = await supabase.from('collections').update({ name: patch.name.trim(), description: patch.description.trim() || null }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['collection', id] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+    },
+  });
+}
