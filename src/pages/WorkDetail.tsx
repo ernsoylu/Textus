@@ -17,6 +17,7 @@ import { ExportButton } from '@/components/library/ExportButton';
 import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 import { AutoMetadataImport } from '@/components/metadata/AutoMetadataImport';
+import { defaultIdentifierScheme, RECORD_TYPES, RECORD_TYPE_LABELS, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 import { meta } from '@/lib/metadataApply';
 import { useMetadataJobs } from '@/hooks/useJobs';
 import { MetadataProgress } from '@/components/metadata/MetadataProgress';
@@ -29,7 +30,7 @@ function recordLabel(record: { record_type: string; metadata: unknown; volume: s
   const version = (record.metadata as { version?: unknown } | null)?.version;
   const issue = record.record_type === 'issue' ? [record.volume && `vol. ${record.volume}`, record.issue_number && `no. ${record.issue_number}`].filter(Boolean).join(' ') : '';
   const year = record.publication_date ? new Date(record.publication_date).getFullYear() : '';
-  return [record.record_type, typeof version === 'string' ? version : '', issue, year].filter(Boolean).join(' · ');
+  return [RECORD_TYPE_LABELS[record.record_type as (typeof RECORD_TYPES)[number]] ?? record.record_type, typeof version === 'string' ? version : '', issue, year].filter(Boolean).join(' · ');
 }
 
 function hasLookupSuggestions(value: unknown) {
@@ -85,6 +86,8 @@ export function WorkDetail() {
           <EditRecordForm
             workId={data.id}
             recordId={record.id}
+            recordType={record.record_type}
+            metadata={record.metadata}
             title={record.title}
             publisher={record.publisher}
             edition={record.edition}
@@ -95,9 +98,9 @@ export function WorkDetail() {
           />
 
           <IdentifierList workId={data.id} recordId={record.id} identifiers={record.identifiers} />
-          <AddIdentifierForm recordId={record.id} />
+          <AddIdentifierForm recordId={record.id} defaultScheme={defaultIdentifierScheme(record.record_type)} />
           <RecordOrganizer recordId={record.id} />
-          <MetadataLookup work={data} record={record} />
+          <MetadataLookup work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />
 
           <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
 
@@ -108,8 +111,8 @@ export function WorkDetail() {
       </div>
       {preview && (
         <aside className="min-w-0 xl:sticky xl:top-4">
-          <p className="text-label text-fg">Book preview</p>
-          <p className="mb-2 text-small text-muted">Select and copy the ISBN from the page, then paste it into Look up metadata.</p>
+          <p className="text-label text-fg">{WORK_TYPE_LABELS[data.work_type as WorkType] ?? 'Document'} preview</p>
+          <p className="mb-2 text-small text-muted">Select and copy an ISBN, DOI or other identifier from the document, then paste it into Look up metadata.</p>
           <div className="max-h-[calc(100vh-170px)] overflow-auto rounded-8 border border-border">
             <Suspense fallback={<p className="p-4 text-small text-muted">Loading reader…</p>}>
               {preview.asset.file_format === 'pdf' ? <PdfViewer bucket="documents" storagePath={preview.asset.storage_path} /> : <EpubViewer storagePath={preview.asset.storage_path} highlights={[]} onProgress={() => undefined} onSelect={() => undefined} />}

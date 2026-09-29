@@ -1,11 +1,11 @@
 import { SORTS, type LibraryFilters } from '@/lib/libraryFilters';
 import { useTags } from '@/hooks/useTags';
 import { useCollections } from '@/hooks/useCollections';
+import { WORK_TYPES, WORK_TYPE_LABELS } from '@/lib/recordTypes';
 
 const SORT_LABELS: Record<(typeof SORTS)[number], string> = {
   relevance: 'Relevance / newest', added: 'Date added', title: 'Title', author: 'Author', published: 'Date published', recent: 'Recently read',
 };
-const WORK_TYPES = ['book', 'paper', 'magazine'];
 const STATUSES = ['unread', 'reading', 'finished', 'abandoned'];
 const FORMATS = ['pdf', 'epub'];
 const SELECT = 'rounded-8 border border-muted bg-dim p-3 text-body text-fg';
@@ -23,7 +23,7 @@ export function LibraryFilterBar({ filters, languages, onChange }: Readonly<{ fi
   const plain = (values: string[]) => values.map((v) => ({ value: v, label: v }));
   return (
     <div className="flex flex-wrap gap-2">
-      {pick('workType', 'Type', plain(WORK_TYPES))}
+      {pick('workType', 'Type', WORK_TYPES.map((value) => ({ value, label: WORK_TYPE_LABELS[value] })))}
       {pick('tagId', 'Tag', (tags.data ?? []).map((t) => ({ value: t.id, label: t.name })))}
       {pick('collectionId', 'Collection', (collections.data ?? []).map((c) => ({ value: c.id, label: c.name })))}
       {pick('status', 'Status', plain(STATUSES))}

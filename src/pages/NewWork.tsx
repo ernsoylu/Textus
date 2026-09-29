@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { FIRST_RECORD_TYPE, WORK_TYPES, type WorkType } from '@/lib/recordTypes';
+import { FIRST_RECORD_TYPE, WORK_TYPES, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 import { MAX_UPLOAD_BYTES, uploadFile } from '@/hooks/useUploadAsset';
 import { importMetadata } from '@/lib/autoMetadataImport';
 
@@ -172,7 +172,7 @@ export function NewWork() {
         <p className="text-heading text-fg">Add a work manually</p>
         <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <select className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={workType} onChange={(e) => setWorkType(e.target.value as (typeof WORK_TYPES)[number])}>
-          {WORK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          {WORK_TYPES.map((t) => <option key={t} value={t}>{WORK_TYPE_LABELS[t]}</option>)}
         </select>
         {workType !== 'serial' && <Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} />}
         {mutation.isError && <p className="text-small text-red">{mutation.error.message}</p>}

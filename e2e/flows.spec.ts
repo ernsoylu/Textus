@@ -69,6 +69,43 @@ async function mocks(page: Page, signedIn = true) {
   await page.route('**/reader-fixture.pdf**', (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: pdfFixture() }));
 }
 
+test('filter by real work types and save specialized article metadata', async ({ page }) => {
+  await mocks(page);
+  await page.goto('/library');
+  const types = page.getByRole('combobox', { name: 'Type', exact: true });
+  await expect(types.locator('option')).toHaveText(['Type: any', 'Book', 'Article', 'Chapter', 'Serial', 'Thesis', 'Report', 'Standard', 'Other']);
+  const request = page.waitForRequest((request) => request.url().includes('/rpc/library_page') && request.postDataJSON()?.p_work_type === 'standard');
+  await types.selectOption('standard');
+  await request;
+
+  const record = { ...work.records[0], record_type: 'article_version', edition: 'First', metadata: { version: 'published', container_title: 'Old journal', locked_fields: ['contributors'] } };
+  await page.route('**/rest/v1/works?*', (route) => route.fulfill({ json: { ...work, work_type: 'article', records: [record] } }));
+  await page.route('**/rest/v1/records?*', (route) => {
+    if (route.request().method() === 'PATCH') Object.assign(record, route.request().postDataJSON());
+    return route.fulfill({ json: new URL(route.request().url()).searchParams.has('id') ? record : [] });
+  });
+  await page.goto(`/library/${workId}`);
+  await expect(page.getByRole('textbox', { name: 'Article title', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Journal', { exact: true })).toHaveValue('Old journal');
+  await expect(page.getByPlaceholder('Edition', { exact: true })).toHaveCount(0);
+  const schemes = page.getByRole('combobox', { name: 'Identifier scheme' });
+  await expect(schemes.nth(0)).toHaveValue('doi');
+  await expect(schemes.nth(1)).toHaveValue('doi');
+  const recordType = page.getByRole('combobox', { name: 'Record type', exact: true });
+  for (const [type, label] of [['thesis', 'University'], ['report', 'Issuing institution'], ['standard', 'Standards body'], ['edition', 'Publisher']]) {
+    await recordType.selectOption(type);
+    await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+  }
+  await recordType.selectOption('article_version');
+  await page.getByLabel('Journal', { exact: true }).fill('New journal');
+  const saved = page.waitForRequest((request) => request.url().includes('/rest/v1/records?') && request.method() === 'PATCH');
+  await page.getByRole('button', { name: 'Save', exact: true }).nth(1).click();
+  const payload = (await saved).postDataJSON();
+  expect(payload.record_type).toBe('article_version');
+  expect(payload).not.toHaveProperty('edition');
+  expect(payload.metadata).toMatchObject({ container_title: 'New journal', version: 'published', locked_fields: expect.arrayContaining(['contributors', 'container_title']) });
+});
+
 test('long fallback cover titles stay inside the thumbnail in both densities', async ({ page }) => {
   await mocks(page);
   const title = 'A very long book title '.repeat(30);
@@ -116,7 +153,7 @@ test('sign in, search the library, and pass the library accessibility scan', asy
 test('upload a file, preview metadata, and open the reader', async ({ page }) => {
   await mocks(page);
   await page.goto(`/library/${workId}`);
-  await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('The Garden Book');
+  await expect(page.getByRole('textbox', { name: 'Book title', exact: true })).toHaveValue('The Garden Book');
 
   const file = page.locator('input[type="file"]');
   await file.setInputFiles({ name: 'garden.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });

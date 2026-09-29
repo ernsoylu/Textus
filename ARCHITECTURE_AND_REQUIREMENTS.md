@@ -211,9 +211,11 @@ Work (intellectual content)        "Dune" · a paper · "Nature" (serial)
        └── contained records       chapters of an edited volume · articles of an issue
 ```
 
-- **Work** — the intellectual content. Types: `book`, `article`, `chapter`, `serial`, `thesis`, `report`, `other`.
-- **Record** — a specific manifestation. Types: `edition`, `article_version`, `chapter`, `issue`, `report`, `thesis`, `other`. A record's `title` may differ from the work's (an article title inside an issue, an issue theme). A record may sit inside another record through `container_record_id` (a chapter in an edited volume, an article in an issue) — see [§6.3](#63-contributors-authors-editors-and-other-roles).
+- **Work** — the intellectual content. Types: `book`, `article`, `chapter`, `serial`, `thesis`, `report`, `standard`, `other`.
+- **Record** — a specific manifestation. Types: `edition`, `article_version`, `chapter`, `issue`, `report`, `thesis`, `standard`, `other`. A record's `title` may differ from the work's (an article title inside an issue, an issue theme). A record may sit inside another record through `container_record_id` (a chapter in an edited volume, an article in an issue) — see [§6.3](#63-contributors-authors-editors-and-other-roles).
 - **Asset** — immutable bytes with a SHA-256 checksum. Linked to records M:N through `record_assets` with a role. A changed file is a new asset, never an update.
+
+The edit page uses work and record types independently. Article records expose journal, version, volume, issue and pages/article number; book editions expose publisher, edition, volume and pages; reports expose issuing institution, edition and pages; theses expose university, degree and pages; standards expose standards body, revision and pages. Hidden fields are preserved. The library Type filter includes every supported work type.
 
 Never conflate levels: a PDF is not a book. It is an asset linked to a record, which is an edition of a work.
 
@@ -487,7 +489,7 @@ GRANT USAGE ON SCHEMA private TO authenticated;
 CREATE TABLE works (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    work_type TEXT NOT NULL CHECK (work_type IN ('book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other')),
+    work_type TEXT NOT NULL CHECK (work_type IN ('book', 'article', 'chapter', 'serial', 'thesis', 'report', 'standard', 'other')),
     title TEXT NOT NULL,
     subtitle TEXT,
     abstract TEXT,
@@ -524,6 +526,7 @@ CREATE TABLE records (
         'issue',            -- Magazine/journal issue
         'report',           -- Standalone report
         'thesis',           -- Thesis/dissertation
+        'standard',         -- Technical standard / revision
         'other'
     )),
     title TEXT, -- May differ from work title (e.g., article title, issue theme)
@@ -534,7 +537,7 @@ CREATE TABLE records (
     volume TEXT,
     issue_number TEXT,
     pages TEXT, -- e.g., "123-145" or "e01234"
-    metadata JSONB DEFAULT '{}', -- Type-specific extras: container_title, locked_fields (FR-META-3), contributors_incomplete
+    metadata JSONB DEFAULT '{}', -- Type-specific extras: container_title, version, degree, locked_fields (FR-META-3), contributors_incomplete
     metadata_source TEXT,
     metadata_fetched_at TIMESTAMPTZ,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -1456,7 +1459,7 @@ export type ReadingStateRow = Tables<'reading_states'>;
 export type AnnotationRow = Tables<'annotations'>;
 
 export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid';
-export type WorkType = 'book' | 'article' | 'serial' | 'thesis' | 'report' | 'other';
+export type WorkType = 'book' | 'article' | 'serial' | 'thesis' | 'report' | 'standard' | 'other';
 export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'html' | 'txt' | 'image';
 export type ReadingStatus = 'unread' | 'reading' | 'finished' | 'abandoned';
 export type ContributorRole = CreditRow['role'];

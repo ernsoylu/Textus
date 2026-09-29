@@ -9,7 +9,7 @@ import type { WorkRow, RecordRow } from '@/types';
 
 type WorkUpdate = Partial<Pick<WorkRow, 'title' | 'subtitle' | 'abstract' | 'language' | 'work_type'>>;
 type RecordUpdate = Partial<
-  Pick<RecordRow, 'title' | 'publisher' | 'edition' | 'volume' | 'issue_number' | 'pages' | 'publication_date' | 'publication_date_precision'>
+  Pick<RecordRow, 'record_type' | 'title' | 'publisher' | 'edition' | 'volume' | 'issue_number' | 'pages' | 'publication_date' | 'publication_date_precision'>
 >;
 
 export function useUpdateWork(workId: string) {
@@ -48,13 +48,14 @@ export function useDeleteWork() {
 export function useUpdateRecord(workId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ recordId, patch }: { recordId: string; patch: RecordUpdate }) => {
-      const { data: current, error: readError } = await supabase.from('records').select('title,publisher,edition,volume,issue_number,pages,publication_date,publication_date_precision,metadata').eq('id', recordId).single();
+    mutationFn: async ({ recordId, patch, metadataPatch = {} }: { recordId: string; patch: RecordUpdate; metadataPatch?: Record<string, string | null> }) => {
+      const { data: current, error: readError } = await supabase.from('records').select('record_type,title,publisher,edition,volume,issue_number,pages,publication_date,publication_date_precision,metadata').eq('id', recordId).single();
       if (readError) throw readError;
       const previous = (current.metadata ?? {}) as Record<string, unknown>;
       const locked = new Set(Array.isArray(previous.locked_fields) ? previous.locked_fields as string[] : []);
       for (const [field, value] of Object.entries(patch)) if (value !== current[field as keyof typeof current]) locked.add(field);
-      const { error } = await supabase.from('records').update({ ...patch, metadata: { ...previous, locked_fields: [...locked] } }).eq('id', recordId);
+      for (const [field, value] of Object.entries(metadataPatch)) if (value !== (previous[field] ?? null)) locked.add(field);
+      const { error } = await supabase.from('records').update({ ...patch, metadata: { ...previous, ...metadataPatch, locked_fields: [...locked] } }).eq('id', recordId);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import { supabase } from '@/lib/supabase';
@@ -41,9 +41,10 @@ async function addIdentifier(recordId: string, scheme: IdentifierScheme, raw: st
   return { duplicateCount: existingElsewhere?.length ?? 0 };
 }
 
-export function AddIdentifierForm({ recordId }: Readonly<{ recordId: string }>) {
+export function AddIdentifierForm({ recordId, defaultScheme = 'isbn' }: Readonly<{ recordId: string; defaultScheme?: IdentifierScheme }>) {
   const queryClient = useQueryClient();
-  const [scheme, setScheme] = useState<IdentifierScheme>('isbn');
+  const [scheme, setScheme] = useState<IdentifierScheme>(defaultScheme);
+  useEffect(() => setScheme(defaultScheme), [defaultScheme]);
   const [value, setValue] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 

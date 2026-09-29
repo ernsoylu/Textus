@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import type { ImportedCandidate } from 'shared/names';
@@ -14,9 +14,10 @@ type RecordValue = { id: string; title: string | null; publication_date: string 
 const SCHEMES: IdentifierScheme[] = ['isbn', 'doi', 'arxiv', 'pmid', 'issn'];
 const displayValue = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '—');
 
-export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: RecordValue }>) {
+export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonly<{ work: Work; record: RecordValue; defaultScheme?: IdentifierScheme }>) {
   const query = useQueryClient();
-  const [scheme, setScheme] = useState<IdentifierScheme>('isbn');
+  const [scheme, setScheme] = useState<IdentifierScheme>(defaultScheme);
+  useEffect(() => setScheme(defaultScheme), [defaultScheme]);
   const [value, setValue] = useState('');
   const [response, setResponse] = useState<MetadataResponse | null>(null);
   const [selected, setSelected] = useState<Field[]>([]);

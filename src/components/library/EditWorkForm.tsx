@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 
-const WORK_TYPES = ['book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other'] as const;
+import { WORK_TYPES, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 
 export function EditWorkForm({
   workId,
@@ -45,10 +45,13 @@ export function EditWorkForm({
 
   return (
     <div className="flex flex-col gap-2">
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-      <Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" />
-      <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" />
+      <p className="text-heading text-fg">Edit {WORK_TYPE_LABELS[workType as WorkType]?.toLowerCase() ?? 'work'}</p>
+      <label className="text-small text-muted">{WORK_TYPE_LABELS[workType as WorkType] ?? 'Work'} title<Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" /></label>
+      <label className="text-small text-muted">Subtitle (optional)<Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" /></label>
+      <label className="text-small text-muted">Language<Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" /></label>
+      <label className="flex flex-col text-small text-muted">{['book', 'serial', 'standard', 'other'].includes(workType) ? 'Description' : 'Abstract'} (optional)
       <textarea className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={abstract} onChange={(e) => setAbstract(e.target.value)} placeholder="Abstract (optional)" rows={3} />
+      </label>
       <select
         aria-label="Work type"
         className="rounded-8 border border-muted bg-dim p-4 text-body text-fg"
@@ -57,7 +60,7 @@ export function EditWorkForm({
       >
         {WORK_TYPES.map((t) => (
           <option key={t} value={t}>
-            {t}
+            {WORK_TYPE_LABELS[t]}
           </option>
         ))}
       </select>

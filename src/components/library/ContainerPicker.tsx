@@ -17,11 +17,11 @@ export function ContainerPicker({ workId, recordId, containerId }: Readonly<{ wo
   const label = (r: NonNullable<typeof candidates.data>[number]) =>
     [r.title || r.works?.title || 'Untitled', r.record_type === 'issue' ? [r.volume && `vol. ${r.volume}`, r.issue_number && `no. ${r.issue_number}`].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ');
   return (
-    <label className="flex flex-wrap items-center gap-2 text-small text-fg">
+    <label className="flex min-w-0 flex-col gap-2 text-small text-fg">
       Part of{' '}
       <select
         aria-label="Container record"
-        className="rounded-8 border border-muted bg-dim p-2 text-body text-fg"
+        className="w-full min-w-0 rounded-8 border border-muted bg-dim p-2 text-body text-fg"
         value={containerId ?? ''}
         onChange={(e) => setContainer.mutate({ recordId, containerId: e.target.value || null })}
       >
