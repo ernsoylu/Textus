@@ -3,9 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useAsset } from '@/hooks/useAsset';
 import { useUploadAsset } from '@/hooks/useUploadAsset';
 import { useReadingState, useProgressSaver, useSaveReadingState, READING_STATUSES, type ReadingStatus } from '@/hooks/useReadingState';
-import { anchorSchema, useAnnotations, useCreateAnnotation, type AnnotationItem } from '@/hooks/useAnnotations';
+import { anchorSchema, useAnnotations, useCreateAnnotation, type Anchor, type AnnotationItem } from '@/hooks/useAnnotations';
 import { supabase } from '@/lib/supabase';
-import { PdfViewer } from '@/components/reader/PdfViewer';
+import { PdfViewer, type PdfHighlight, type PdfSelection } from '@/components/reader/PdfViewer';
 import { EpubViewer } from '@/components/reader/EpubViewer';
 import { AnnotationForm } from '@/components/reader/AnnotationForm';
 import { AnnotationPanel } from '@/components/reader/AnnotationPanel';
@@ -24,7 +24,7 @@ export function Reader() {
   const saveProgress = useProgressSaver(recordId!, assetId!, state.data?.status as ReadingStatus | undefined);
   const capturedRef = useRef(false);
   const [page, setPage] = useState(1);
-  const [selection, setSelection] = useState<{ cfi: string; text: string } | null>(null);
+  const [selection, setSelection] = useState<{ text: string; anchor: Anchor } | null>(null);
   const [goToPage, setGoToPage] = useState<number>();
   const [goToCfi, setGoToCfi] = useState<string>();
 
@@ -59,6 +59,19 @@ export function Reader() {
       }),
     [annotations.data],
   );
+
+  const pdfHighlights = useMemo<PdfHighlight[]>(
+    () =>
+      (annotations.data ?? []).flatMap((a) => {
+        const anchor = anchorSchema.safeParse({ anchor_type: a.anchor_type, anchor_data: a.anchor_data });
+        if (!anchor.success || anchor.data.anchor_type !== 'pdf_page' || !anchor.data.anchor_data.rects?.length) return [];
+        return [{ id: a.id, page: anchor.data.anchor_data.page, rects: anchor.data.anchor_data.rects, color: a.color ?? 'yellow' }];
+      }),
+    [annotations.data],
+  );
+
+  const handlePdfSelect = useCallback((s: PdfSelection) => setSelection({ text: s.text, anchor: { anchor_type: 'pdf_page', anchor_data: { page: s.page, rects: s.rects } } }), []);
+  const handleEpubSelect = useCallback((s: { cfi: string; text: string } | null) => setSelection(s ? { text: s.text, anchor: { anchor_type: 'epub_cfi', anchor_data: { cfi: s.cfi } } } : null), []);
 
   function handleGoTo(a: AnnotationItem) {
     const anchor = anchorSchema.safeParse({ anchor_type: a.anchor_type, anchor_data: a.anchor_data });
@@ -103,6 +116,8 @@ export function Reader() {
               storagePath={asset.storage_path}
               initialPage={resume?.current_page ?? 1}
               goToPage={goToPage}
+              highlights={pdfHighlights}
+              onSelect={handlePdfSelect}
               onPageChange={handlePageChange}
               onFirstPageRendered={handleFirstPageRendered}
             />
@@ -114,7 +129,7 @@ export function Reader() {
               goTo={goToCfi}
               highlights={highlights}
               onProgress={saveProgress}
-              onSelect={setSelection}
+              onSelect={handleEpubSelect}
             />
           )}
           {!isPdf && !isEpub && (
@@ -134,12 +149,13 @@ export function Reader() {
                 onSubmit={(color, note) => createAnnotation.mutate({ recordId, assetId, anchor: { anchor_type: 'pdf_page', anchor_data: { page } }, color, note })}
               />
             )}
-            {isEpub && selection && (
+            {selection && (
               <AnnotationForm
                 label="Highlight selection"
                 quote={selection.text}
                 isLoading={createAnnotation.isPending}
-                onSubmit={(color, note) => createAnnotation.mutate({ recordId, assetId, anchor: { anchor_type: 'epub_cfi', anchor_data: { cfi: selection.cfi } }, text: selection.text, color, note }, { onSuccess: () => setSelection(null) })}
+                onCancel={() => setSelection(null)}
+                onSubmit={(color, note) => createAnnotation.mutate({ recordId, assetId, anchor: selection.anchor, text: selection.text, color, note }, { onSuccess: () => setSelection(null) })}
               />
             )}
             {createAnnotation.error && <p className="text-small text-red">{createAnnotation.error.message}</p>}

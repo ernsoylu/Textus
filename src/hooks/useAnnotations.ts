@@ -6,8 +6,12 @@ import { useAuth } from '@/hooks/useAuth';
 export const ANNOTATION_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
 
 // anchor_data is JSONB (§6); validate at the trust boundary and derive the type.
+// A highlighted region as fractions of the page (0–1), so it survives zoom changes (§6, annotations.anchor_data).
+export const rectSchema = z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() });
+export type PageRect = z.infer<typeof rectSchema>;
+
 export const anchorSchema = z.discriminatedUnion('anchor_type', [
-  z.object({ anchor_type: z.literal('pdf_page'), anchor_data: z.object({ page: z.number().int().positive() }) }),
+  z.object({ anchor_type: z.literal('pdf_page'), anchor_data: z.object({ page: z.number().int().positive(), rects: z.array(rectSchema).max(200).optional() }) }),
   z.object({ anchor_type: z.literal('epub_cfi'), anchor_data: z.object({ cfi: z.string().min(1) }) }),
 ]);
 export type Anchor = z.infer<typeof anchorSchema>;

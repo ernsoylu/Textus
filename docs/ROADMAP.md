@@ -10,39 +10,39 @@ Status legend: **[ ]** open · **[~]** in progress · **[x]** done
 ## 1. Stubbed or incomplete in code
 
 - **App shell**
-  - [ ] No top bar: global search (⌘K) and "Add to library".
+  - [x] No top bar: global search (⌘K) and "Add to library".
   - [ ] Mobile "More" only links to Settings.
-  - [ ] No 404 route; no offline, empty or loading states.
+  - [x] No 404 route; no offline, empty or loading states.
   - [ ] Overview is one summary line and a button.
 - **Library**
-  - [ ] Covers are stored but never shown; `RecordCard` has no format or progress.
+  - [x] Covers are stored but never shown; `RecordCard` has no format or progress.
   - [ ] Filtering is client-side over the whole library, no pagination (NFR-PERF-1 unmeasured).
 - **Pages**
-  - [ ] `/activity` is the "Not built yet" placeholder.
+  - [x] `/activity` is the "Not built yet" placeholder.
   - [ ] Settings: Appearance tab, Delete account.
 - **Files**
-  - [ ] Upload shows only "Uploading…": no progress bar, drag-and-drop, retry or per-reason rejection UI.
+  - [x] Upload shows only "Uploading…": no progress bar, drag-and-drop, retry or per-reason rejection UI.
   - [ ] Cannot remove a file, change its role or pick a cover.
 - **Catalog**
-  - [ ] Cannot remove an identifier or delete a contributor.
+  - [x] Identifiers and contributors can be removed. (Still open: cannot change a file's role, since `record_assets` has no client UPDATE policy.)
   - [ ] Contributor page cannot edit names or IDs (the editor only exists inside a record).
   - [ ] `NewWork` matches contributors naively (`ponytail`).
 - **Organization**
-  - [ ] No tags page (rename, recolor, delete); no collection detail or edit page.
+  - [x] No tags page (rename, recolor, delete); no collection detail or edit page.
   - [ ] Saved searches can only be deleted; deletes use `window.confirm`.
 - **Reader**
-  - [ ] PDF annotations are page notes only (no text selection).
-  - [ ] EPUB has no table of contents; no go-to-page, reader settings or keyboard navigation.
+  - [x] PDF annotations are page notes only (no text selection).
+  - [x] EPUB has no table of contents; no go-to-page, reader settings or keyboard navigation.
 - **Research and serials**
   - [ ] Preprint/published only adds a new record; it cannot link existing ones.
   - [ ] CSV import needs exact headers (no column-mapping screen).
   - [ ] No expected-issue ranges (needs a schema decision); no issue edit.
   - [ ] OPDS is one flat feed: no navigation, search or covers.
 - **Jobs**
-  - [ ] `cleanup` and `export_data` job types have no handler.
+  - [x] `cleanup` job implemented (`export_data` is unused and stays unhandled).
   - [ ] Text extraction covers PDF and EPUB only, keeps a 2,000-character preview, and is not wired into search.
 - **Docs**
-  - [ ] README feature checklist and status are stale; Docker deployment is not described.
+  - [x] README feature checklist and status are stale; Docker deployment is not described.
 
 ## 2. Requirements not fully met
 
@@ -50,7 +50,7 @@ Status legend: **[ ]** open · **[~]** in progress · **[x]** done
 |---|---|
 | FR-AUTH-1 | OAuth deferred until release planning (intentional). |
 | §15 #1 | Upload reads the whole file into memory; the 500 MB limit is not realistic. |
-| §15 #3 | `reading_states` / `annotations` INSERT policies do not check record ownership (dangling references, not a leak). |
+| §15 #3 | ~~`reading_states` / `annotations` INSERT policies do not check record ownership~~ (fixed by migration `20260929000002`). |
 | §15 #9 | Account deletion does not remove storage objects (no `cleanup` job). |
 | NFR-PERF-1 | Never measured at 10,000 records. |
 | NFR-A11Y-1 | Not audited; reader has no keyboard navigation. |
@@ -76,6 +76,13 @@ Built in some form: lookup and its error states, merge, split, distinct, forced 
 - [ ] The app is only reachable at `http://192.168.1.102:8080`; no public HTTPS route.
 - [ ] `export` and `opds` are synced to app02 but untested there.
 - [ ] 23 SonarCloud issues (SQL literals, generated types) need marking in the SonarCloud UI.
+
+## Progress
+
+- **Phase 1 (housekeeping): done** except SMTP and the public route, which need infrastructure input.
+- **Phase 2 (daily-use gaps): done.** Also fixed along the way: Tailwind's spacing override made `p-4`, `gap-4`, `w-16` and `h-64` a quarter of their intended size.
+- **Phase 3 (reader): done.** PDF text selection and highlights, EPUB table of contents, go-to, text size and theme, keyboard paging, note filter. A canvas re-render race in the PDF viewer was fixed.
+- Phases 4–7 are still ahead.
 
 ## Plan
 

@@ -32,17 +32,9 @@ export default {
         label: ['14px', { lineHeight: '20px', fontWeight: '500' }],
         small: ['12px', { lineHeight: '18px' }],
       },
-      spacing: {
-        0: '0px',
-        4: '4px',
-        8: '8px',
-        12: '12px',
-        16: '16px',
-        24: '24px',
-        32: '32px',
-        48: '48px',
-        64: '64px',
-      },
+      // Spacing intentionally uses Tailwind's default scale (p-4 = 16px, gap-2 = 8px, ...): the Figma tokens
+      // (4/8/12/16/24/32/48/64 px) are steps 1/2/3/4/6/8/12/16 of it. Redefining the numeric keys as pixel
+      // values would shrink every p-4, gap-4, w-16, h-64 in the app to a quarter of what the design shows.
       borderRadius: {
         none: '0px',
         4: '4px',

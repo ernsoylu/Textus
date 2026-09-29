@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 // FR-READ-4: color + optional note. `quote` is the selected text for an EPUB highlight.
-export function AnnotationForm({ label, quote, isLoading, onSubmit }: Readonly<{ label: string; quote?: string; isLoading?: boolean; onSubmit: (color: string, note: string) => void }>) {
+export function AnnotationForm({ label, quote, isLoading, onSubmit, onCancel }: Readonly<{ label: string; quote?: string; isLoading?: boolean; onSubmit: (color: string, note: string) => void; onCancel?: () => void }>) {
   const [color, setColor] = useState<string>(ANNOTATION_COLORS[0]);
   const [note, setNote] = useState('');
 
@@ -23,7 +23,10 @@ export function AnnotationForm({ label, quote, isLoading, onSubmit }: Readonly<{
         ))}
       </div>
       <Input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-      <Button type="submit" variant="secondary" isLoading={isLoading}>{label}</Button>
+      <div className="flex gap-2">
+        <Button type="submit" variant="secondary" isLoading={isLoading}>{label}</Button>
+        {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
+      </div>
     </form>
   );
 }
