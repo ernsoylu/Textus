@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 
 export function Overview() {
   const { data } = useWorks();
-  const summary = data ? `${data.length} ${data.length === 1 ? 'work' : 'works'} in your library.` : ' ';
+  const noun = data?.length === 1 ? 'work' : 'works';
+  const summary = data ? `${data.length} ${noun} in your library.` : ' ';
 
   return (
     <div className="flex flex-col gap-6">

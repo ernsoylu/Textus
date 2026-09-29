@@ -112,11 +112,16 @@ async function cachedSuggestion(admin: any, scheme: string, value: string) {
   return cached?.response_data;
 }
 
+function metadataProviders(scheme: 'isbn' | 'doi'): string[] {
+  if (scheme === 'doi') return ['crossref', 'semantic_scholar'];
+  return Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['openlibrary', 'google_books'] : ['openlibrary'];
+}
+
 // Tries each provider in order and caches the first hit. A provider failure is only raised when
 // nothing succeeded, so a later provider can still rescue the lookup.
 // deno-lint-ignore no-explicit-any
 async function providerSuggestion(admin: any, scheme: 'isbn' | 'doi', value: string) {
-  const providers = scheme === 'isbn' ? ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : [])] : ['crossref', 'semantic_scholar'];
+  const providers = metadataProviders(scheme);
   let failure = '';
   for (const name of providers) {
     const result = await provider(name, name === 'semantic_scholar' ? `DOI:${value}` : value);

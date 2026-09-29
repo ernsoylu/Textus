@@ -13,7 +13,7 @@ export function parseCsv(text: string): string[][] {
     if (row.some((f) => f.trim())) rows.push(row);
     row = [];
   };
-  const src = text.replace(/^\u{FEFF}/u, '');
+  const src = text.replace(/^\u{FEFF}/u, '').replaceAll('\r\n', '\n');
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
     if (quoted) {
@@ -24,10 +24,8 @@ export function parseCsv(text: string): string[][] {
       } else quoted = false;
     } else if (c === '"') quoted = true;
     else if (c === ',') endField();
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && src[i + 1] === '\n') i++;
-      endRow();
-    } else field += c;
+    else if (c === '\n' || c === '\r') endRow();
+    else field += c;
   }
   endRow();
   return rows;

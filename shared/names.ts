@@ -310,6 +310,11 @@ function makeCredit(nameStr: string, raw: string, roles: Role[], birthYearOverri
   return { raw, parts, roles: extraRoles.length ? extraRoles : roles, rejected: false };
 }
 
+// "1942-" / "1942-2001" -> 1942; anything else -> null.
+function birthYearOf(segment: string | undefined): number | null {
+  return segment && /^\d{3,4}-\d{0,4}$/.test(segment) ? Number.parseInt(segment, 10) : null;
+}
+
 // Comma-separated segments -> credits: "Family, Given[, 1942-]" pairs, "Given Family, Given Family"
 // lists, and dropped truncated initials.
 function creditsFromSegments(segments: string[], part: string, roles: Role[]): ParsedCredit[] {
@@ -320,10 +325,9 @@ function creditsFromSegments(segments: string[], part: string, roles: Role[]): P
     const next = segments[i + 1];
 
     if (isSingleWord(seg) && next !== undefined) {
-      const maybeYear = segments[i + 2];
-      const hasYear = !!maybeYear && /^\d{3,4}-\d{0,4}$/.test(maybeYear);
-      out.push(makeCredit(`${seg}, ${next}`, part, roles, hasYear ? Number.parseInt(maybeYear, 10) : null));
-      i += hasYear ? 3 : 2;
+      const birthYear = birthYearOf(segments[i + 2]);
+      out.push(makeCredit(`${seg}, ${next}`, part, roles, birthYear));
+      i += birthYear === null ? 2 : 3;
       continue;
     }
     if (next !== undefined && isSingleWord(next) && !isBareInitial(next)) {

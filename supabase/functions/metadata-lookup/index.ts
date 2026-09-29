@@ -65,8 +65,14 @@ type Parsed = Metadata | null; // null: the provider answered but has no such re
 const EDITOR_WARNING = 'This book may credit editors as authors. Review contributor roles.';
 
 const editorWarning = (text: string) => (/\bedit(?:ed|or|ors)\b/i.test(text) ? EDITOR_WARNING : undefined);
-function precisionForParts(count: number): Precision { if (count >= 3) return 'day'; return count === 2 ? 'month' : 'year'; }
-function precisionForLength(length: number): Precision { if (length === 10) return 'day'; return length === 7 ? 'month' : 'year'; }
+function precisionForParts(count: number): Precision {
+  if (count >= 3) return 'day';
+  return count === 2 ? 'month' : 'year';
+}
+function precisionForLength(length: number): Precision {
+  if (length === 10) return 'day';
+  return length === 7 ? 'month' : 'year';
+}
 function yearInText(text: string | undefined): string | undefined { const found = text ? /\b\d{4}\b/.exec(text) : null; return found ? year(found[0]) : undefined; }
 
 function providerRequest(name: string, id: string): { url: URL; headers: Record<string, string> } {
