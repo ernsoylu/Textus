@@ -64,7 +64,7 @@ export function EditRecordForm({
         <Input value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="Volume" className="w-auto min-w-[80px]" />
         <Input value={issueNumber} onChange={(e) => setIssueNumber(e.target.value)} placeholder="Issue no." className="w-auto min-w-[80px]" />
         <Input value={pages} onChange={(e) => setPages(e.target.value)} placeholder="Pages" className="w-auto min-w-[80px]" />
-        <Input type="date" value={publicationDate} onChange={(e) => setPublicationDate(e.target.value)} className="w-auto" />
+        <Input aria-label="Publication date" type="date" value={publicationDate} onChange={(e) => setPublicationDate(e.target.value)} className="w-auto" />
       </div>
       <div className="flex gap-2">
         <Button

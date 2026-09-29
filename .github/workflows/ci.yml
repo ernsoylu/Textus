@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Check dependencies with Snyk
-        uses: snyk/actions/node@master
+        uses: snyk/actions/node@b075801f26076be9bb50521154cafab73f44da0c # master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -40,6 +40,8 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   database:
     name: Database (migrations + RLS isolation test)
@@ -49,6 +51,9 @@ jobs:
       - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
         with:
           version: latest
+      - uses: denoland/setup-deno@22d081ff2d3a40755e3dfe572b5c95be85f6359 # v2.0.5
+        with:
+          deno-version: lts
       # `supabase start` applies every file in supabase/migrations/, in order, against a
       # fresh local Postgres — the same Postgres distribution (pgtap/pg_trgm/pg_cron
       # included) as the self-hosted deployment. It fails loudly on a bad migration instead
@@ -56,14 +61,28 @@ jobs:
       - run: supabase start
       # Default local ports/credentials for `supabase start` (stable across CLI versions,
       # unlike relying on `supabase status`'s output format).
-      - name: Run pgTAP RLS isolation test
+      - name: Run pgTAP tests (RLS isolation, library search and paging)
         run: |
-          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-            -v ON_ERROR_STOP=1 -f supabase/tests/database/rls_isolation.test.sql | tee pgtap.log
-          if grep -q '^not ok' pgtap.log; then
-            echo "::error::pgTAP reported failing assertions"
-            exit 1
-          fi
+          for f in rls_isolation library_page; do
+            psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+              -v ON_ERROR_STOP=1 -f "supabase/tests/database/$f.test.sql" | tee "pgtap-$f.log"
+            if grep -q 'not ok' "pgtap-$f.log"; then
+              echo "::error::pgTAP reported failing assertions in $f"
+              exit 1
+            fi
+          done
+      - name: Export local Supabase credentials
+        run: npx supabase status -o env | sed -E 's/^([^=]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
+      - name: Run Edge Function integration flow
+        run: |
+          npx supabase functions serve --no-verify-jwt > /tmp/textus-functions.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/functions/v1/export)
+            if [ "$code" != "000" ]; then break; fi
+            sleep 1
+          done
+          if [ "$code" = "000" ]; then cat /tmp/textus-functions.log; exit 1; fi
+          deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts
 
   edge-functions:
     name: Edge Functions (Deno type-check + lint)

@@ -7,6 +7,8 @@
 // bypasses RLS (used for the privileged writes only the server may do — CLAUDE.md invariants 3/6).
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { SNIFF_HEAD_BYTES, sniff, TextProbe } from '../_shared/sniff.ts';
 
 const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
@@ -43,51 +45,74 @@ const CompleteSchema = z.object({
   filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\')).optional(),
 });
 
-// Magic-byte sniffing (CLAUDE.md invariant 6: never trust the client's declared MIME type).
-// ponytail: MOBI and AZW3 share the same PalmDB "BOOKMOBI" container signature — telling them
-// apart needs parsing the EXTH header, not just the magic bytes. Every valid PalmDB ebook is
-// classified 'mobi' here; upgrade to real EXTH parsing if AZW3 mislabeling matters in practice.
-// ponytail: CBZ has no internal magic beyond "it's a zip that isn't an EPUB" — any non-EPUB
-// zip is accepted as CBZ. Real validation would open the archive and check for image entries.
-function sniffFileFormat(bytes: Uint8Array): { mimeType: string } | null {
-  const startsWith = (sig: number[]) => sig.length <= bytes.length && sig.every((b, i) => bytes[i] === b);
-  const latin1 = (start: number, end: number) => new TextDecoder('latin1').decode(bytes.slice(start, end));
-
-  if (startsWith([0x25, 0x50, 0x44, 0x46])) return { mimeType: 'application/pdf' }; // %PDF
-  if (startsWith([0xff, 0xd8, 0xff])) return { mimeType: 'image/jpeg' };
-  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { mimeType: 'image/png' };
-  if (latin1(0, 4) === 'RIFF' && latin1(8, 12) === 'WEBP') return { mimeType: 'image/webp' };
-
-  if (startsWith([0x50, 0x4b, 0x03, 0x04]) || startsWith([0x50, 0x4b, 0x05, 0x06])) {
-    // EPUB's first (stored, uncompressed) zip entry is a file named "mimetype" containing
-    // "application/epub+zip". A cheap substring scan of the header avoids a full zip parse.
-    if (latin1(0, 128).includes('mimetypeapplication/epub+zip')) return { mimeType: 'application/epub+zip' };
-    return { mimeType: 'application/vnd.comicbook+zip' };
-  }
-
-  if (bytes.length > 68 && latin1(60, 68) === 'BOOKMOBI') return { mimeType: 'application/x-mobipocket-ebook' };
-
-  const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 512)).trimStart().toLowerCase();
-  if (head.startsWith('<!doctype html') || head.startsWith('<html')) return { mimeType: 'text/html' };
-
-  // ponytail: no magic bytes exist for plain text. Accept only if the whole file decodes as
-  // valid UTF-8 with no control bytes outside common whitespace.
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  try {
-    const text = decoder.decode(bytes);
-    // deno-lint-ignore no-control-regex
-    if (!/[\x00-\x08\x0e-\x1f]/.test(text)) return { mimeType: 'text/plain' };
-  } catch {
-    /* not valid UTF-8 */
-  }
-  return null;
-}
-
 async function assertRecordOwner(ctx: SupabaseContext, recordId: string): Promise<boolean> {
   // RLS-scoped client: a row comes back only if this record belongs to the caller.
   const { data, error } = await ctx.supabase.from('records').select('id').eq('id', recordId).maybeSingle();
   if (error) throw error;
   return !!data;
+}
+
+class TooLarge extends Error {}
+
+type Staged = { kind: 'ok'; size: number; checksum: string; mimeType: string | null } | { kind: 'missing' } | { kind: 'empty_or_large' };
+
+// One streaming pass over a staged object: SHA-256, size, and the type from its bytes (invariant 6). Memory stays
+// constant however large the file is (§15 #1): chunks flow through the hash and are only glanced at, never kept
+// beyond the first SNIFF_HEAD_BYTES.
+async function inspectStaged(ctx: SupabaseContext, stagingPath: string): Promise<Staged> {
+  const { data: signed } = await ctx.supabaseAdmin.storage.from('staging').createSignedUrl(stagingPath, 300);
+  if (!signed) return { kind: 'missing' };
+  const res = await fetch(signed.signedUrl, { signal: AbortSignal.timeout(300_000) });
+  if (!res.ok || !res.body) return { kind: 'missing' };
+
+  const head = new Uint8Array(SNIFF_HEAD_BYTES);
+  const probe = new TextProbe();
+  let size = 0;
+  let filled = 0;
+  const hash = createHash('sha256');
+  async function observe(body: ReadableStream<Uint8Array<ArrayBuffer>>) {
+    for await (const chunk of body) {
+      size += chunk.length;
+      if (size > MAX_UPLOAD_SIZE) throw new TooLarge();
+      if (filled < head.length) {
+        const n = Math.min(chunk.length, head.length - filled);
+        head.set(chunk.subarray(0, n), filled);
+        filled += n;
+      }
+      probe.push(chunk);
+      hash.update(chunk);
+    }
+  }
+  try {
+    await observe(res.body);
+    if (size === 0) return { kind: 'empty_or_large' };
+    return { kind: 'ok', size, checksum: hash.digest('hex'), mimeType: sniff(head.subarray(0, filled), probe)?.mimeType ?? null };
+  } catch (e) {
+    if (e instanceof TooLarge) return { kind: 'empty_or_large' };
+    throw e;
+  }
+}
+
+// Copies staging -> final path as a stream, stamping the *sniffed* content type on the stored object (a server-side
+// storage copy would keep the client's declared type). The path is content-addressed, so an existing object already
+// holds these exact bytes and is left alone; a signed upload URL avoids handling the service key here.
+async function publishStaged(ctx: SupabaseContext, stagingPath: string, bucket: string, destPath: string, mimeType: string, size: number): Promise<string | null> {
+  const { data: exists } = await ctx.supabaseAdmin.storage.from(bucket).exists(destPath);
+  if (exists) return null;
+  const { data: source } = await ctx.supabaseAdmin.storage.from('staging').createSignedUrl(stagingPath, 300);
+  const { data: target, error } = await ctx.supabaseAdmin.storage.from(bucket).createSignedUploadUrl(destPath, { upsert: true });
+  if (!source || error || !target) return error?.message ?? 'could not prepare the copy';
+  const res = await fetch(source.signedUrl, { signal: AbortSignal.timeout(300_000) });
+  if (!res.ok || !res.body) return 'could not read the staged file';
+  const put = await fetch(target.signedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType, 'Content-Length': String(size), 'x-upsert': 'true' },
+    body: res.body,
+    // @ts-expect-error `duplex` is required to stream a request body but is missing from the DOM typings
+    duplex: 'half',
+    signal: AbortSignal.timeout(300_000),
+  });
+  return put.ok ? null : `storage returned ${put.status}`;
 }
 
 async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Response> {
@@ -159,41 +184,37 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
   const folder = `${userId}/${uploadId}`;
   const { data: listing, error: listError } = await ctx.supabaseAdmin.storage.from('staging').list(folder);
   if (listError) return Response.json({ error: 'storage_error', message: listError.message }, { status: 500 });
-  const staged = listing?.[0];
-  if (!staged) return Response.json({ status: 'rejected', reason: 'missing' });
+  const stagedFile = listing?.[0];
+  if (!stagedFile) return Response.json({ status: 'rejected', reason: 'missing' });
 
-  const stagingPath = `${folder}/${staged.name}`;
-  const { data: blob, error: downloadError } = await ctx.supabaseAdmin.storage.from('staging').download(stagingPath);
-  if (downloadError || !blob) return Response.json({ status: 'rejected', reason: 'missing' });
-
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  // No upload-sessions table records the size declared at intent time (§14 deviation #7), so
-  // this re-checks the actual bytes against the bucket limit rather than a stored expectation.
-  if (bytes.length === 0 || bytes.length > MAX_UPLOAD_SIZE) {
+  const stagingPath = `${folder}/${stagedFile.name}`;
+  const staged = await inspectStaged(ctx, stagingPath);
+  if (staged.kind === 'missing') return Response.json({ status: 'rejected', reason: 'missing' });
+  // No upload-sessions table records the size declared at intent time (§14 deviation #7), so this checks the
+  // actual bytes against the bucket limit rather than a stored expectation.
+  if (staged.kind === 'empty_or_large') {
     await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath]);
     return Response.json({ status: 'rejected', reason: 'size_mismatch' });
   }
 
   const isCover = role === 'cover';
   const allowed = isCover ? COVER_MIME_TYPES : DOCUMENT_MIME_TYPES;
-  const sniffed = sniffFileFormat(bytes);
-  if (!sniffed || !(sniffed.mimeType in allowed)) {
+  if (!staged.mimeType || !(staged.mimeType in allowed)) {
     await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath]);
     return Response.json({ status: 'rejected', reason: 'unsupported_type' });
   }
-
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const checksum = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const sniffed = { mimeType: staged.mimeType };
+  const checksum = staged.checksum;
   const bucket = isCover ? 'covers' : 'documents';
   const ext = allowed[sniffed.mimeType];
   const destPath = `${userId}/${checksum}.${ext}`;
 
-  // Content-addressed destination: identical bytes always land on the same path, so
-  // overwriting it with the same content is safe and makes this step idempotent.
-  const { error: copyError } = await ctx.supabaseAdmin.storage
-    .from(bucket)
-    .upload(destPath, bytes, { contentType: sniffed.mimeType, upsert: true });
-  if (copyError) return Response.json({ error: 'storage_error', message: copyError.message }, { status: 500 });
+  // Content-addressed destination: identical bytes always land on the same path, so publishing is idempotent.
+  const publishError = await publishStaged(ctx, stagingPath, bucket, destPath, sniffed.mimeType, staged.size);
+  if (publishError) {
+    console.error('upload: could not publish the staged file', publishError); // technical detail stays server-side
+    return Response.json({ error: 'storage_error' }, { status: 500 });
+  }
 
   const fileFormat = isCover ? 'image' : ext;
 
@@ -201,7 +222,7 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
     userId,
     bucket,
     destPath,
-    size: bytes.length,
+    size: staged.size,
     checksum,
     mimeType: sniffed.mimeType,
     fileFormat,

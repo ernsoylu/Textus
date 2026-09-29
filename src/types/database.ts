@@ -30,6 +30,25 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"asset_texts": {
+                  Row: {
+                    "asset_id": string,"content": string,"created_at": string | null,"search_vector": unknown,"user_id": string
+                  }
+                  Insert: {
+                    "asset_id": string,"content": string,"created_at"?: string | null,"search_vector"?: never,"user_id": string
+                  }
+                  Update: {
+                    "asset_id"?: string,"content"?: string,"created_at"?: string | null,"search_vector"?: never,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "asset_texts_asset_id_fkey"
+      columns: ["asset_id"]
+isOneToOne: true
+      referencedRelation: "assets"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"assets": {
                   Row: {
                     "bucket": string,"checksum_sha256": string,"created_at": string | null,"file_format": string,"file_size": number,"id": string,"metadata": Json | null,"mime_type": string,"processing_error": string | null,"processing_state": string,"storage_path": string,"updated_at": string | null,"user_id": string
@@ -408,6 +427,16 @@ isOneToOne: false
                            },
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
+                           },
+"library_languages":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "language": string
+            }[]
+                           },
+"library_page":
+{ Args: { "p_collection"?: string,"p_format"?: string,"p_ids"?: (string)[],"p_language"?: string,"p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_sort"?: string,"p_status"?: string,"p_tag"?: string,"p_work_type"?: string }; Returns: {
+              "collection_ids": (string)[],"cover_path": string,"created_at": string,"credits": Json,"formats": (string)[],"language": string,"last_read_at": string,"progress": number,"publication_date": string,"record_ids": (string)[],"record_type": string,"statuses": (string)[],"tag_ids": (string)[],"title": string,"total": number,"work_id": string,"work_type": string
+            }[]
                            },
 "merge_contributors":
 { Args: { "p_force"?: boolean,"p_keep": string,"p_merge": string }; Returns: undefined

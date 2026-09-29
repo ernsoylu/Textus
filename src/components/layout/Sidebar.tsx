@@ -24,7 +24,7 @@ export function Sidebar() {
   const remove = useDeleteSavedSearch();
 
   return (
-    <nav className="hidden w-[232px] shrink-0 flex-col gap-2 bg-dim p-6 md:flex" aria-label="Main">
+    <nav className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-2 self-start overflow-y-auto bg-dim p-6 md:flex" aria-label="Main">
       <p className="font-serif text-title text-fg">textus</p>
       <p className="text-small mb-4 text-muted">YOUR PRIVATE LIBRARY</p>
       {NAV_ITEMS.map((item) => (

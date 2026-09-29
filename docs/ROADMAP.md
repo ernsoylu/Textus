@@ -1,4 +1,4 @@
-# Textus roadmap: what is left after M1–M5
+# Textus roadmap: what remains after Phases 1–7
 
 Audit of 2026-09-29 against `ARCHITECTURE_AND_REQUIREMENTS.md` (FR/NFR/§15), the Figma index in
 [`FRONTEND_DESIGN.md`](FRONTEND_DESIGN.md) (about 105 named states, desktop and mobile), and the code.
@@ -10,37 +10,38 @@ Status legend: **[ ]** open · **[~]** in progress · **[x]** done
 ## 1. Stubbed or incomplete in code
 
 - **App shell**
-  - [x] No top bar: global search (⌘K) and "Add to library".
+  - [x] Global search (⌘K) and "Add to library" are in the top bar.
   - [ ] Mobile "More" only links to Settings.
-  - [x] No 404 route; no offline, empty or loading states.
-  - [ ] Overview is one summary line and a button.
+  - [x] 404, offline, empty and loading states are implemented.
+  - [x] Overview has welcome, continue-reading, recent-work and review sections.
 - **Library**
-  - [x] Covers are stored but never shown; `RecordCard` has no format or progress.
-  - [ ] Filtering is client-side over the whole library, no pagination (NFR-PERF-1 unmeasured).
+  - [x] Cards show covers, formats and reading progress.
+  - [x] Filtering and search run server-side with pagination; at 10,000 works, local Postgres p95 was 11.56 ms for listing and 94.56 ms for search (35 warm-cache runs; target <300 ms; repeat with `supabase/tests/database/library_perf.sql`).
 - **Pages**
   - [x] `/activity` is the "Not built yet" placeholder.
-  - [ ] Settings: Appearance tab, Delete account.
+  - [x] Settings include Appearance and Delete account.
 - **Files**
-  - [x] Upload shows only "Uploading…": no progress bar, drag-and-drop, retry or per-reason rejection UI.
-  - [ ] Cannot remove a file, change its role or pick a cover.
+  - [x] Upload progress, drag-and-drop, retry and rejection reasons are implemented.
+  - [x] Files can be removed; covers can be uploaded or retrieved from metadata lookup.
+  - [ ] An existing file's role cannot be changed (there is no `record_assets` UPDATE policy).
 - **Catalog**
-  - [x] Identifiers and contributors can be removed. (Still open: cannot change a file's role, since `record_assets` has no client UPDATE policy.)
-  - [ ] Contributor page cannot edit names or IDs (the editor only exists inside a record).
+  - [x] Identifiers and contributors can be removed.
+  - [ ] Contributor detail cannot edit its primary name or identifiers (name variants can be added from a record).
   - [ ] `NewWork` matches contributors naively (`ponytail`).
 - **Organization**
-  - [x] No tags page (rename, recolor, delete); no collection detail or edit page.
-  - [ ] Saved searches can only be deleted; deletes use `window.confirm`.
+  - [x] Tags and collections have detail/edit flows.
+  - [ ] Saved searches cannot be renamed or updated.
 - **Reader**
   - [x] PDF annotations are page notes only (no text selection).
   - [x] EPUB has no table of contents; no go-to-page, reader settings or keyboard navigation.
 - **Research and serials**
-  - [ ] Preprint/published only adds a new record; it cannot link existing ones.
-  - [ ] CSV import needs exact headers (no column-mapping screen).
-  - [ ] No expected-issue ranges (needs a schema decision); no issue edit.
-  - [ ] OPDS is one flat feed: no navigation, search or covers.
+  - [x] Existing records can be linked as preprint/published versions.
+  - [x] CSV import has column mapping and a review step.
+  - [x] Expected-issue ranges and issue editing are implemented.
+  - [x] OPDS includes navigation, collections, search and covers.
 - **Jobs**
   - [x] `cleanup` job implemented (`export_data` is unused and stays unhandled).
-  - [ ] Text extraction covers PDF and EPUB only, keeps a 2,000-character preview, and is not wired into search.
+  - [x] PDF and EPUB extraction feeds search (stored text capped at 100,000 characters per asset).
 - **Docs**
   - [x] README feature checklist and status are stale; Docker deployment is not described.
 
@@ -49,29 +50,20 @@ Status legend: **[ ]** open · **[~]** in progress · **[x]** done
 | Ref | Gap |
 |---|---|
 | FR-AUTH-1 | OAuth deferred until release planning (intentional). |
-| §15 #1 | Upload reads the whole file into memory; the 500 MB limit is not realistic. |
+| §15 #1 | ~~Upload reads the whole file into memory~~ (streaming checksum and copy; 500 MB limit retained). |
 | §15 #3 | ~~`reading_states` / `annotations` INSERT policies do not check record ownership~~ (fixed by migration `20260929000002`). |
-| §15 #9 | Account deletion does not remove storage objects (no `cleanup` job). |
-| NFR-PERF-1 | Never measured at 10,000 records. |
-| NFR-A11Y-1 | Not audited; reader has no keyboard navigation. |
-| Testing | One component test; no integration tests for `upload`, `export`, `opds`; no E2E. |
+| §15 #9 | ~~Account deletion leaves storage objects~~ (delete-account sweeps immediately; daily cleanup retries incomplete sweeps). |
+| NFR-PERF-1 | Met locally: 10,000 works/records, 35 warm-cache runs after 5 warmups; p95 11.56 ms for listing and 94.56 ms for search (<300 ms target). This measures PostgreSQL function time in the local Supabase container, not network latency or cold-cache behavior. Repeat with `supabase/tests/database/library_perf.sql`. |
+| NFR-A11Y-1 | Core Library, metadata and reader flows pass axe WCAG 2.1 AA scans; keyboard paging is implemented. Full manual screen-reader coverage remains open. |
+| Testing | Upload component, upload/export/OPDS HTTP integration, and sign-in/search/upload/lookup/read E2E coverage added; broader component coverage remains limited. |
 
-## 3. Figma states not built (about 60 of about 105)
+## 3. Figma states
 
-- **Auth:** two-panel sign-in and Google, magic-link confirmation, welcome, sign-out and unsaved-changes dialogs, delete account.
-- **Shell:** offline, not found, loading, empty, more, search results, list view, "add" chooser.
-- **Organization:** tags, tag edit, delete tag, collection, collection edit, reorder (drag), saved, save-search, bulk-tag, bulk-move dialogs.
-- **Records and files:** record menu, add edition, duplicate and duplicate-confirm, credits page, files page, upload progress, file error, upload rejected, remove file, file role, cover, delete record/work/contributor/note dialogs.
-- **Contributors:** edit contributor, choose contributor, identity name.
-- **Reader:** table of contents, go to page, reader settings, note filter, annotation dialog.
-- **Research and serials:** link version, serial edit, issue edit, expected issues, CSV map, citation export dialog.
-- **Settings:** Appearance.
-
-Built in some form: lookup and its error states, merge, split, distinct, forced merge, reading status, download, OPDS tab, change password, forgot and reset password.
+The original inventory lists about 105 named states, but its “about 60 unbuilt” count and state-by-state list were not reconciled after Phases 1–7. Treat the code gaps in Section 1 as current; a Figma-to-code audit remains open.
 
 ## 4. Operations
 
-- [ ] Push local commits and confirm CI.
+- [~] Push the remaining Phase 6–7 work and confirm green CI. The pushed Snyk check found 14 high dependency advisories; dependency updates are in this worktree.
 - [ ] app02 has no working SMTP, so recovery and magic-link emails are not delivered (links are generated by hand).
 - [ ] The app is only reachable at `http://192.168.1.102:8080`; no public HTTPS route.
 - [ ] `export` and `opds` are synced to app02 but untested there.
@@ -84,7 +76,8 @@ Built in some form: lookup and its error states, merge, split, distinct, forced 
 - **Phase 3 (reader): done.** PDF text selection and highlights, EPUB table of contents, go-to, text size and theme, keyboard paging, note filter. A canvas re-render race in the PDF viewer was fixed.
 - **Phase 4 (account): done.** Two-panel sign-in/sign-up/magic-link screens, Overview (welcome, continue reading, recently added, identities to review), sign-out and unsaved-changes dialogs, Appearance settings, delete account. Also fixed: signing in never left the login page.
 - **Phase 5 (research and serials): done.** CSV column mapping and an import review step (duplicates and invalid rows flagged before anything is written, tags imported), linking an existing record as a preprint/published version, expected-issue ranges (stored in `works.metadata.expected_issues`, no migration), a serial detail page with an issue grid, and OPDS navigation, collections, search and covers.
-- Phases 6–7 are still ahead.
+- **Phase 6 (backend hardening): done.** Streaming upload checksum/copy, PDF/EPUB text search, server-side filtered pagination, MOBI/AZW3 sniffing and CSP are implemented; NFR-PERF-1 passed the 10,000-record local measurement above.
+- **Phase 7 (quality): done.** Added upload component coverage, local HTTP integration coverage for upload/export/OPDS, Playwright flows for sign-in/search/upload/lookup/read, and axe WCAG 2.1 AA scans of the Library, work metadata and reader screens. Fixed the findings (search ARIA, active-link contrast and unlabeled form controls); CI runs each suite.
 
 ## Plan
 

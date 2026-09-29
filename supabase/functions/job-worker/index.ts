@@ -18,6 +18,9 @@ import { extractEpub, identifierSuggestions } from './epub.ts';
 import { provider } from '../metadata-lookup/index.ts';
 import { runCleanup } from './cleanup.ts';
 
+const MAX_EXTRACT_BYTES = 100_000_000;
+const MAX_STORED_TEXT_CHARS = 100_000; // the search index covers the first 100,000 characters (migration 20260929000003)
+
 interface Job {
   id: string;
   job_type: string;
@@ -39,6 +42,15 @@ async function queueMetadata(admin: any, asset: { id: string; user_id: string },
   }
 }
 
+// Extracted text feeds search (asset_texts, FR-SRCH-1): a capped copy, one row per asset, replaced on re-extraction.
+// deno-lint-ignore no-explicit-any
+async function storeText(admin: any, asset: { id: string; user_id: string }, text: string) {
+  const content = text.replaceAll('\u0000', '').trim().slice(0, MAX_STORED_TEXT_CHARS);
+  if (!content) return;
+  const { error } = await admin.from('asset_texts').upsert({ asset_id: asset.id, user_id: asset.user_id, content }, { onConflict: 'asset_id' });
+  if (error) throw error;
+}
+
 // admin: a service-role SupabaseClient (ctx.supabaseAdmin) — untyped here since this Deno
 // file has no local Database type to import (see the upload function's equivalent note).
 // deno-lint-ignore no-explicit-any
@@ -49,8 +61,15 @@ async function extractText(admin: any, job: Job) {
   const { data: asset, error: assetError } = await admin.from('assets').select('*').eq('id', assetId).single();
   if (assetError || !asset) throw new Error(assetError?.message ?? 'asset not found');
 
-  if (asset.file_format !== 'pdf' && asset.file_format !== 'epub') {
-    return { skipped: true, reason: `text extraction for '${asset.file_format}' is not implemented yet` };
+  // Text is read into memory, so very large files and formats with no extractor are marked ready without it
+  // (otherwise their asset would stay `pending` forever).
+  let skipReason: string | null = null;
+  if (asset.file_format !== 'pdf' && asset.file_format !== 'epub') skipReason = `text extraction for '${asset.file_format}' is not implemented yet`;
+  else if (asset.file_size > MAX_EXTRACT_BYTES) skipReason = 'file is too large for text extraction';
+  if (skipReason) {
+    const { error: readyError } = await admin.from('assets').update({ processing_state: 'ready' }).eq('id', assetId);
+    if (readyError) throw readyError;
+    return { skipped: true, reason: skipReason };
   }
 
   const { data: file, error: downloadError } = await admin.storage.from(asset.bucket).download(asset.storage_path);
@@ -60,6 +79,7 @@ async function extractText(admin: any, job: Job) {
   if (asset.file_format === 'epub') {
     const result = extractEpub(bytes);
     const found = identifierSuggestions(result.text, filename);
+    await storeText(admin, asset, result.text);
     const { error: updateError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null }, processing_state: 'ready' }).eq('id', assetId);
     if (updateError) throw updateError;
     await queueMetadata(admin, asset, found);
@@ -85,10 +105,9 @@ async function extractText(admin: any, job: Job) {
     const pdfMeta = await doc.getMetadata().catch(() => null);
     const info = pdfMeta?.info as { Author?: string; Title?: string } | undefined;
 
-    // ponytail: a short preview + counts, not the full extracted text — storing an entire
-    // book's text in a JSONB column doesn't scale. Wiring this into search_library() (the
-    // spec's "feeds search") is a separate follow-up once there's a real column for it.
+    // ponytail: PDF search indexes the first eight pages; scan the whole document if users need full-book search.
     const found = identifierSuggestions(text, filename);
+    await storeText(admin, asset, text);
     const { error: updateError } = await admin
       .from('assets')
       .update({

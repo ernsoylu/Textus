@@ -16,7 +16,7 @@ export default {
         border: '#475258',
         fg: '#d3c6aa',
         muted: '#9da9a0',
-        green: { DEFAULT: '#a7c080', bg: '#425047' },
+        green: { DEFAULT: '#b4ca92', bg: '#425047' },
         blue: { DEFAULT: '#7fbbb3' },
         red: { DEFAULT: '#e67e80', bg: '#514045' },
         yellow: { DEFAULT: '#dbbc7f', bg: '#4d4c43' },

@@ -5,7 +5,7 @@ import { useBulkActions } from '@/hooks/useBulkActions';
 import { Button } from '@/components/ui/button';
 import { ExportButton } from '@/components/library/ExportButton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import type { WorkListItem } from '@/hooks/useWorks';
+import type { WorkListItem } from '@/hooks/useLibrary';
 
 // FR-ORG-4: bulk tag / add to collection / export / delete for the selected works.
 export function BulkBar({ selected, onDone }: Readonly<{ selected: WorkListItem[]; onDone: () => void }>) {

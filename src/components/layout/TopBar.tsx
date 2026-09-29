@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSearch } from '@/hooks/useSearch';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 export function TopBar() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
-  const listId = useId();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const search = useSearch(query);
@@ -46,8 +45,6 @@ export function TopBar() {
           ref={inputRef}
           type="search"
           aria-label="Search titles, people, identifiers"
-          aria-controls={listId}
-          aria-expanded={open && results.length > 0}
           placeholder="Search titles, people, identifiers…"
           value={query}
           onChange={(e) => {
@@ -60,7 +57,7 @@ export function TopBar() {
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-small text-muted md:block">⌘K</kbd>
         {open && query.trim() && (
-          <ul id={listId} className="absolute inset-x-0 top-full mt-1 flex flex-col rounded-8 border border-border bg-raised p-1 shadow-lg">
+          <ul className="absolute inset-x-0 top-full mt-1 flex flex-col rounded-8 border border-border bg-raised p-1 shadow-lg">
             {results.map((r) => (
               <li key={r.record_id}>
                 <Link to={`/library/${r.work_id}`} onClick={() => setOpen(false)} className="block rounded-8 p-2 text-body text-fg hover:bg-dim">{r.title}</Link>

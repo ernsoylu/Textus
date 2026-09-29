@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: [...configDefaults.exclude, 'supabase/functions/**'],
+    exclude: [...configDefaults.exclude, 'supabase/functions/**', 'supabase/tests/functions/**', 'e2e/**'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,

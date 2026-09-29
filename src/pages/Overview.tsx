@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useWorks } from '@/hooks/useWorks';
+import { useLibraryItems } from '@/hooks/useLibrary';
 import { useContinueReading } from '@/hooks/useContinueReading';
 import { useContributors } from '@/hooks/useContributors';
 import { useCoverUrls } from '@/hooks/useCoverUrls';
@@ -32,18 +32,20 @@ function Welcome() {
 // when contributor identities are waiting for review. A brand-new library sees the welcome instead.
 export function Overview() {
   const { session } = useAuth();
-  const works = useWorks();
+  const works = useLibraryItems({ limit: 4 });
   const reading = useContinueReading();
+  // The book in progress may not be among the newest four, so fetch it by id.
+  const readingWork = useLibraryItems({ limit: 1, ids: reading.data ? [reading.data.workId] : undefined, enabled: !!reading.data });
   const contributors = useContributors();
-  const recent = (works.data ?? []).slice(0, 4);
-  const current = reading.data ? works.data?.find((w) => w.workId === reading.data!.workId) : undefined;
+  const recent = works.data ?? [];
+  const current = readingWork.data?.[0];
   const covers = useCoverUrls([...recent, ...(current ? [current] : [])].flatMap((w) => (w.coverPath ? [w.coverPath] : [])));
   const toReview = (contributors.data ?? []).filter((c) => c.status === 'provisional').length;
   const name: string = session?.user.user_metadata?.display_name || session?.user.email?.split('@')[0] || '';
 
   if (works.isLoading) return <p className="text-body text-muted">Loading…</p>;
   if (works.error) return <p className="text-body text-red">Could not load your library: {works.error.message}</p>;
-  if (!works.data?.length) return <Welcome />;
+  if (!recent.length) return <Welcome />;
 
   return (
     <div className="flex max-w-[1000px] flex-col gap-6">

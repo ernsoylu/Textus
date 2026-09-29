@@ -40,6 +40,7 @@ export function EditWorkForm({
       <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" />
       <textarea className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={abstract} onChange={(e) => setAbstract(e.target.value)} placeholder="Abstract (optional)" rows={3} />
       <select
+        aria-label="Work type"
         className="rounded-8 border border-muted bg-dim p-4 text-body text-fg"
         value={workType}
         onChange={(e) => setWorkType(e.target.value)}

@@ -2,7 +2,7 @@
 -- Runs in a transaction and rolls back. `supabase test db`, or pipe into psql as postgres.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(58);
+SELECT plan(61);
 
 -- ---------- Fixtures for user A (as postgres, bypassing RLS) ----------
 INSERT INTO auth.users (id, email) VALUES
@@ -44,6 +44,8 @@ INSERT INTO reading_states (user_id, record_id) VALUES
 INSERT INTO annotations (user_id, record_id, asset_id, anchor_type, anchor_data) VALUES
     ('aaaaaaaa-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002',
      'a0000000-0000-0000-0000-000000000005', 'pdf_page', '{"page": 1}');
+INSERT INTO asset_texts (asset_id, user_id, content) VALUES
+    ('a0000000-0000-0000-0000-000000000005', 'aaaaaaaa-0000-0000-0000-000000000000', 'extracted text');
 INSERT INTO saved_searches (user_id, name) VALUES
     ('aaaaaaaa-0000-0000-0000-000000000000', 'Unread PDFs');
 INSERT INTO jobs (user_id, job_type, payload) VALUES
@@ -60,6 +62,7 @@ SELECT isnt_empty('SELECT 1 FROM works', 'A sees own works');
 SELECT isnt_empty('SELECT 1 FROM identifiers', 'A sees own identifiers');
 SELECT isnt_empty('SELECT 1 FROM record_contributors', 'A sees own credits');
 SELECT isnt_empty('SELECT 1 FROM saved_searches', 'A sees own saved searches');
+SELECT isnt_empty('SELECT 1 FROM asset_texts', 'A sees own extracted text');
 SELECT isnt_empty($$SELECT 1 FROM storage.objects WHERE bucket_id = 'documents'$$, 'A sees own documents');
 
 -- ---------- User B: reads ----------
@@ -81,6 +84,7 @@ SELECT is_empty('SELECT 1 FROM collection_records', 'B cannot read collection_re
 SELECT is_empty('SELECT 1 FROM reading_states', 'B cannot read reading_states');
 SELECT is_empty('SELECT 1 FROM annotations', 'B cannot read annotations');
 SELECT is_empty('SELECT 1 FROM saved_searches', 'B cannot read saved_searches');
+SELECT is_empty('SELECT 1 FROM asset_texts', 'B cannot read asset_texts');
 SELECT is_empty('SELECT 1 FROM jobs', 'B cannot read jobs');
 SELECT is_empty('SELECT 1 FROM storage.objects', 'B cannot read A''s storage objects');
 SELECT isnt_empty('SELECT 1 FROM metadata_cache', 'metadata_cache is shared by design');
@@ -98,6 +102,8 @@ SELECT throws_ok($$INSERT INTO contributor_identifiers (user_id, contributor_id,
     '42501', NULL, 'B cannot add identifiers to A''s contributor');
 SELECT throws_ok($$INSERT INTO contributor_distinctions (user_id, contributor_a, contributor_b) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000004')$$,
     '42501', NULL, 'B cannot record distinctions on A''s contributors');
+SELECT throws_ok($$INSERT INTO asset_texts (asset_id, user_id, content) VALUES ('a0000000-0000-0000-0000-000000000005', 'bbbbbbbb-0000-0000-0000-000000000000', 'x')$$,
+    '42501', NULL, 'clients cannot write asset_texts');
 SELECT throws_ok($$INSERT INTO saved_searches (user_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000000', 'x')$$,
     '42501', NULL, 'B cannot create saved searches for A');
 SELECT throws_ok($$INSERT INTO record_tags (record_id, tag_id) VALUES ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000006')$$,
@@ -159,8 +165,8 @@ SELECT is((SELECT title FROM works WHERE id = 'a0000000-0000-0000-0000-000000000
 SELECT is((SELECT count(*)::int FROM contributors WHERE display_name = 'hacked'), 0, 'A''s contributors unchanged');
 SELECT is((SELECT title FROM records WHERE id = 'a0000000-0000-0000-0000-000000000002'), NULL, 'A''s record unchanged');
 SELECT is((SELECT count(*)::int FROM identifiers), 1, 'A''s identifiers survive');
-SELECT is((SELECT count(*)::int FROM record_contributors), 1, 'A''s credits survive');
-SELECT is((SELECT count(*)::int FROM record_assets), 1, 'A''s asset links survive');
+SELECT is((SELECT count(*)::int FROM record_contributors rc JOIN records r ON r.id = rc.record_id JOIN works w ON w.id = r.work_id WHERE w.user_id = 'aaaaaaaa-0000-0000-0000-000000000000'), 1, 'A''s credits survive');
+SELECT is((SELECT count(*)::int FROM record_assets ra JOIN records r ON r.id = ra.record_id JOIN works w ON w.id = r.work_id WHERE w.user_id = 'aaaaaaaa-0000-0000-0000-000000000000'), 1, 'A''s asset links survive');
 SELECT is((SELECT count(*)::int FROM annotations), 1, 'A''s annotations survive');
 SELECT is((SELECT name FROM saved_searches), 'Unread PDFs', 'A''s saved search survives');
 

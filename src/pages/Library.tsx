@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useWorks } from '@/hooks/useWorks';
-import { useSearch } from '@/hooks/useSearch';
+import { useLanguages, useLibrary } from '@/hooks/useLibrary';
 import { useCoverUrls } from '@/hooks/useCoverUrls';
+import { useDebounced } from '@/hooks/useDebounced';
 import { useSavedSearches, useSaveSearch } from '@/hooks/useSavedSearches';
-import { applyFilters, EMPTY_FILTERS, type LibraryFilters } from '@/lib/libraryFilters';
+import { EMPTY_FILTERS, type LibraryFilters } from '@/lib/libraryFilters';
 import { RecordCard } from '@/components/library/RecordCard';
 import { LibraryFilterBar } from '@/components/library/LibraryFilterBar';
 import { BulkBar } from '@/components/library/BulkBar';
@@ -17,31 +17,41 @@ export function Library() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saveName, setSaveName] = useState('');
   const [params] = useSearchParams();
-  const { data, isLoading, error } = useWorks();
-  const search = useSearch(filters.q);
-  const coverUrls = useCoverUrls((data ?? []).flatMap((w) => (w.coverPath ? [w.coverPath] : [])));
   const saved = useSavedSearches();
   const saveSearch = useSaveSearch();
+  const languages = useLanguages();
 
-  // FR-ORG-5: /library?saved=<id> opens a saved search (virtual library).
+  // FR-ORG-5: /library?saved=<id> opens a saved search (virtual library); /library?q=… opens a search.
   const qParam = params.get('q');
   useEffect(() => {
     if (qParam !== null) setFilters((f) => ({ ...f, q: qParam }));
   }, [qParam]);
-
   const savedId = params.get('saved');
   const savedFilters = saved.data?.find((s) => s.id === savedId)?.filters;
   useEffect(() => {
     if (savedFilters) setFilters(savedFilters);
   }, [savedFilters]);
 
-  // FR-SRCH-1: search_library() returns matching work_ids ranked by relevance; the rest of the
-  // facets are filtered client-side over the already-loaded list (FR-ORG-3).
-  const rank = useMemo(() => (search.data ? new Map(search.data.map((r) => [r.work_id, r.rank])) : undefined), [search.data]);
-  const visible = useMemo(() => (data ? applyFilters(data, filters, rank) : undefined), [data, filters, rank]);
-  const languages = useMemo(() => [...new Set((data ?? []).flatMap((w) => (w.language ? [w.language] : [])))].sort((a, b) => a.localeCompare(b)), [data]);
-  const selected = (data ?? []).filter((w) => selectedIds.has(w.workId));
+  // NFR-PERF-1: filtering, sorting and search run in Postgres (library_page), one page at a time. Typing waits
+  // for a pause before it becomes a query.
+  const debouncedQ = useDebounced(filters.q);
+  const query = useLibrary({ ...filters, q: debouncedQ });
+  const items = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
+  const total = query.data?.pages[0]?.total ?? 0;
+  const coverUrls = useCoverUrls(items.flatMap((w) => (w.coverPath ? [w.coverPath] : [])));
+  const selected = items.filter((w) => selectedIds.has(w.workId));
   const filtered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+
+  // Load the next page when the sentinel below the grid scrolls into view.
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasNextPage || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => entries[0]?.isIntersecting && !isFetchingNextPage && void fetchNextPage(), { rootMargin: '400px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
 
   function toggle(workId: string) {
     setSelectedIds((prev) => {
@@ -60,7 +70,9 @@ export function Library() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    // overflow-anchor: none — otherwise the browser keeps the viewport pinned to the sentinel as pages arrive, and the
+    // list would load itself all the way to the end.
+    <div className="flex flex-col gap-6 [overflow-anchor:none]">
       <div className="flex items-center justify-between gap-4">
         <p className="text-heading text-fg">Library</p>
         <div className="flex gap-2">
@@ -74,8 +86,8 @@ export function Library() {
         </div>
       </div>
 
-      <Input placeholder="Search title or contributor…" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} className="max-w-[424px]" />
-      <LibraryFilterBar filters={filters} languages={languages} onChange={setFilters} />
+      <Input aria-label="Search library" placeholder="Search title, contributor or file text…" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} className="max-w-[424px]" />
+      <LibraryFilterBar filters={filters} languages={languages.data ?? []} onChange={setFilters} />
 
       {filtered && (
         <form onSubmit={handleSave} className="flex flex-wrap items-start gap-2">
@@ -87,14 +99,14 @@ export function Library() {
 
       {selecting && <BulkBar selected={selected} onDone={stopSelecting} />}
 
-      {isLoading && <p className="text-body text-muted">Loading…</p>}
-      {error && <p className="text-body text-red">Could not load your library: {error.message}</p>}
-      {search.error && <p className="text-body text-red">Search failed: {search.error.message}</p>}
-      {filtered && visible?.length === 0 && <p className="text-body text-muted">Nothing matches these filters.</p>}
-      {!filtered && data?.length === 0 && <p className="text-body text-muted">Nothing here yet. Add your first work to get started.</p>}
+      {query.isLoading && <p className="text-body text-muted">Loading…</p>}
+      {query.error && <p className="text-body text-red">Could not load your library: {query.error.message}</p>}
+      {filtered && !query.isLoading && total === 0 && <p className="text-body text-muted">Nothing matches these filters.</p>}
+      {!filtered && !query.isLoading && total === 0 && <p className="text-body text-muted">Nothing here yet. Add your first work to get started.</p>}
+      {total > 0 && <p className="text-small text-muted">{total} {total === 1 ? 'work' : 'works'}</p>}
 
       <div className="flex flex-wrap gap-6">
-        {visible?.map((item) => (
+        {items.map((item) => (
           <RecordCard
             key={item.workId}
             workId={item.workId}
@@ -108,6 +120,8 @@ export function Library() {
           />
         ))}
       </div>
+      <div ref={sentinel} aria-hidden="true" />
+      {hasNextPage && <div><Button variant="secondary" isLoading={isFetchingNextPage} onClick={() => void fetchNextPage()}>Show more</Button></div>}
     </div>
   );
 }

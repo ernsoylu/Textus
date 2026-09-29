@@ -13,7 +13,8 @@ async function callFunction<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
+  // A gateway or crash can answer with plain text; never let that surface as a JSON parse error.
+  const json = await res.json().catch(() => ({ error: `Request failed (${res.status}).` }));
   if (!res.ok && !('status' in json)) {
     // Function-level errors (400/404/500) use { error, ... }; upload/complete's own
     // "rejected" outcome is a 200 with a typed status and is returned as-is below.

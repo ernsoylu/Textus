@@ -12,10 +12,13 @@ Textus is a self-hosted library manager for books, research papers, and magazine
 npm run dev                  # Vite dev server (http://localhost:5173)
 npm run build
 npm run test                 # Vitest
+npm run test:e2e             # Playwright flows (install browser once: npx playwright install chromium)
 npm run lint
 npm run type-check
 npx supabase start           # local Supabase stack
 npx supabase functions serve # Edge Functions locally
+npx supabase status -o env   # local keys for supabase/tests/functions/integration.test.ts
+deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts
 npx supabase migration new <name>
 npx supabase db reset        # rebuild local DB from migrations (local only)
 npm run gen:types            # regenerate src/types/database.ts after any migration

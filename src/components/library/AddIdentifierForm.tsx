@@ -67,6 +67,7 @@ export function AddIdentifierForm({ recordId }: Readonly<{ recordId: string }>) 
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-start gap-2">
       <select
+        aria-label="Identifier scheme"
         className="rounded-8 border border-muted bg-dim p-4 text-body text-fg"
         value={scheme}
         onChange={(e) => setScheme(e.target.value as IdentifierScheme)}
