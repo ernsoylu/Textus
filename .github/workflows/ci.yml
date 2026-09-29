@@ -11,6 +11,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security:
+    name: Snyk (dependency vulnerabilities)
+    runs-on: ubuntu-latest
+    # GitHub does not provide repository secrets to forked pull requests.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check dependencies with Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
   frontend:
     name: Frontend (type-check, lint, test, build)
     runs-on: ubuntu-latest
