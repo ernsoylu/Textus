@@ -1555,7 +1555,7 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] ISBN/DOI extraction from PDF/EPUB text and file names, with background metadata suggestions
 
 ### M3 — Organization
-- [ ] Tags and collections — FR-ORG-1/2
+- [x] Tags and collections — FR-ORG-1/2
 - [ ] Filtering and sorting — FR-ORG-3
 - [ ] Bulk operations — FR-ORG-4
 - [ ] Saved searches — FR-ORG-5

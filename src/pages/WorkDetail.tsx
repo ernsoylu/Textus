@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/library/StatusBadge';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
+import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 
 // FR-CAT-1 and M2: catalog editing, identifier lookup, and contributor identity editing.
@@ -48,6 +49,7 @@ export function WorkDetail() {
             </p>
           ))}
           <AddIdentifierForm recordId={record.id} />
+          <RecordOrganizer recordId={record.id} />
           <MetadataLookup work={data} record={record} />
 
           <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
