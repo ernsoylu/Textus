@@ -13,10 +13,12 @@ export interface PdfViewerProps {
   bucket: 'documents';
   storagePath: string;
   initialPage?: number;
+  goToPage?: number;
+  onPageChange?: (page: number, pageCount: number) => void;
   onFirstPageRendered?: (canvas: HTMLCanvasElement) => void;
 }
 
-export function PdfViewer({ bucket, storagePath, initialPage = 1, onFirstPageRendered }: PdfViewerProps) {
+export function PdfViewer({ bucket, storagePath, initialPage = 1, goToPage, onPageChange, onFirstPageRendered }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const taskRef = useRef<PDFDocumentLoadingTask | null>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
@@ -47,6 +49,14 @@ export function PdfViewer({ bucket, storagePath, initialPage = 1, onFirstPageRen
       taskRef.current?.destroy();
     };
   }, [bucket, storagePath]);
+
+  useEffect(() => {
+    if (goToPage) setPage(goToPage);
+  }, [goToPage]);
+
+  useEffect(() => {
+    if (pageCount) onPageChange?.(page, pageCount);
+  }, [page, pageCount, onPageChange]);
 
   useEffect(() => {
     const doc = docRef.current;

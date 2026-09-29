@@ -1575,10 +1575,10 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Contributor merge/split, review queue, duplicate finder, contributor page — FR-CONTRIB-7..9
 
 ### M4 — Reading
-- [ ] EPUB viewer — FR-READ-2
-- [ ] Progress sync — FR-READ-3
-- [ ] Highlights and annotations, export — FR-READ-4/5
-- [ ] Download for non-viewable formats — FR-READ-6
+- [x] EPUB viewer — FR-READ-2
+- [x] Progress sync — FR-READ-3
+- [x] Highlights and annotations, export — FR-READ-4/5 (EPUB: text highlights by CFI; PDF: page-anchored notes, since the canvas viewer has no text layer)
+- [x] Download for non-viewable formats — FR-READ-6
 
 ### M5 — Export and serials
 - [ ] BibTeX / RIS / CSL-JSON — FR-RES-1

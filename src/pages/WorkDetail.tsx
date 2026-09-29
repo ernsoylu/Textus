@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/library/StatusBadge';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
+import { DownloadButton } from '@/components/library/DownloadButton';
 import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 
@@ -63,10 +64,12 @@ export function WorkDetail() {
                     <p className="text-small text-fg">
                       {role} · {asset.file_format} · {(asset.file_size / 1024).toFixed(0)} KB
                     </p>
-                    {asset.file_format === 'pdf' && (
+                    {(asset.file_format === 'pdf' || asset.file_format === 'epub') ? (
                       <Link to={`/library/${data.id}/records/${record.id}/assets/${asset.id}/read`} className="text-small text-green underline">
                         Read
                       </Link>
+                    ) : (
+                      <DownloadButton bucket={asset.bucket} storagePath={asset.storage_path} />
                     )}
                   </div>
                 ) : null,
