@@ -492,6 +492,7 @@ CREATE TABLE works (
     subtitle TEXT,
     abstract TEXT,
     language TEXT DEFAULT 'en',
+    metadata JSONB NOT NULL DEFAULT '{}', -- locked_fields for manually edited work fields (added in migration 00007)
     search_vector tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
         setweight(to_tsvector('english', coalesce(subtitle, '')), 'B') ||
@@ -505,6 +506,8 @@ CREATE INDEX idx_works_user ON works(user_id);
 CREATE INDEX idx_works_type ON works(work_type);
 CREATE INDEX idx_works_search ON works USING GIN(search_vector);
 CREATE INDEX idx_works_title_trgm ON works USING GIN(title gin_trgm_ops);
+
+Migration `20260928000008` marks pre-M2 manually entered work and record fields as locked, including existing credits, so a newly fetched suggestion cannot overwrite legacy user data by default.
 
 -- ==========================================
 -- 2. RECORDS (specific manifestations)
@@ -1259,7 +1262,7 @@ interface MetadataRequest {
 }
 
 type MetadataResponse =
-    | { status: 'success'; data: NormalizedMetadata; fromCache: boolean }
+    | { status: 'success'; data: NormalizedMetadata; fromCache: boolean; fetchedAt: string }
     | { status: 'not_found'; identifier: string; searchedProviders: string[] }
     | { status: 'invalid_identifier'; scheme: string; reason: string }
     | { status: 'rate_limited'; retryAfterMs: number; provider: string }
@@ -1275,6 +1278,8 @@ Steps:
 6. On HTTP 429, honor `Retry-After`; return `rate_limited` if no other provider remains.
 
 The `switch` over schemes must be exhaustive (TypeScript `never` check) — every scheme has a real implementation.
+
+The same authenticated function also accepts `{ action: 'queue-cover', recordId, url }`. It verifies record ownership and an Open Library cover URL before queuing `process_cover`; clients cannot write jobs directly. Open Library ISBN URLs redirect within `openlibrary.org`, and cover URLs may redirect through `archive.org` to `*.us.archive.org`; each hop is checked against the allowlist.
 
 ### 8.2 `upload`
 
@@ -1295,6 +1300,7 @@ interface UploadCompleteRequest {
     uploadId: string;
     recordId: string;
     role: 'primary' | 'supplement' | 'cover';
+    filename?: string;         // used only for identifier suggestions; never for storage paths
 }
 type UploadCompleteResponse =
     | { status: 'created'; asset: AssetRow }
@@ -1368,7 +1374,7 @@ Properties:
 
 ## 10. External metadata providers
 
-Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`.
+Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
 
 | Scheme | Provider order |
 |--------|---------------|
@@ -1398,7 +1404,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 
 When sources disagree on roles, Crossref wins. A provider listing people as authors on a record whose title or `by_statement` says "edited" is shown as a role warning in the preview.
 
-Per-provider parsers live in `supabase/functions/_shared/providers/`, one file each, with tests against recorded fixtures in `tests/fixtures/providers/`.
+Provider parsers live together in `supabase/functions/metadata-lookup/index.ts`; mocked-response tests cover each provider. Shared identifier validation lives in `supabase/functions/_shared/identifier.ts` and is re-exported to the SPA from `shared/identifier.ts`.
 
 ---
 
@@ -1541,12 +1547,12 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Search on title and contributor — FR-SRCH-1
 
 ### M2 — Metadata
-- [ ] ISBN (Open Library, Google Books), DOI (Crossref), arXiv, PMID lookups — FR-META-1
-- [ ] Preview and per-field apply with locking — FR-META-2/3/4
-- [ ] Cache — FR-META-5
-- [ ] Cover retrieval (`process_cover`)
-- [ ] Contributor matching, variants, pseudonyms, external IDs — FR-CONTRIB-5/6
-- [ ] ISBN/DOI extraction from file text and names
+- [x] ISBN (Open Library, Google Books), DOI (Crossref), arXiv, PMID, ISSN lookups — FR-META-1/6
+- [x] Preview and per-field apply with locking — FR-META-2/3/4
+- [x] Cache — FR-META-5
+- [x] Cover retrieval (`process_cover`)
+- [x] Contributor matching, variants, pseudonyms, external IDs — FR-CONTRIB-5/6
+- [x] ISBN/DOI extraction from PDF/EPUB text and file names, with background metadata suggestions
 
 ### M3 — Organization
 - [ ] Tags and collections — FR-ORG-1/2

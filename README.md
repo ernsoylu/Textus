@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-Self--hosted-green)](https://supabase.com/docs/guides/self-hosting)
 
-> **Status:** pre-alpha, in-house development. Milestone M1 (§13) is functionally complete except OAuth, which is deliberately deferred until release planning.
+> **Status:** pre-alpha, in-house development. M1 is functionally complete except OAuth, which is deferred until release planning; M2 metadata is implemented, and its Edge Functions are deployed.
 > The full specification lives in [ARCHITECTURE_AND_REQUIREMENTS.md](ARCHITECTURE_AND_REQUIREMENTS.md).
 
 ## What is Textus?
@@ -202,6 +202,7 @@ npm run test:watch   # Vitest in watch mode
 npm run lint         # ESLint
 npm run type-check   # tsc --noEmit
 npm run gen:types    # Regenerate DB types (supabase gen types typescript)
+deno test --config supabase/functions/deno.jsonc --allow-env supabase/functions/job-worker/epub.test.ts supabase/functions/metadata-lookup/index.test.ts
 ```
 
 ### Database migrations
@@ -283,6 +284,8 @@ The image is a static build served by any web server (e.g. nginx).
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
 | `SEMANTIC_SCHOLAR_API_KEY` | Edge Functions | Optional |
 | `GOOGLE_BOOKS_API_KEY` | Edge Functions | Optional |
+
+On self-hosted Supabase, pass provider keys through the `functions` service's `docker-compose.yml` environment and recreate that service after changing `.env`. The SPA never receives these keys. Semantic Scholar may rate-limit unauthenticated PMID requests.
 
 **Never** expose `SUPABASE_SERVICE_ROLE_KEY` to the frontend.
 
