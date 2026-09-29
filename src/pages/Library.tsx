@@ -120,6 +120,7 @@ export function Library() {
             byline={item.byline}
             meta={item.meta}
             detail={item.detail}
+            userRating={item.userRating}
             metadataMessage={item.recordIds.map((id) => metadataJobs.data?.[id]).find(Boolean)}
             coverUrl={item.coverPath ? coverUrls.data?.get(item.coverPath) : undefined}
             selected={selectedIds.has(item.workId)}

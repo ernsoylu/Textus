@@ -88,7 +88,7 @@ export function Overview() {
         <p className="text-heading text-fg">Recently added</p>
         <div className="flex flex-wrap gap-6">
           {recent.map((w) => (
-            <RecordCard key={w.workId} workId={w.workId} title={w.title} byline={w.byline} meta={w.meta} detail={w.detail} coverUrl={w.coverPath ? covers.data?.get(w.coverPath) : undefined} />
+            <RecordCard key={w.workId} workId={w.workId} title={w.title} byline={w.byline} meta={w.meta} detail={w.detail} userRating={w.userRating} coverUrl={w.coverPath ? covers.data?.get(w.coverPath) : undefined} />
           ))}
         </div>
       </section>

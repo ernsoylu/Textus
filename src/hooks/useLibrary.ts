@@ -15,6 +15,7 @@ export interface WorkListItem {
   detail: string; // "EPUB · 42% read"
   coverPath: string | null; // in the private covers bucket
   recordIds: string[];
+  userRating?: number | null;
 }
 
 export const PAGE_SIZE = 48;
@@ -41,6 +42,7 @@ function toItem(row: Row): WorkListItem {
     detail: detailLine(row),
     coverPath: row.cover_path,
     recordIds: row.record_ids ?? [],
+    userRating: row.work_type === 'book' ? row.user_rating : null,
   };
 }
 

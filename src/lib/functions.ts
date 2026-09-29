@@ -48,6 +48,7 @@ export interface NormalizedMetadata {
   publication_date?: string;
   publication_date_precision?: 'year' | 'month' | 'day';
   publisher?: string;
+  container_title?: string | null;
   volume?: string;
   issue_number?: string;
   pages?: string;

@@ -380,13 +380,13 @@ isOneToOne: false
                   ]
                 },"works": {
                   Row: {
-                    "abstract": string | null,"created_at": string | null,"id": string,"language": string | null,"metadata": NonNullable<Json>,"search_vector": unknown,"subtitle": string | null,"title": string,"updated_at": string | null,"user_id": string,"work_type": string
+                    "abstract": string | null,"created_at": string | null,"id": string,"language": string | null,"metadata": NonNullable<Json>,"search_vector": unknown,"subtitle": string | null,"title": string,"updated_at": string | null,"user_id": string,"user_rating": number | null,"work_type": string
                   }
                   Insert: {
-                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title": string,"updated_at"?: string | null,"user_id": string,"work_type": string
+                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title": string,"updated_at"?: string | null,"user_id": string,"user_rating"?: number | null,"work_type": string
                   }
                   Update: {
-                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"work_type"?: string
+                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"user_rating"?: number | null,"work_type"?: string
                   }
                   Relationships: [
                     
@@ -435,7 +435,7 @@ isOneToOne: false
                            },
 "library_page":
 { Args: { "p_collection"?: string,"p_format"?: string,"p_ids"?: (string)[],"p_language"?: string,"p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_sort"?: string,"p_status"?: string,"p_tag"?: string,"p_work_type"?: string }; Returns: {
-              "collection_ids": (string)[],"cover_path": string,"created_at": string,"credits": Json,"formats": (string)[],"language": string,"last_read_at": string,"progress": number,"publication_date": string,"record_ids": (string)[],"record_type": string,"statuses": (string)[],"tag_ids": (string)[],"title": string,"total": number,"work_id": string,"work_type": string
+              "collection_ids": (string)[],"cover_path": string,"created_at": string,"credits": Json,"formats": (string)[],"language": string,"last_read_at": string,"progress": number,"publication_date": string,"record_ids": (string)[],"record_type": string,"statuses": (string)[],"tag_ids": (string)[],"title": string,"total": number,"user_rating": number,"work_id": string,"work_type": string
             }[]
                            },
 "merge_contributors":

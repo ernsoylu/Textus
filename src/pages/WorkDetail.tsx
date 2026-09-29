@@ -56,7 +56,7 @@ export function WorkDetail() {
       <div className={preview ? 'grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(400px,640px)_minmax(480px,1fr)]' : 'flex flex-col gap-6'}>
       <div className="flex min-w-0 flex-col gap-6">
       {data.records.map((record) => (autoImport || hasLookupSuggestions(record.metadata)) && <AutoMetadataImport key={`auto-${record.id}`} work={data} record={record} enabled />)}
-      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} />
+      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} userRating={data.user_rating} />
 
       <ExportButton recordIds={data.records.map((r) => r.id)} />
 

@@ -2,7 +2,7 @@
 -- FR-SRCH-1, NFR-PERF-1) and isolation between users. Runs in a transaction and rolls back.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(23);
+SELECT plan(27);
 
 INSERT INTO auth.users (id, email) VALUES
     ('aaaaaaaa-1111-0000-0000-000000000000', 'la@test.local'),
@@ -48,6 +48,12 @@ SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub": "aaaaaaaa-1111-0000-0000-000000000000", "role": "authenticated"}';
 
 SELECT is(ARRAY(SELECT title FROM library_page()), ARRAY['Gamma Garden', 'Beta Machine', 'Alpha Garden'], 'default sort is newest first');
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Alpha Garden'), NULL::smallint, 'books start unrated');
+UPDATE works SET user_rating = 4 WHERE id = 'a1000000-1111-0000-0000-000000000001';
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Alpha Garden'), 4::smallint, 'owner rating appears in the library');
+SELECT throws_ok($$UPDATE works SET user_rating = 6 WHERE id = 'a1000000-1111-0000-0000-000000000001'$$, '23514', NULL, 'ratings above five are rejected');
+UPDATE works SET user_rating = 1 WHERE id = 'b1000000-1111-0000-0000-000000000001';
+
 SELECT is((SELECT max(total) FROM library_page(p_limit => 1)), 3::bigint, 'total counts every match, not just the page');
 SELECT is(ARRAY(SELECT title FROM library_page(p_sort => 'title')), ARRAY['Alpha Garden', 'Beta Machine', 'Gamma Garden'], 'sort by title');
 SELECT is(ARRAY(SELECT title FROM library_page(p_sort => 'author')), ARRAY['Gamma Garden', 'Alpha Garden', 'Beta Machine'], 'sort by author sort name, unattributed last');
@@ -73,6 +79,7 @@ SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'garden', p_work_type => '
 -- ---------- As user B ----------
 SET LOCAL request.jwt.claims = '{"sub": "bbbbbbbb-1111-0000-0000-000000000000", "role": "authenticated"}';
 SELECT is(ARRAY(SELECT title FROM library_page()), ARRAY['Garden of B'], 'B sees only B''s library');
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Garden of B'), NULL::smallint, 'A cannot change B''s rating');
 SELECT is((SELECT count(*)::int FROM search_library('Alpha')), 0, 'B cannot search A''s titles');
 
 -- ---------- Signed-out callers cannot use the definer-rights search ----------

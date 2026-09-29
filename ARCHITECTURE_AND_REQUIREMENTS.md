@@ -215,7 +215,7 @@ Work (intellectual content)        "Dune" · a paper · "Nature" (serial)
 - **Record** — a specific manifestation. Types: `edition`, `article_version`, `chapter`, `issue`, `report`, `thesis`, `standard`, `other`. A record's `title` may differ from the work's (an article title inside an issue, an issue theme). A record may sit inside another record through `container_record_id` (a chapter in an edited volume, an article in an issue) — see [§6.3](#63-contributors-authors-editors-and-other-roles).
 - **Asset** — immutable bytes with a SHA-256 checksum. Linked to records M:N through `record_assets` with a role. A changed file is a new asset, never an update.
 
-The edit page uses work and record types independently. Article records expose journal, version, volume, issue and pages/article number; book editions expose publisher, edition, volume and pages; reports expose issuing institution, edition and pages; theses expose university, degree and pages; standards expose standards body, revision and pages. Hidden fields are preserved. The library Type filter includes every supported work type.
+The edit page uses work and record types independently. Article records expose journal, version, volume, issue and pages/article number; book editions expose publisher, edition, volume and pages; reports expose issuing institution, edition and pages; theses expose university, degree and pages; standards expose standards body, revision and pages. Hidden fields are preserved. The library Type filter includes every supported work type. Books have an optional owner rating of 1–5 stars, editable on the work and displayed on library cards.
 
 Never conflate levels: a PDF is not a book. It is an asset linked to a record, which is an edition of a work.
 
@@ -494,6 +494,7 @@ CREATE TABLE works (
     subtitle TEXT,
     abstract TEXT,
     language TEXT DEFAULT 'en',
+    user_rating SMALLINT CHECK (user_rating BETWEEN 1 AND 5), -- Optional owner rating for books
     metadata JSONB NOT NULL DEFAULT '{}', -- locked_fields for manually edited work fields (added in migration 00007)
     search_vector tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
@@ -1290,7 +1291,7 @@ Steps:
 1. Validate and normalize the identifier ([§6.2](#62-identifier-rules)). Invalid → `invalid_identifier` without any network call.
 2. Check `metadata_cache` (unless `bypassCache`).
 3. Try providers in the order given for the scheme in [§10](#10-external-metadata-providers). Move to the next provider on `not_found` or `provider_error`; stop on `success`.
-4. Parse the real response into `NormalizedMetadata`. **Never return placeholder or mock data.** If a response cannot be parsed, that is `provider_error`.
+4. Parse the real response into `NormalizedMetadata`, including Crossref `container-title` and Semantic Scholar `journal.name`. Store the chosen journal/container title in `records.metadata.container_title`, preserving other metadata and manual locks. Cached results predating container-title parsing are refreshed. **Never return placeholder or mock data.** If a response cannot be parsed, that is `provider_error`.
 5. Cache successes (default TTL 30 days).
 6. On HTTP 429, honor `Retry-After`; return `rate_limited` if no other provider remains.
 
@@ -1486,6 +1487,7 @@ export interface NormalizedMetadata {
     publication_date?: string;             // ISO 8601, truncated to precision
     publication_date_precision?: 'year' | 'month' | 'day';
     publisher?: string;
+    container_title?: string | null;        // journal / proceedings, null when checked but unavailable
     language?: string;                     // BCP 47
     abstract?: string;
     identifiers: Array<{ scheme: IdentifierScheme; value: string }>;

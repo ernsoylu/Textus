@@ -9,7 +9,7 @@ const recordId = '20000000-0000-4000-8000-000000000001';
 const assetId = '30000000-0000-4000-8000-000000000001';
 
 const work = {
-  id: workId, title: 'The Garden Book', subtitle: null, abstract: null, language: 'en', work_type: 'book', metadata: {},
+  id: workId, title: 'The Garden Book', subtitle: null, abstract: null, language: 'en', work_type: 'book', user_rating: null, metadata: {},
   records: [{
     id: recordId, container_record_id: null, title: null, record_type: 'edition', publication_date: '2024-01-01',
     publication_date_precision: 'year', publisher: null, edition: null, volume: null, issue_number: null, pages: null,
@@ -20,7 +20,7 @@ const work = {
 const libraryRow = {
   work_id: workId, title: 'The Garden Book', work_type: 'book', language: 'en', created_at: '2026-01-01T00:00:00Z',
   record_ids: [recordId], record_type: 'edition', publication_date: '2024-01-01', credits: [], tag_ids: [],
-  collection_ids: [], formats: [], statuses: ['unread'], last_read_at: null, progress: null, cover_path: null, total: 1,
+  collection_ids: [], formats: [], statuses: ['unread'], last_read_at: null, progress: null, cover_path: null, total: 1, user_rating: null,
 };
 
 function pdfFixture() {
@@ -104,6 +104,31 @@ test('filter by real work types and save specialized article metadata', async ({
   expect(payload.record_type).toBe('article_version');
   expect(payload).not.toHaveProperty('edition');
   expect(payload.metadata).toMatchObject({ container_title: 'New journal', version: 'published', locked_fields: expect.arrayContaining(['contributors', 'container_title']) });
+});
+
+test('save, display, and clear a personal book rating', async ({ page }) => {
+  await mocks(page);
+  const book = { ...work };
+  await page.route('**/rest/v1/works?*', (route) => {
+    if (route.request().method() === 'PATCH') Object.assign(book, route.request().postDataJSON());
+    return route.fulfill({ json: book });
+  });
+  await page.route('**/rest/v1/rpc/library_page', (route) => route.fulfill({ json: [{ ...libraryRow, user_rating: book.user_rating }] }));
+  await page.goto(`/library/${workId}`);
+  const rating = page.getByRole('combobox', { name: 'Your rating' });
+  await expect(rating).toHaveValue('');
+  await rating.selectOption('4');
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  await expect.poll(() => book.user_rating).toBe(4);
+  await page.goto('/library');
+  await expect(page.getByLabel('Your rating: 4 out of 5 stars')).toBeVisible();
+  await page.goto(`/library/${workId}`);
+  await expect(rating).toHaveValue('4');
+  await rating.selectOption('');
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  await expect.poll(() => book.user_rating).toBeNull();
+  await page.goto('/library');
+  await expect(page.getByLabel('Your rating: 4 out of 5 stars')).toHaveCount(0);
 });
 
 test('long fallback cover titles stay inside the thumbnail in both densities', async ({ page }) => {

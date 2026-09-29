@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 // contributors, and applying the fields, credits and cover the user selected. The component owns
 // the state and the rendering; nothing here touches React.
 export const WORK_FIELDS = ['title', 'subtitle', 'abstract', 'language', 'work_type'] as const;
-export const RECORD_FIELDS = ['publication_date', 'publisher', 'volume', 'issue_number', 'pages'] as const;
+export const RECORD_FIELDS = ['publication_date', 'publisher', 'container_title', 'volume', 'issue_number', 'pages'] as const;
 export type Field = (typeof WORK_FIELDS)[number] | (typeof RECORD_FIELDS)[number];
 export type Person = NonNullable<NormalizedMetadata['contributors']>[number];
 export type Match = ReturnType<typeof chooseImportedContributor>;
@@ -217,6 +217,15 @@ export async function applyMetadata(input: ApplyInput) {
     if (error) throw error;
   }
   if (Object.keys(workPatch).length || Object.keys(recordPatch).length || selectedCredits.length || includeCover) {
+    if ('container_title' in recordPatch) {
+      const { data: current, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+      if (readError) throw readError;
+      const metadata = meta(current.metadata);
+      if (!locks(metadata).includes('container_title')) {
+        recordPatch.metadata = { ...metadata, container_title: recordPatch.container_title };
+      }
+      delete recordPatch.container_title;
+    }
     recordPatch.metadata_source = data.source_provider;
     recordPatch.metadata_fetched_at = input.fetchedAt;
     const { error } = await supabase.from('records').update(recordPatch as never).eq('id', recordId);

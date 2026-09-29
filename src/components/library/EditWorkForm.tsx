@@ -14,6 +14,7 @@ export function EditWorkForm({
   abstract: initialAbstract,
   language: initialLanguage,
   workType: initialWorkType,
+  userRating: initialUserRating = null,
 }: Readonly<{
   workId: string;
   title: string;
@@ -21,18 +22,20 @@ export function EditWorkForm({
   abstract: string | null;
   language: string | null;
   workType: string;
+  userRating?: number | null;
 }>) {
   const [title, setTitle] = useState(initialTitle);
   const [subtitle, setSubtitle] = useState(initialSubtitle ?? '');
   const [abstract, setAbstract] = useState(initialAbstract ?? '');
   const [language, setLanguage] = useState(initialLanguage ?? '');
   const [workType, setWorkType] = useState(initialWorkType);
+  const [userRating, setUserRating] = useState(initialUserRating);
   const update = useUpdateWork(workId);
   const remove = useDeleteWork();
   const [confirming, setConfirming] = useState(false);
-  const previous = useRef({ title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType });
-  const patch = { title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType };
-  const dirty = patch.title !== initialTitle || patch.subtitle !== (initialSubtitle?.trim() || null) || patch.abstract !== (initialAbstract?.trim() || null) || patch.language !== (initialLanguage?.trim() || null) || workType !== initialWorkType;
+  const previous = useRef({ title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType, userRating: initialUserRating });
+  const patch = { title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType, ...(workType === 'book' ? { user_rating: userRating } : {}) };
+  const dirty = patch.title !== initialTitle || patch.subtitle !== (initialSubtitle?.trim() || null) || patch.abstract !== (initialAbstract?.trim() || null) || patch.language !== (initialLanguage?.trim() || null) || workType !== initialWorkType || (workType === 'book' && userRating !== initialUserRating);
 
   useEffect(() => {
     if (title === previous.current.title) setTitle(initialTitle);
@@ -40,8 +43,9 @@ export function EditWorkForm({
     if (abstract === previous.current.abstract) setAbstract(initialAbstract ?? '');
     if (language === previous.current.language) setLanguage(initialLanguage ?? '');
     if (workType === previous.current.workType) setWorkType(initialWorkType);
-    previous.current = { title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType };
-  }, [initialTitle, initialSubtitle, initialAbstract, initialLanguage, initialWorkType]);
+    if (userRating === previous.current.userRating) setUserRating(initialUserRating);
+    previous.current = { title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType, userRating: initialUserRating };
+  }, [initialTitle, initialSubtitle, initialAbstract, initialLanguage, initialWorkType, initialUserRating]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -64,6 +68,12 @@ export function EditWorkForm({
           </option>
         ))}
       </select>
+      {workType === 'book' && <label className="text-small text-muted">Your rating
+        <select aria-label="Your rating" className="block w-full rounded-8 border border-muted bg-dim p-3 text-body text-fg" value={userRating ?? ''} onChange={(e) => setUserRating(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">Not rated</option>
+          {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? 'star' : 'stars'}</option>)}
+        </select>
+      </label>}
       <div className="flex gap-2">
         <Button
           variant="secondary"

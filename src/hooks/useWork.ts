@@ -10,6 +10,7 @@ interface WorkDetail {
   abstract: string | null;
   language: string | null;
   work_type: string;
+  user_rating: number | null;
   metadata: import('@/types/database').Json;
   records: {
     id: string;
@@ -53,7 +54,7 @@ export function useWork(workId: string | undefined) {
       const { data, error } = await supabase
         .from('works')
         .select(
-          `id, title, subtitle, abstract, language, work_type, metadata,
+          `id, title, subtitle, abstract, language, work_type, user_rating, metadata,
            records ( id, container_record_id, title, record_type, publication_date, publication_date_precision, publisher, edition, volume, issue_number, pages, metadata, metadata_source, metadata_fetched_at,
              identifiers ( scheme, normalized_value ),
              record_contributors ( contributor_id, role, position, credited_as,

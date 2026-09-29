@@ -13,11 +13,12 @@ export interface RecordCardProps {
   detail?: string;
   metadataMessage?: string;
   coverUrl?: string;
+  userRating?: number | null;
   selected?: boolean;
   onToggleSelect?: () => void;
 }
 
-export function RecordCard({ workId, title, byline, meta, detail, metadataMessage, coverUrl, selected, onToggleSelect }: Readonly<RecordCardProps>) {
+export function RecordCard({ workId, title, byline, meta, detail, metadataMessage, coverUrl, userRating, selected, onToggleSelect }: Readonly<RecordCardProps>) {
   const body = (
     <>
       {coverUrl ? (
@@ -30,6 +31,7 @@ export function RecordCard({ workId, title, byline, meta, detail, metadataMessag
         </div>
       )}
       <p className="text-label w-full text-fg">{title}</p>
+      {userRating != null && <p className="text-small text-yellow" aria-label={`Your rating: ${userRating} out of 5 stars`}>{'★'.repeat(userRating)}{'☆'.repeat(5 - userRating)}</p>}
       <p className="text-small w-full text-muted">{byline || 'Unattributed'}</p>
       <p className="text-small w-full text-green">{meta}</p>
       {detail && <p className="text-small w-full text-muted">{detail}</p>}
