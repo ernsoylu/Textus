@@ -118,7 +118,7 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | FR-RES-2 | Link a preprint record and its published-version record under the same work. |
 | FR-RES-3 | Bulk import from CSV or a list of DOIs. |
 | FR-SER-1 | Model serials (journals/magazines) as works of type `serial` with issues as records. |
-| FR-SER-2 | Show volume/issue completeness per serial. |
+| FR-SER-2 | Show volume/issue completeness per serial. The run a collector expects is stored as text per volume in `works.metadata.expected_issues` (`{"2024": "1-6, 8"}`); without one, issues are assumed to run 1..max. |
 | FR-SER-3 | OPDS catalog feed. |
 
 ---
@@ -1343,7 +1343,7 @@ Asset state transitions: `pending` → `processing` (first job claimed) → `rea
 
 ### 8.5 `opds`
 
-`GET /functions/v1/opds[?page=N]` — an OPDS 1.2 acquisition feed (FR-SER-3, 100 entries per page, newest first; records with no primary asset are omitted). E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic with the account email and password, exchanged for a session on the request-scoped client. Every query then runs as that user under RLS; no service-role client is used. Accounts that only use magic-link sign-in have no password and cannot use the feed. Files stay private (invariant 7): entries link to `GET /opds/download/{assetId}`, which re-authenticates and redirects to a fresh 300 s signed URL.
+An OPDS 1.2 catalog for e-reader apps (FR-SER-3). Routes under `/functions/v1/opds`: `` (start, a navigation feed), `all` (paginated, `?page=N`, 100 per page), `new` (25 newest), `collections`, `collection/{id}` (in the collection's manual order), `search?q=` (via `search_library()`), `opensearch.xml`, `download/{assetId}` and `cover/{assetId}`. Records with no primary asset are omitted; entries carry cover images when a cover asset exists. E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic with the account email and password, exchanged for a session on the request-scoped client. Every query then runs as that user under RLS; no service-role client is used. Accounts that only use magic-link sign-in have no password and cannot use the feed. Files stay private (invariant 7): file and cover links re-authenticate and redirect to a fresh 300 s signed URL. Links are built from `SUPABASE_PUBLIC_URL`.
 
 ### 8.6 `delete-account`
 

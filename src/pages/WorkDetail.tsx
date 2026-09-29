@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
 import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
 import { UploadForm } from '@/components/library/UploadForm';
@@ -10,6 +10,7 @@ import { FileList } from '@/components/library/FileList';
 import { AddArticleVersionForm } from '@/components/library/AddArticleVersionForm';
 import { AddIssueForm } from '@/components/library/AddIssueForm';
 import { SerialCompleteness } from '@/components/library/SerialCompleteness';
+import { readExpectedIssues } from '@/lib/serialCompleteness';
 import { ContainerPicker } from '@/components/library/ContainerPicker';
 import { ExportButton } from '@/components/library/ExportButton';
 import { RecordOrganizer } from '@/components/library/RecordOrganizer';
@@ -41,7 +42,8 @@ export function WorkDetail() {
       {data.work_type === 'serial' && (
         <div className="flex flex-col gap-2 rounded-8 border border-border p-4">
           <p className="text-label text-fg">Issues</p>
-          <SerialCompleteness issues={data.records.filter((r) => r.record_type === 'issue')} />
+          <SerialCompleteness issues={data.records.filter((r) => r.record_type === 'issue')} expected={readExpectedIssues(data.metadata)} />
+          <Link to={`/serials/${data.id}`} className="text-small text-green underline">Open the serial view</Link>
           <AddIssueForm workId={data.id} />
         </div>
       )}

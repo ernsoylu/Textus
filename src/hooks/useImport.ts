@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { metadataLookup, type NormalizedMetadata } from '@/lib/functions';
 import { useAuth } from '@/hooks/useAuth';
 import { saveCredits, type CreditInput } from '@/hooks/useContributorCredits';
-import { parseCsvImport, parseDoiList, type CsvImportRow } from '@/lib/importRows';
+import { mapCsvRows, parseDoiList, type ColumnMapping, type CsvImportRow, type CsvTable, type RowError } from '@/lib/importRows';
 import { FIRST_RECORD_TYPE, WORK_TYPES, type WorkType } from '@/lib/recordTypes';
 
 // FR-RES-3: bulk import from a CSV or a DOI list. Rows are validated before anything is written; a
@@ -48,6 +48,7 @@ interface NewItem {
   identifiers: { scheme: 'doi' | 'isbn'; value: string }[];
   credits: CreditInput[];
   lockCredits: boolean;
+  tags?: string[];
 }
 
 async function alreadyInLibrary(identifiers: NewItem['identifiers']): Promise<boolean> {
@@ -59,6 +60,22 @@ async function alreadyInLibrary(identifiers: NewItem['identifiers']): Promise<bo
     if (data.length) return true;
   }
   return false;
+}
+
+// Find-or-create each tag by name, then put it on the record (FR-ORG-1). Names compare case-insensitively.
+async function attachTags(userId: string, recordId: string, names: string[]): Promise<void> {
+  const { data: existing, error } = await supabase.from('tags').select('id, name');
+  if (error) throw error;
+  const byName = new Map(existing.map((t) => [t.name.toLowerCase(), t.id]));
+  for (const name of names) {
+    if (byName.has(name.toLowerCase())) continue;
+    const { data: created, error: createError } = await supabase.from('tags').insert({ user_id: userId, name }).select('id').single();
+    if (createError) throw createError;
+    byName.set(name.toLowerCase(), created.id);
+  }
+  const rows = names.map((name) => ({ record_id: recordId, tag_id: byName.get(name.toLowerCase())! }));
+  const { error: linkError } = await supabase.from('record_tags').upsert(rows, { onConflict: 'record_id,tag_id', ignoreDuplicates: true });
+  if (linkError) throw linkError;
 }
 
 async function createItem(item: NewItem): Promise<string> {
@@ -78,8 +95,11 @@ async function createItem(item: NewItem): Promise<string> {
     if (error) throw error;
   }
   if (item.credits.length) await saveCredits(record.id, item.credits, { lock: item.lockCredits });
+  if (item.tags?.length) await attachTags(item.userId, record.id, item.tags);
   return work.id;
 }
+
+const splitTags = (raw?: string) => [...new Set((raw ?? '').split(/[;,]/).map((t) => t.trim()).filter(Boolean))];
 
 async function importCsvRow(userId: string, data: CsvImportRow): Promise<ImportResult> {
   const identifiers = (['doi', 'isbn'] as const).flatMap((scheme) => (data[scheme] ? [{ scheme, value: data[scheme]! }] : []));
@@ -93,6 +113,7 @@ async function importCsvRow(userId: string, data: CsvImportRow): Promise<ImportR
     identifiers,
     credits: data.authors ? creditsFromText(data.authors.replaceAll(';', ' & ')) : [],
     lockCredits: true,
+    tags: splitTags(data.tags),
   });
   return { label: data.title, status: 'imported', workId };
 }
@@ -136,37 +157,116 @@ async function importDoi(userId: string, doi: string): Promise<ImportResult> {
   return { label: meta.title, status: 'imported', workId };
 }
 
+export interface PlanItem {
+  label: string;
+  detail: string;
+  run: () => Promise<ImportResult>;
+}
+
+// What an import would do, shown to the user before anything is written (Figma "import results").
+export interface ImportPlan {
+  ready: PlanItem[];
+  duplicates: { label: string; reason: string }[];
+  invalid: RowError[];
+}
+
+// Normalized identifiers of the given values that already exist in the library, as "scheme:value".
+async function existingIdentifiers(pairs: { scheme: 'doi' | 'isbn'; value: string }[]): Promise<Set<string>> {
+  const normalized = pairs.flatMap(({ scheme, value }) => {
+    const parsed = parseIdentifier(scheme, value);
+    return parsed.ok ? [parsed.normalized] : [];
+  });
+  if (!normalized.length) return new Set();
+  const { data, error } = await supabase.from('identifiers').select('scheme, normalized_value').in('normalized_value', normalized);
+  if (error) throw error;
+  return new Set(data.map((r) => `${r.scheme}:${r.normalized_value}`));
+}
+
+const identifierKey = (scheme: 'doi' | 'isbn', value: string) => {
+  const parsed = parseIdentifier(scheme, value);
+  return parsed.ok ? `${scheme}:${parsed.normalized}` : null;
+};
+
+async function planCsv(userId: string, table: CsvTable, mapping: ColumnMapping): Promise<ImportPlan> {
+  const { rows, errors } = mapCsvRows(table.body, mapping);
+  const identifiers = rows.flatMap((r) => (['doi', 'isbn'] as const).flatMap((scheme) => (r.data[scheme] ? [{ scheme, value: r.data[scheme]! }] : [])));
+  const existing = await existingIdentifiers(identifiers);
+  const seen = new Set<string>();
+  const plan: ImportPlan = { ready: [], duplicates: [], invalid: errors };
+  for (const { line, data } of rows) {
+    const keys = (['doi', 'isbn'] as const).flatMap((scheme) => (data[scheme] ? [identifierKey(scheme, data[scheme]!)] : [])).filter((k): k is string => !!k);
+    const label = `Row ${line} · ${data.title}`;
+    const clash = keys.find((k) => existing.has(k));
+    const repeat = keys.find((k) => seen.has(k));
+    if (clash) plan.duplicates.push({ label, reason: `Already in your library (${clash.replace(':', ' ').toUpperCase()}).` });
+    else if (repeat) plan.duplicates.push({ label, reason: 'Repeated earlier in this file.' });
+    else {
+      keys.forEach((k) => seen.add(k));
+      plan.ready.push({ label, detail: [data.authors, data.year].filter(Boolean).join(' · '), run: () => importCsvRow(userId, data) });
+    }
+  }
+  return plan;
+}
+
+async function planDois(userId: string, text: string): Promise<ImportPlan> {
+  const { dois, errors } = parseDoiList(text);
+  const existing = await existingIdentifiers(dois.map((value) => ({ scheme: 'doi' as const, value })));
+  const plan: ImportPlan = { ready: [], duplicates: [], invalid: errors };
+  for (const doi of dois) {
+    if (existing.has(`doi:${doi}`)) plan.duplicates.push({ label: doi, reason: 'Already in your library.' });
+    else plan.ready.push({ label: doi, detail: 'Looked up on import', run: () => importDoi(userId, doi) });
+  }
+  return plan;
+}
+
 export function useImport() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
+  const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
-  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function run(mode: 'doi' | 'csv', text: string) {
-    const userId = session!.user.id;
+  async function analyze(build: (userId: string) => Promise<ImportPlan>) {
+    setAnalyzing(true);
+    setError(null);
+    setResults([]);
+    try {
+      setPlan(await build(session!.user.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not check the import.');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // Sequential on purpose: keeps provider rate limits and contributor matching (which reads earlier rows) predictable.
+  async function execute() {
+    if (!plan) return;
     setResults([]);
     setRunning(true);
-    const jobs: { label: string; work: () => Promise<ImportResult> }[] = [];
-    let errors: { line: number; message: string }[];
-    if (mode === 'doi') {
-      const parsed = parseDoiList(text);
-      errors = parsed.errors;
-      parsed.dois.forEach((doi) => jobs.push({ label: doi, work: () => importDoi(userId, doi) }));
-    } else {
-      const parsed = parseCsvImport(text);
-      errors = parsed.errors;
-      parsed.rows.forEach((r) => jobs.push({ label: r.data.title, work: () => importCsvRow(userId, r.data) }));
-    }
-    setParseErrors(errors.map((e) => `Line ${e.line}: ${e.message}`));
-    // Sequential on purpose: keeps provider rate limits and contributor matching (which reads earlier rows) predictable.
-    for (const job of jobs) {
-      const result = await job.work().catch((e: Error): ImportResult => ({ label: job.label, status: 'failed', message: e.message }));
+    for (const item of plan.ready) {
+      const result = await item.run().catch((e: Error): ImportResult => ({ label: item.label, status: 'failed', message: e.message }));
       setResults((prev) => [...prev, result]);
     }
     setRunning(false);
     queryClient.invalidateQueries();
   }
 
-  return { run, results, parseErrors, running };
+  return {
+    plan,
+    results,
+    analyzing,
+    running,
+    error,
+    analyzeCsv: (table: CsvTable, mapping: ColumnMapping) => analyze((userId) => planCsv(userId, table, mapping)),
+    analyzeDois: (text: string) => analyze((userId) => planDois(userId, text)),
+    execute,
+    reset: () => {
+      setPlan(null);
+      setResults([]);
+      setError(null);
+    },
+  };
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import type { WorkRow, RecordRow } from '@/types';
@@ -144,5 +144,48 @@ export function useRemoveIdentifier(workId: string) {
       queryClient.invalidateQueries({ queryKey: ['works', workId] });
       queryClient.invalidateQueries({ queryKey: ['works'] });
     },
+  });
+}
+
+// FR-RES-2: candidates for "link under the same work" — article versions of *other* works, found by work title.
+export function useLinkableRecords(workId: string, search: string) {
+  const q = search.trim();
+  return useQuery({
+    queryKey: ['linkable-records', workId, q],
+    enabled: q.length >= 2,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('records')
+        .select('id, work_id, publication_date, metadata, works!inner(title), identifiers(scheme, normalized_value)')
+        .eq('record_type', 'article_version')
+        .neq('work_id', workId)
+        .ilike('works.title', `%${q.replaceAll(/[%_]/g, '')}%`)
+        .limit(8);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+// Moves the chosen record under this work and labels it (preprint / published / other). If that leaves its
+// old work with no records, the empty work is deleted so the library has no hollow shells. RLS checks that
+// the caller owns both works (records_update WITH CHECK).
+export function useLinkVersion(workId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ recordId, fromWorkId, version }: { recordId: string; fromWorkId: string; version: string }) => {
+      const { data: record, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+      if (readError) throw readError;
+      const metadata = { ...((record.metadata ?? {}) as Record<string, unknown>), version };
+      const { error } = await supabase.from('records').update({ work_id: workId, metadata }).eq('id', recordId);
+      if (error) throw error;
+      const { count, error: countError } = await supabase.from('records').select('id', { count: 'exact', head: true }).eq('work_id', fromWorkId);
+      if (countError) throw countError;
+      if (count === 0) {
+        const { error: deleteError } = await supabase.from('works').delete().eq('id', fromWorkId);
+        if (deleteError) throw deleteError;
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
   });
 }

@@ -17,8 +17,8 @@ export function Serials() {
       {data?.length === 0 && <p className="text-body text-muted">No serials yet. Add a work of type “serial”, then its issues.</p>}
       {data?.map((s) => (
         <section key={s.id} className="flex flex-col gap-2 rounded-8 border border-border p-4">
-          <Link to={`/library/${s.id}`} className="text-label text-fg underline">{s.title}</Link>
-          <SerialCompleteness issues={s.issues} />
+          <Link to={`/serials/${s.id}`} className="text-label text-fg underline">{s.title}</Link>
+          <SerialCompleteness issues={s.issues} expected={s.expected} />
         </section>
       ))}
     </div>

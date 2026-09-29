@@ -83,7 +83,8 @@ Built in some form: lookup and its error states, merge, split, distinct, forced 
 - **Phase 2 (daily-use gaps): done.** Also fixed along the way: Tailwind's spacing override made `p-4`, `gap-4`, `w-16` and `h-64` a quarter of their intended size.
 - **Phase 3 (reader): done.** PDF text selection and highlights, EPUB table of contents, go-to, text size and theme, keyboard paging, note filter. A canvas re-render race in the PDF viewer was fixed.
 - **Phase 4 (account): done.** Two-panel sign-in/sign-up/magic-link screens, Overview (welcome, continue reading, recently added, identities to review), sign-out and unsaved-changes dialogs, Appearance settings, delete account. Also fixed: signing in never left the login page.
-- Phases 5–7 are still ahead.
+- **Phase 5 (research and serials): done.** CSV column mapping and an import review step (duplicates and invalid rows flagged before anything is written, tags imported), linking an existing record as a preprint/published version, expected-issue ranges (stored in `works.metadata.expected_issues`, no migration), a serial detail page with an issue grid, and OPDS navigation, collections, search and covers.
+- Phases 6–7 are still ahead.
 
 ## Plan
 

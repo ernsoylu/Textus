@@ -18,6 +18,7 @@ import { ResetPassword } from '@/pages/ResetPassword';
 import { NotFound } from '@/pages/NotFound';
 import { Tags } from '@/pages/Tags';
 import { CollectionDetail } from '@/pages/CollectionDetail';
+import { SerialDetail } from '@/pages/SerialDetail';
 import { Settings } from '@/pages/Settings';
 import { Activity } from '@/pages/Activity';
 
@@ -51,6 +52,7 @@ const router = createBrowserRouter(
         <Route path="contributors" element={<Contributors />} />
         <Route path="contributors/:contributorId" element={<ContributorDetail />} />
         <Route path="serials" element={<Serials />} />
+        <Route path="serials/:workId" element={<SerialDetail />} />
         <Route path="notes" element={<Notes />} />
         <Route path="import" element={<Import />} />
         <Route path="activity" element={<Activity />} />

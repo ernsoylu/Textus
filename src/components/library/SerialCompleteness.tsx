@@ -1,14 +1,14 @@
-import { serialCompleteness, type IssueRef } from '@/lib/serialCompleteness';
+import { serialCompleteness, type ExpectedIssues, type IssueRef } from '@/lib/serialCompleteness';
 
 // FR-SER-2: what is held and what is missing, per volume.
-export function SerialCompleteness({ issues }: Readonly<{ issues: IssueRef[] }>) {
-  const { volumes, unnumbered } = serialCompleteness(issues);
+export function SerialCompleteness({ issues, expected }: Readonly<{ issues: IssueRef[]; expected?: ExpectedIssues }>) {
+  const { volumes, unnumbered } = serialCompleteness(issues, expected);
   if (!volumes.length && !unnumbered) return <p className="text-small text-muted">No issues yet.</p>;
   return (
     <ul className="flex flex-col gap-1">
       {volumes.map((v) => (
         <li key={v.volume} className="text-small text-fg">
-          {v.volume ? `Vol. ${v.volume}` : 'No volume'}: {v.have.length} of {v.max} issues
+          {v.volume ? `Vol. ${v.volume}` : 'No volume'}: {v.have.length} of {v.expected?.length ?? v.max} issues
           {v.missing.length > 0 ? <span className="text-yellow"> · missing {v.missing.join(', ')}</span> : <span className="text-green"> · complete</span>}
         </li>
       ))}
