@@ -57,7 +57,7 @@ export default {
     if (signInError) return unauthorized();
 
     const url = new URL(req.url);
-    const root = `${Deno.env.get('SUPABASE_URL') ?? url.origin}/functions/v1/opds`;
+    const root = `${Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL') ?? url.origin}/functions/v1/opds`;
     const rest = (url.pathname.split('/opds').pop() ?? '').split('/').filter(Boolean).join('/');
 
     if (rest.startsWith('download/')) {

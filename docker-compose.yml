@@ -1,0 +1,23 @@
+# Textus web on the same host as self-hosted Supabase. It joins Supabase's compose network
+# (supabase_default) so nginx reaches the gateway at api-gw:8000 directly.
+#
+#   echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env
+#   docker compose up -d --build
+services:
+  textus:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?set VITE_SUPABASE_ANON_KEY in .env}
+    image: textus-web:latest
+    container_name: textus-web
+    restart: unless-stopped
+    ports:
+      - "${TEXTUS_PORT:-8080}:8080"
+    networks:
+      - supabase
+
+networks:
+  supabase:
+    name: supabase_default
+    external: true

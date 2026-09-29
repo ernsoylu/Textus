@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseUrl } from './supabase';
 import type { IdentifierScheme } from 'shared/identifier';
 
 // Typed Edge Function invocations (§12). Edge Functions authenticate the caller from the
@@ -8,7 +8,7 @@ async function callFunction<T>(path: string, body: unknown): Promise<T> {
   const token = sessionData.session?.access_token;
   if (!token) throw new Error('Not signed in.');
 
-  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${path}`, {
+  const res = await fetch(`${supabaseUrl}/functions/v1/${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
