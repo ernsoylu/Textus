@@ -6,9 +6,9 @@ import { StatusBadge } from '@/components/library/StatusBadge';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
+import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 
-// FR-CAT-1: full read/update/delete for works and records. No file reader, metadata
-// lookup, or contributor editor yet — separate, not-yet-started slices of M1/M2.
+// FR-CAT-1 and M2: catalog editing, identifier lookup, and contributor identity editing.
 export function WorkDetail() {
   const { workId } = useParams<{ workId: string }>();
   const { data, isLoading, error } = useWork(workId);
@@ -19,7 +19,7 @@ export function WorkDetail() {
 
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
-      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} workType={data.work_type} />
+      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} />
 
       {data.records.map((record) => (
         <div key={record.id} className="flex flex-col gap-2 rounded-8 border border-border p-4">
@@ -28,6 +28,7 @@ export function WorkDetail() {
             {record.publication_date && ` · ${new Date(record.publication_date).getFullYear()}`}
           </p>
           {record.byline && <p className="text-small text-muted">{record.byline}</p>}
+          {record.metadata_source && <p className="text-small text-muted">Metadata from {record.metadata_source}{record.metadata_fetched_at ? ` · fetched ${new Date(record.metadata_fetched_at).toLocaleDateString()}` : ''}</p>}
 
           <EditRecordForm
             workId={data.id}
@@ -47,6 +48,7 @@ export function WorkDetail() {
             </p>
           ))}
           <AddIdentifierForm recordId={record.id} />
+          <MetadataLookup work={data} record={record} />
 
           <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
 

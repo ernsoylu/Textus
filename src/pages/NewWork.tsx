@@ -8,20 +8,19 @@ import { useAuth } from '@/hooks/useAuth';
 
 const WORK_TYPES = ['book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other'] as const;
 
-// FR-CAT-1/2: creates a work and its first record. The author field is a stopgap —
-// it creates one plain contributor directly. The real paste-parsing editor (FR-CONTRIB-2)
-// and the matching/review flow (FR-CONTRIB-6, M2) are not built yet.
+// FR-CAT-1/2: creates a work and its first record. The optional author field creates
+// one contributor; the record page supports structured credits and metadata matching.
 async function createWork(userId: string, title: string, workType: string, authorName: string) {
   const { data: work, error: workError } = await supabase
     .from('works')
-    .insert({ user_id: userId, title, work_type: workType })
+    .insert({ user_id: userId, title, work_type: workType, metadata: { locked_fields: ['title', 'work_type'] } } as never)
     .select('id')
     .single();
   if (workError) throw workError;
 
   const { data: record, error: recordError } = await supabase
     .from('records')
-    .insert({ work_id: work.id, record_type: 'edition' })
+    .insert({ work_id: work.id, record_type: 'edition', metadata: authorName.trim() ? { locked_fields: ['contributors'] } : {} })
     .select('id')
     .single();
   if (recordError) throw recordError;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatByline, fold, isOrganization, isJunk, parseName, splitNames, compareGiven, type Credit } from './names';
+import { formatByline, fold, isOrganization, isJunk, parseName, splitNames, compareGiven, chooseImportedContributor, type Credit, type ImportedCandidate } from './names';
 
 function credit(role: string, position: number, display_name: string, credited_as: string | null = null): Credit {
   return { role, position, credited_as, display_name };
@@ -27,6 +27,19 @@ describe('formatByline (FR-CONTRIB-4)', () => {
   });
   it('returns an empty string with no credits', () => {
     expect(formatByline([])).toBe('');
+  });
+});
+
+describe('chooseImportedContributor (FR-CONTRIB-6)', () => {
+  const candidate = (id: string, given_names: string, identifiers: Record<string, string> = {}): ImportedCandidate => ({ contributor_id: id, display_name: `${given_names} Smith`, match_key: 'smith', kind: 'person', given_names, birth_year: null, identifiers, coauthor_keys: [], affiliations: [], work_ids: [] });
+  it('uses a matching authority ID even when initials differ', () => {
+    expect(chooseImportedContributor({ kind: 'person', givenNames: 'J.', identifiers: { orcid: '0000-0001' } }, [candidate('one', 'John', { orcid: '0000-0001' })])).toEqual({ id: 'one', resolvedBy: 'identifier' });
+  });
+  it('leaves ambiguous names provisional', () => {
+    expect(chooseImportedContributor({ kind: 'person', givenNames: 'John' }, [candidate('one', 'John'), candidate('two', 'John')])).toEqual({ id: null, provisional: true });
+  });
+  it('excludes conflicting IDs and incompatible given names', () => {
+    expect(chooseImportedContributor({ kind: 'person', givenNames: 'John', identifiers: { orcid: '0000-0002' } }, [candidate('one', 'John', { orcid: '0000-0001' }), candidate('two', 'Jane')])).toEqual({ id: null, provisional: false });
   });
 });
 

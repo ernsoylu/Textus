@@ -3,6 +3,7 @@ import { splitNames, type Role } from 'shared/names';
 import { useSaveCredits, type CreditInput } from '@/hooks/useContributorCredits';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ContributorIdentityEditor } from './ContributorIdentityEditor';
 
 const ROLES: Role[] = ['author', 'editor', 'compiler', 'translator', 'illustrator', 'series_editor', 'introduction', 'contributor'];
 
@@ -15,6 +16,7 @@ interface Row extends CreditInput {
 let nextKey = 0;
 
 export interface ExistingCredit {
+  contributor_id: string;
   role: string;
   position: number;
   credited_as: string | null;
@@ -37,6 +39,7 @@ function rowsFromExisting(credits: ExistingCredit[]): Row[] {
       const isOrg = contributor.kind === 'organization';
       return {
         key: String(nextKey++),
+        contributorId: c.contributor_id,
         rejected: false,
         skip: false,
         kind: isOrg ? 'organization' : 'person',
@@ -84,7 +87,8 @@ export function ContributorEditor({ workId, recordId, existingCredits }: { workI
   }
 
   function updateRow(key: string, patch: Partial<Row>) {
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    const identityChanged = ['kind', 'organizationName', 'familyName', 'givenNames', 'particle', 'suffix'].some((field) => field in patch);
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch, contributorId: identityChanged ? undefined : r.contributorId } : r)));
   }
   function removeRow(key: string) {
     setRows((prev) => prev.filter((r) => r.key !== key));
@@ -157,6 +161,7 @@ export function ContributorEditor({ workId, recordId, existingCredits }: { workI
         </Button>
         {save.isError && <p className="text-small text-red">{save.error.message}</p>}
       </div>
+      {[...new Map(existingCredits.filter((credit) => credit.contributors).map((credit) => [credit.contributor_id, credit.contributors!.display_name])).entries()].map(([id, name]) => <ContributorIdentityEditor key={id} id={id} name={name} />)}
     </div>
   );
 }

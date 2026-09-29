@@ -40,6 +40,7 @@ const CompleteSchema = z.object({
   uploadId: z.string().uuid(),
   recordId: z.string().uuid(),
   role: z.enum(['primary', 'supplement', 'cover']),
+  filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\')).optional(),
 });
 
 // Magic-byte sniffing (CLAUDE.md invariant 6: never trust the client's declared MIME type).
@@ -208,7 +209,7 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
     await ctx.supabaseAdmin
       .from('jobs')
       .upsert(
-        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset!.id }, idempotency_key: `extract_text:${asset!.id}` },
+        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset!.id, filename: parsed.data.filename ?? '' }, idempotency_key: `extract_text:${asset!.id}` },
         { onConflict: 'idempotency_key', ignoreDuplicates: true },
       );
   }

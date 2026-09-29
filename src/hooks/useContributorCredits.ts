@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { fold, compareGiven, type Role } from 'shared/names';
 
 export interface CreditInput {
+  contributorId?: string;
   kind: 'person' | 'organization';
   creditedAs: string; // as printed/pasted; becomes credited_as only when it differs from the canonical name
   organizationName: string; // organization only
@@ -20,13 +21,10 @@ function canonicalName(row: CreditInput): string {
 // Find-or-create per contributor, then set_record_contributors() (CLAUDE.md invariant 8:
 // credits are saved through this RPC, never a direct record_contributors insert).
 //
-// Matching here is intentionally simple — an existing contributor is reused only when its
-// match_key matches AND compareGiven() isn't 'incompatible'. The full scored matcher
-// (contributor_candidates(), external identifiers, co-author/affiliation evidence,
-// provisional status for uncertain matches) is FR-CONTRIB-6, M2 — not built yet. This is
-// user-reviewed manual entry, not automated import, so a resolved contributor is created
-// 'confirmed', not 'provisional'.
-async function resolveContributor(userId: string, row: CreditInput): Promise<{ id: string; resolvedBy: 'match' | 'new' }> {
+// Manual edits preserve existing contributor IDs. New typed names reuse a unique compatible
+// contributor; ambiguous names become provisional for later review.
+async function resolveContributor(userId: string, row: CreditInput): Promise<{ id: string; resolvedBy: 'user' | 'match' | 'new' }> {
+  if (row.contributorId) return { id: row.contributorId, resolvedBy: 'user' };
   const matchKey = row.kind === 'organization' ? fold(row.organizationName) : fold(row.familyName);
 
   const { data: candidates, error: candidateError } = await supabase
@@ -36,8 +34,8 @@ async function resolveContributor(userId: string, row: CreditInput): Promise<{ i
     .eq('match_key', matchKey);
   if (candidateError) throw candidateError;
 
-  const match = candidates?.find((c) => c.kind === row.kind && (row.kind === 'organization' || compareGiven(c.given_names, row.givenNames) !== 'incompatible'));
-  if (match) return { id: match.id, resolvedBy: 'match' };
+  const compatible = (candidates ?? []).filter((c) => c.kind === row.kind && (row.kind === 'organization' || ['exact', 'full'].includes(compareGiven(c.given_names, row.givenNames))));
+  if (compatible.length === 1) return { id: compatible[0].id, resolvedBy: 'match' };
 
   const displayName = canonicalName(row);
   const sortName =
@@ -56,6 +54,7 @@ async function resolveContributor(userId: string, row: CreditInput): Promise<{ i
       suffix: row.kind === 'person' ? row.suffix || null : null,
       sort_name: sortName,
       match_key: matchKey,
+      status: compatible.length ? 'provisional' : 'confirmed',
     })
     .select('id')
     .single();
@@ -89,6 +88,13 @@ export function useSaveCredits(workId: string, recordId: string) {
 
       const { error } = await supabase.rpc('set_record_contributors', { p_record_id: recordId, p_credits: credits });
       if (error) throw error;
+      const { data: record, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+      if (readError) throw readError;
+      const metadata = (record.metadata ?? {}) as Record<string, unknown>;
+      const locked = new Set(Array.isArray(metadata.locked_fields) ? metadata.locked_fields as string[] : []);
+      locked.add('contributors');
+      const { error: lockError } = await supabase.from('records').update({ metadata: { ...metadata, locked_fields: [...locked] } }).eq('id', recordId);
+      if (lockError) throw lockError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['works', workId] });

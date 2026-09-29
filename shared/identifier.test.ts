@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIdentifier } from './identifier';
+import { parseIdentifier, parseAuthorityIdentifier } from './identifier';
 
 describe('isbn (§6.2)', () => {
   it('accepts a valid ISBN-13 and normalizes to digits only', () => {
@@ -33,6 +33,18 @@ describe('isbn (§6.2)', () => {
   it('rejects the wrong length or non-digit characters', () => {
     expect(parseIdentifier('isbn', '12345')).toEqual({ ok: false, reason: 'invalid_format' });
     expect(parseIdentifier('isbn', '978013468599A')).toEqual({ ok: false, reason: 'invalid_format' });
+  });
+});
+
+describe('authority identifiers', () => {
+  it('validates ORCID and ISNI check digits', () => {
+    expect(parseAuthorityIdentifier('orcid', 'https://orcid.org/0000-0002-1825-0097')).toBe('0000-0002-1825-0097');
+    expect(parseAuthorityIdentifier('orcid', '0000-0002-1825-0098')).toBeNull();
+    expect(parseAuthorityIdentifier('isni', '0000 0001 2281 955X')).toBe('000000012281955X');
+  });
+  it('normalizes authority URL forms', () => {
+    expect(parseAuthorityIdentifier('openlibrary', '/authors/OL23919A')).toBe('OL23919A');
+    expect(parseAuthorityIdentifier('wikidata', 'https://www.wikidata.org/wiki/Q42')).toBe('Q42');
   });
 });
 

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { IdentifierScheme } from 'shared/identifier';
 
 // Typed Edge Function invocations (§12). Edge Functions authenticate the caller from the
 // Authorization JWT themselves (§8) — this just attaches the current session's access token.
@@ -34,6 +35,40 @@ export function uploadIntent(body: { uploadId: string; recordId: string; filenam
   return callFunction<UploadIntentResponse>('upload/intent', body);
 }
 
-export function uploadComplete(body: { uploadId: string; recordId: string; role: 'primary' | 'supplement' | 'cover' }) {
+export function uploadComplete(body: { uploadId: string; recordId: string; role: 'primary' | 'supplement' | 'cover'; filename: string }) {
   return callFunction<UploadCompleteResponse>('upload/complete', body);
+}
+
+export interface NormalizedMetadata {
+  title?: string;
+  subtitle?: string;
+  abstract?: string;
+  language?: string;
+  publication_date?: string;
+  publication_date_precision?: 'year' | 'month' | 'day';
+  publisher?: string;
+  volume?: string;
+  issue_number?: string;
+  pages?: string;
+  contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[];
+  cover_url?: string;
+  role_warning?: string;
+  source_provider: string;
+  source_url?: string;
+  work_type: string;
+}
+
+export type MetadataResponse =
+  | { status: 'success'; data: NormalizedMetadata; fromCache: boolean; fetchedAt: string }
+  | { status: 'not_found'; identifier: string; searchedProviders: string[] }
+  | { status: 'invalid_identifier'; scheme: string; reason: string }
+  | { status: 'rate_limited'; retryAfterMs: number; provider: string }
+  | { status: 'provider_error'; provider: string; message: string };
+
+export function metadataLookup(scheme: IdentifierScheme, value: string, bypassCache = false) {
+  return callFunction<MetadataResponse>('metadata-lookup', { identifier: { scheme, value }, bypassCache });
+}
+
+export function queueCover(recordId: string, url: string) {
+  return callFunction<{ status: 'queued' }>('metadata-lookup', { action: 'queue-cover', recordId, url });
 }

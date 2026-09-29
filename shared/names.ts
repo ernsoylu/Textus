@@ -401,7 +401,7 @@ export type GivenCompatibility = 'exact' | 'full' | 'initials' | 'incompatible';
 
 function tokenizeGiven(s: string | null | undefined): string[] {
   if (!s) return [];
-  return s.toLowerCase().split(/[\s.-]+/).filter(Boolean);
+  return s.split(/[\s.-]+/).map(fold).filter(Boolean);
 }
 
 export function compareGiven(a: string | null | undefined, b: string | null | undefined): GivenCompatibility {
@@ -425,4 +425,40 @@ export function compareGiven(a: string | null | undefined, b: string | null | un
   }
   if (ta.length === tb.length && !sawInitialMatch) return 'exact';
   return sawInitialMatch ? 'initials' : 'full';
+}
+
+export interface ImportedCandidate {
+  contributor_id: string;
+  display_name: string;
+  match_key: string;
+  kind: string;
+  given_names: string | null;
+  birth_year: number | null;
+  identifiers: Record<string, string>;
+  coauthor_keys: string[];
+  affiliations: string[];
+  work_ids: string[];
+}
+
+export function chooseImportedContributor(
+  incoming: { kind: 'person' | 'organization'; givenNames?: string; identifiers?: Record<string, string>; coauthorKeys?: string[]; affiliation?: string; workId?: string; publicationYear?: number },
+  candidates: ImportedCandidate[],
+): { id: string; resolvedBy: 'identifier' | 'match' } | { id: null; provisional: boolean } {
+  const viable = candidates.filter((candidate) => candidate.kind === incoming.kind &&
+    !Object.entries(incoming.identifiers ?? {}).some(([scheme, value]) => candidate.identifiers[scheme] && candidate.identifiers[scheme] !== value) &&
+    !(incoming.publicationYear && candidate.birth_year && candidate.birth_year > incoming.publicationYear));
+  const byId = viable.filter((candidate) => Object.entries(incoming.identifiers ?? {}).some(([scheme, value]) => candidate.identifiers[scheme] === value));
+  if (byId.length === 1) return { id: byId[0].contributor_id, resolvedBy: 'identifier' };
+  const scored = viable.map((candidate) => {
+    const compatibility = incoming.kind === 'organization' ? 'exact' : compareGiven(candidate.given_names, incoming.givenNames);
+    const shared = candidate.coauthor_keys.filter((key) => incoming.coauthorKeys?.includes(key)).length;
+    const affiliation = incoming.affiliation && candidate.affiliations.some((a) => fold(a) === fold(incoming.affiliation!));
+    return { candidate, compatibility, score: (compatibility === 'exact' ? 3 : compatibility === 'full' ? 2 : 1) +
+      (incoming.workId && candidate.work_ids.includes(incoming.workId) ? 4 : 0) + Math.min(shared, 2) * 2 + (affiliation ? 2 : 0) };
+  }).filter((x) => x.compatibility !== 'incompatible').sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  if (!best) return { id: null, provisional: false };
+  if ((scored.length === 1 && (best.compatibility === 'exact' || best.compatibility === 'full')) ||
+    (best.score >= 5 && best.score >= (scored[1]?.score ?? 0) + 2)) return { id: best.candidate.contributor_id, resolvedBy: 'match' };
+  return { id: null, provisional: true };
 }

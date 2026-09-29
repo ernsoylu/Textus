@@ -60,6 +60,7 @@ export function EditRecordForm({
                 issue_number: issueNumber.trim() || null,
                 pages: pages.trim() || null,
                 publication_date: publicationDate || null,
+                publication_date_precision: publicationDate ? 'day' : null,
               },
             })
           }

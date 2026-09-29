@@ -348,13 +348,13 @@ isOneToOne: false
                   ]
                 },"works": {
                   Row: {
-                    "abstract": string | null,"created_at": string | null,"id": string,"language": string | null,"search_vector": unknown,"subtitle": string | null,"title": string,"updated_at": string | null,"user_id": string,"work_type": string
+                    "abstract": string | null,"created_at": string | null,"id": string,"language": string | null,"metadata": NonNullable<Json>,"search_vector": unknown,"subtitle": string | null,"title": string,"updated_at": string | null,"user_id": string,"work_type": string
                   }
                   Insert: {
-                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"search_vector"?: never,"subtitle"?: string | null,"title": string,"updated_at"?: string | null,"user_id": string,"work_type": string
+                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title": string,"updated_at"?: string | null,"user_id": string,"work_type": string
                   }
                   Update: {
-                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"work_type"?: string
+                    "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"work_type"?: string
                   }
                   Relationships: [
                     
@@ -392,6 +392,9 @@ isOneToOne: false
 { Args: { "p_match_keys": (string)[] }; Returns: {
               "affiliations": (string)[],"birth_year": number,"coauthor_keys": (string)[],"contributor_id": string,"death_year": number,"display_name": string,"given_names": string,"identifiers": Json,"kind": string,"match_key": string,"names": (string)[],"work_ids": (string)[]
             }[]
+                           },
+"expire_stale_jobs":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "merge_contributors":
 { Args: { "p_force"?: boolean,"p_keep": string,"p_merge": string }; Returns: undefined

@@ -7,20 +7,28 @@ interface WorkDetail {
   id: string;
   title: string;
   subtitle: string | null;
+  abstract: string | null;
+  language: string | null;
   work_type: string;
+  metadata: import('@/types/database').Json;
   records: {
     id: string;
     title: string | null;
     record_type: string;
     publication_date: string | null;
+    publication_date_precision: string | null;
     publisher: string | null;
     edition: string | null;
     volume: string | null;
     issue_number: string | null;
     pages: string | null;
+    metadata: import('@/types/database').Json | null;
+    metadata_source: string | null;
+    metadata_fetched_at: string | null;
     identifiers: { scheme: string; normalized_value: string }[];
     record_contributors: {
       role: string;
+      contributor_id: string;
       position: number;
       credited_as: string | null;
       contributors: {
@@ -44,10 +52,10 @@ export function useWork(workId: string | undefined) {
       const { data, error } = await supabase
         .from('works')
         .select(
-          `id, title, subtitle, work_type,
-           records ( id, title, record_type, publication_date, publisher, edition, volume, issue_number, pages,
+          `id, title, subtitle, abstract, language, work_type, metadata,
+           records ( id, title, record_type, publication_date, publication_date_precision, publisher, edition, volume, issue_number, pages, metadata, metadata_source, metadata_fetched_at,
              identifiers ( scheme, normalized_value ),
-             record_contributors ( role, position, credited_as,
+             record_contributors ( contributor_id, role, position, credited_as,
                contributors ( display_name, kind, family_name, given_names, particle, suffix ) ),
              record_assets ( role, assets ( * ) ) )`,
         )

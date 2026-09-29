@@ -9,15 +9,21 @@ export function EditWorkForm({
   workId,
   title: initialTitle,
   subtitle: initialSubtitle,
+  abstract: initialAbstract,
+  language: initialLanguage,
   workType: initialWorkType,
 }: {
   workId: string;
   title: string;
   subtitle: string | null;
+  abstract: string | null;
+  language: string | null;
   workType: string;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [subtitle, setSubtitle] = useState(initialSubtitle ?? '');
+  const [abstract, setAbstract] = useState(initialAbstract ?? '');
+  const [language, setLanguage] = useState(initialLanguage ?? '');
   const [workType, setWorkType] = useState(initialWorkType);
   const update = useUpdateWork(workId);
   const remove = useDeleteWork();
@@ -26,6 +32,8 @@ export function EditWorkForm({
     <div className="flex flex-col gap-2">
       <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
       <Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" />
+      <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" />
+      <textarea className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={abstract} onChange={(e) => setAbstract(e.target.value)} placeholder="Abstract (optional)" rows={3} />
       <select
         className="rounded-8 border border-muted bg-dim p-4 text-body text-fg"
         value={workType}
@@ -42,7 +50,7 @@ export function EditWorkForm({
           variant="secondary"
           isLoading={update.isPending}
           disabled={!title.trim()}
-          onClick={() => update.mutate({ title: title.trim(), subtitle: subtitle.trim() || null, work_type: workType })}
+          onClick={() => update.mutate({ title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType })}
         >
           Save
         </Button>

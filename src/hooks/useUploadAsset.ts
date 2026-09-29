@@ -17,7 +17,7 @@ async function upload(recordId: string, role: 'primary' | 'supplement' | 'cover'
   const { error: uploadError } = await supabase.storage.from('staging').uploadToSignedUrl(intent.path, intent.token, file);
   if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
-  const result = await uploadComplete({ uploadId, recordId, role });
+  const result = await uploadComplete({ uploadId, recordId, role, filename: file.name });
   if (result.status === 'rejected') {
     throw new Error(REJECTION_MESSAGES[result.reason] ?? 'Upload was rejected.');
   }
