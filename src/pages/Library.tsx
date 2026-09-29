@@ -10,6 +10,7 @@ import { LibraryFilterBar } from '@/components/library/LibraryFilterBar';
 import { BulkBar } from '@/components/library/BulkBar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useMetadataJobs } from '@/hooks/useJobs';
 
 export function Library() {
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
@@ -41,6 +42,7 @@ export function Library() {
   const debouncedQ = useDebounced(filters.q);
   const query = useLibrary({ ...filters, q: debouncedQ });
   const items = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
+  const metadataJobs = useMetadataJobs(items.flatMap((item) => item.recordIds));
   const total = query.data?.pages[0]?.total ?? 0;
   const coverUrls = useCoverUrls(items.flatMap((w) => (w.coverPath ? [w.coverPath] : [])));
   const selected = items.filter((w) => selectedIds.has(w.workId));
@@ -118,6 +120,7 @@ export function Library() {
             byline={item.byline}
             meta={item.meta}
             detail={item.detail}
+            metadataMessage={item.recordIds.map((id) => metadataJobs.data?.[id]).find(Boolean)}
             coverUrl={item.coverPath ? coverUrls.data?.get(item.coverPath) : undefined}
             selected={selectedIds.has(item.workId)}
             onToggleSelect={selecting ? () => toggle(item.workId) : undefined}

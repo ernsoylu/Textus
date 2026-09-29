@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { MetadataProgress } from '@/components/metadata/MetadataProgress';
 
 // Figma: "Record card" (node 8:68). `meta` is left to the caller — the Figma mock shows
 // "EPUB · 42% read", but that needs asset format + reading_states joined, which the
@@ -10,12 +11,13 @@ export interface RecordCardProps {
   byline: string;
   meta: string;
   detail?: string;
+  metadataMessage?: string;
   coverUrl?: string;
   selected?: boolean;
   onToggleSelect?: () => void;
 }
 
-export function RecordCard({ workId, title, byline, meta, detail, coverUrl, selected, onToggleSelect }: Readonly<RecordCardProps>) {
+export function RecordCard({ workId, title, byline, meta, detail, metadataMessage, coverUrl, selected, onToggleSelect }: Readonly<RecordCardProps>) {
   const body = (
     <>
       {coverUrl ? (
@@ -31,6 +33,7 @@ export function RecordCard({ workId, title, byline, meta, detail, coverUrl, sele
       <p className="text-small w-full text-muted">{byline || 'Unattributed'}</p>
       <p className="text-small w-full text-green">{meta}</p>
       {detail && <p className="text-small w-full text-muted">{detail}</p>}
+      <MetadataProgress message={metadataMessage} />
     </>
   );
   if (!onToggleSelect) {

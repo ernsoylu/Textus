@@ -7,6 +7,7 @@ import { applyMetadata, defaultSelection, isInvalidPerson, isWorkField, loadCand
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MetadataProgress } from './MetadataProgress';
 
 type Work = { id: string; title: string; subtitle: string | null; abstract: string | null; language: string | null; work_type: string; metadata: unknown };
 type RecordValue = { id: string; title: string | null; publication_date: string | null; publication_date_precision: string | null; publisher: string | null; volume: string | null; issue_number: string | null; pages: string | null; metadata: unknown; record_contributors: { contributor_id: string; role: string; position: number; credited_as: string | null }[]; record_assets: { assets: { metadata: unknown } | null }[] };
@@ -24,6 +25,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
   const [candidates, setCandidates] = useState<ImportedCandidate[]>([]);
   const [overrides, setOverrides] = useState<Record<number, string>>({});
   const [pending, setPending] = useState(false);
+  const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
   const data = response?.status === 'success' ? response.data : null;
@@ -35,6 +37,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
     const parsed = parseIdentifier(scheme, value);
     if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : `Invalid ${scheme.toUpperCase()} format.`); return; }
     setPending(true);
+    setProgressMessage(`Searching ${scheme.toUpperCase()} ${parsed.normalized}…`);
     try {
       const result = await metadataLookup(scheme, value, scheme === 'isbn');
       setResponse(result);
@@ -56,6 +59,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
   async function apply() {
     if (!data) return;
     setError(''); setDone(''); setPending(true);
+    setProgressMessage('Applying metadata…');
     try {
       const fetchedAt = response?.status === 'success' ? response.fetchedAt : new Date().toISOString();
       await applyMetadata({ data, fetchedAt, selected, selectedCredits, includeCover, overrides, workId: work.id, recordId: record.id, workLocks, recordLocks, candidates, suggest: suggestion });
@@ -80,6 +84,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
       <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Identifier" className="w-auto min-w-[190px] flex-1" />
       <Button onClick={lookup} isLoading={pending} disabled={!value.trim()}>Look up</Button>
     </div>
+    <MetadataProgress message={pending ? progressMessage : undefined} />
     {response?.status === 'not_found' && <p className="text-small text-yellow">No metadata found in {response.searchedProviders.join(', ')}.</p>}
     {response?.status === 'rate_limited' && <p className="text-small text-yellow">{response.provider} is rate limited. Try again later.</p>}
     {response?.status === 'provider_error' && <p className="text-small text-red">{response.provider} could not return metadata: {response.message}</p>}

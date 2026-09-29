@@ -18,6 +18,8 @@ import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 import { AutoMetadataImport } from '@/components/metadata/AutoMetadataImport';
 import { meta } from '@/lib/metadataApply';
+import { useMetadataJobs } from '@/hooks/useJobs';
+import { MetadataProgress } from '@/components/metadata/MetadataProgress';
 
 const PdfViewer = lazy(() => import('@/components/reader/PdfViewer').then((module) => ({ default: module.PdfViewer })));
 const EpubViewer = lazy(() => import('@/components/reader/EpubViewer').then((module) => ({ default: module.EpubViewer })));
@@ -41,6 +43,7 @@ export function WorkDetail() {
   const [params] = useSearchParams();
   const autoImport = params.get('autofill') === '1';
   const { data, isLoading, error } = useWork(workId);
+  const metadataJobs = useMetadataJobs(data?.records.map((record) => record.id) ?? []);
 
   if (isLoading) return <p className="text-body text-muted">Loading…</p>;
   if (error) return <p className="text-body text-red">Could not load this work: {error.message}</p>;
@@ -72,6 +75,7 @@ export function WorkDetail() {
             {recordLabel(record)}
           </p>
           {record.byline && <p className="text-small text-muted">{record.byline}</p>}
+          <MetadataProgress message={metadataJobs.data?.[record.id]} />
           {record.metadata_source && <p className="text-small text-muted">Metadata from {record.metadata_source}{record.metadata_fetched_at ? ` · fetched ${new Date(record.metadata_fetched_at).toLocaleDateString()}` : ''}</p>}
 
           {(record.record_type === 'chapter' || record.record_type === 'article_version') && (
