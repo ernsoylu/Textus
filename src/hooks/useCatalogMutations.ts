@@ -77,3 +77,41 @@ export function useDeleteRecord(workId: string) {
     },
   });
 }
+
+// FR-RES-2 / FR-SER-1: extra records under an existing work — a preprint or published version of
+// an article, or an issue of a serial. RLS (records_insert) checks the caller owns the work.
+interface NewRecord {
+  record_type: 'article_version' | 'issue' | 'edition';
+  title?: string;
+  volume?: string;
+  issue_number?: string;
+  publication_date?: string;
+  publication_date_precision?: 'day';
+  metadata?: Record<string, string>;
+}
+
+export function useAddRecord(workId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (record: NewRecord) => {
+      const { error } = await supabase.from('records').insert({ work_id: workId, ...record });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['works'] });
+      queryClient.invalidateQueries({ queryKey: ['serials'] });
+    },
+  });
+}
+
+// FR-CONTRIB-10: point a chapter/article record at its container record (edited volume or issue).
+export function useSetContainer(workId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ recordId, containerId }: { recordId: string; containerId: string | null }) => {
+      const { error } = await supabase.from('records').update({ container_record_id: containerId }).eq('id', recordId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['works', workId] }),
+  });
+}

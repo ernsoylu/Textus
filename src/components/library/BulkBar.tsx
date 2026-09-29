@@ -3,9 +3,10 @@ import { useTags } from '@/hooks/useTags';
 import { useCollections } from '@/hooks/useCollections';
 import { useBulkActions } from '@/hooks/useBulkActions';
 import { Button } from '@/components/ui/button';
+import { ExportButton } from '@/components/library/ExportButton';
 import type { WorkListItem } from '@/hooks/useWorks';
 
-// FR-ORG-4: bulk tag / add to collection / delete for the selected works.
+// FR-ORG-4: bulk tag / add to collection / export / delete for the selected works.
 export function BulkBar({ selected, onDone }: { selected: WorkListItem[]; onDone: () => void }) {
   const tags = useTags();
   const collections = useCollections();
@@ -29,6 +30,7 @@ export function BulkBar({ selected, onDone }: { selected: WorkListItem[]; onDone
         {collections.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
       <Button variant="secondary" disabled={!collectionId || !recordIds.length} isLoading={addToCollection.isPending} onClick={() => addToCollection.mutate({ recordIds, collectionId })}>Add to collection</Button>
+      <ExportButton recordIds={recordIds} />
       <Button
         variant="danger"
         disabled={!selected.length}

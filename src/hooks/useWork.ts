@@ -13,6 +13,7 @@ interface WorkDetail {
   metadata: import('@/types/database').Json;
   records: {
     id: string;
+    container_record_id: string | null;
     title: string | null;
     record_type: string;
     publication_date: string | null;
@@ -53,7 +54,7 @@ export function useWork(workId: string | undefined) {
         .from('works')
         .select(
           `id, title, subtitle, abstract, language, work_type, metadata,
-           records ( id, title, record_type, publication_date, publication_date_precision, publisher, edition, volume, issue_number, pages, metadata, metadata_source, metadata_fetched_at,
+           records ( id, container_record_id, title, record_type, publication_date, publication_date_precision, publisher, edition, volume, issue_number, pages, metadata, metadata_source, metadata_fetched_at,
              identifiers ( scheme, normalized_value ),
              record_contributors ( contributor_id, role, position, credited_as,
                contributors ( display_name, kind, family_name, given_names, particle, suffix ) ),

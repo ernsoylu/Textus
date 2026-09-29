@@ -72,3 +72,15 @@ export function metadataLookup(scheme: IdentifierScheme, value: string, bypassCa
 export function queueCover(recordId: string, url: string) {
   return callFunction<{ status: 'queued' }>('metadata-lookup', { action: 'queue-cover', recordId, url });
 }
+
+export interface ExportResponse {
+  format: string;
+  filename: string;
+  mime: string;
+  content: string;
+  count: number;
+}
+
+export function exportRecords(recordIds: string[], format: 'bibtex' | 'ris' | 'csl-json') {
+  return callFunction<ExportResponse>('export', { recordIds, format });
+}

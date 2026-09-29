@@ -62,39 +62,46 @@ async function resolveContributor(userId: string, row: CreditInput): Promise<{ i
   return { id: created.id, resolvedBy: 'new' };
 }
 
+// Also used by bulk import (src/hooks/useImport.ts). `lock` marks credits as manually edited (FR-META-3);
+// imports of provider data pass lock: false so a later lookup may still refine them.
+export async function saveCredits(recordId: string, rows: CreditInput[], { lock = true } = {}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user!.id;
+
+  const byRole = new Map<Role, number>();
+  const credits = [];
+  for (const row of rows) {
+    const { id, resolvedBy } = await resolveContributor(userId, row);
+    const position = byRole.get(row.role) ?? 0;
+    byRole.set(row.role, position + 1);
+    const creditedAs = row.creditedAs.trim();
+    credits.push({
+      contributor_id: id,
+      role: row.role,
+      position,
+      credited_as: creditedAs && creditedAs !== canonicalName(row) ? creditedAs : null,
+      affiliation: null,
+      resolved_by: resolvedBy,
+    });
+  }
+
+  const { error } = await supabase.rpc('set_record_contributors', { p_record_id: recordId, p_credits: credits });
+  if (error) throw error;
+  if (!lock) return;
+  const { data: record, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+  if (readError) throw readError;
+  const metadata = (record.metadata ?? {}) as Record<string, unknown>;
+  const locked = new Set(Array.isArray(metadata.locked_fields) ? metadata.locked_fields as string[] : []);
+  locked.add('contributors');
+  const { error: lockError } = await supabase.from('records').update({ metadata: { ...metadata, locked_fields: [...locked] } }).eq('id', recordId);
+  if (lockError) throw lockError;
+}
+
 export function useSaveCredits(workId: string, recordId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (rows: CreditInput[]) => {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user!.id;
-
-      const byRole = new Map<Role, number>();
-      const credits = [];
-      for (const row of rows) {
-        const { id, resolvedBy } = await resolveContributor(userId, row);
-        const position = byRole.get(row.role) ?? 0;
-        byRole.set(row.role, position + 1);
-        const creditedAs = row.creditedAs.trim();
-        credits.push({
-          contributor_id: id,
-          role: row.role,
-          position,
-          credited_as: creditedAs && creditedAs !== canonicalName(row) ? creditedAs : null,
-          affiliation: null,
-          resolved_by: resolvedBy,
-        });
-      }
-
-      const { error } = await supabase.rpc('set_record_contributors', { p_record_id: recordId, p_credits: credits });
-      if (error) throw error;
-      const { data: record, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
-      if (readError) throw readError;
-      const metadata = (record.metadata ?? {}) as Record<string, unknown>;
-      const locked = new Set(Array.isArray(metadata.locked_fields) ? metadata.locked_fields as string[] : []);
-      locked.add('contributors');
-      const { error: lockError } = await supabase.from('records').update({ metadata: { ...metadata, locked_fields: [...locked] } }).eq('id', recordId);
-      if (lockError) throw lockError;
+      await saveCredits(recordId, rows);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['works', workId] });

@@ -107,6 +107,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
                      │ • upload          │
                      │ • job-worker      │
                      │ • export          │
+                     │ • opds            │
                      └─────────┬─────────┘
                                │
      ┌──────────────┬──────────┼───────────┬──────────────┐

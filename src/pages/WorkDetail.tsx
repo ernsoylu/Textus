@@ -7,6 +7,11 @@ import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
 import { DownloadButton } from '@/components/library/DownloadButton';
+import { AddArticleVersionForm } from '@/components/library/AddArticleVersionForm';
+import { AddIssueForm } from '@/components/library/AddIssueForm';
+import { SerialCompleteness } from '@/components/library/SerialCompleteness';
+import { ContainerPicker } from '@/components/library/ContainerPicker';
+import { ExportButton } from '@/components/library/ExportButton';
 import { RecordOrganizer } from '@/components/library/RecordOrganizer';
 import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 
@@ -23,14 +28,31 @@ export function WorkDetail() {
     <div className="flex max-w-[640px] flex-col gap-6">
       <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} />
 
+      <ExportButton recordIds={data.records.map((r) => r.id)} />
+
+      {data.work_type === 'serial' && (
+        <div className="flex flex-col gap-2 rounded-8 border border-border p-4">
+          <p className="text-label text-fg">Issues</p>
+          <SerialCompleteness issues={data.records.filter((r) => r.record_type === 'issue')} />
+          <AddIssueForm workId={data.id} />
+        </div>
+      )}
+      {data.work_type === 'article' && <AddArticleVersionForm workId={data.id} />}
+
       {data.records.map((record) => (
         <div key={record.id} className="flex flex-col gap-2 rounded-8 border border-border p-4">
           <p className="text-label text-fg">
             {record.record_type}
+            {typeof (record.metadata as { version?: unknown } | null)?.version === 'string' && ` · ${(record.metadata as { version: string }).version}`}
+            {record.record_type === 'issue' && (record.volume || record.issue_number) && ` · ${[record.volume && `vol. ${record.volume}`, record.issue_number && `no. ${record.issue_number}`].filter(Boolean).join(' ')}`}
             {record.publication_date && ` · ${new Date(record.publication_date).getFullYear()}`}
           </p>
           {record.byline && <p className="text-small text-muted">{record.byline}</p>}
           {record.metadata_source && <p className="text-small text-muted">Metadata from {record.metadata_source}{record.metadata_fetched_at ? ` · fetched ${new Date(record.metadata_fetched_at).toLocaleDateString()}` : ''}</p>}
+
+          {(record.record_type === 'chapter' || record.record_type === 'article_version') && (
+            <ContainerPicker workId={data.id} recordId={record.id} containerId={record.container_record_id} />
+          )}
 
           <EditRecordForm
             workId={data.id}

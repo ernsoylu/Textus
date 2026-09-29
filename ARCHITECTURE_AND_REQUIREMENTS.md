@@ -1257,7 +1257,7 @@ $$);
 All functions:
 - validate input with Zod and return `400` with a reason on failure;
 - return CORS headers on **every** response, including errors and `OPTIONS`;
-- authenticate the caller from the `Authorization` JWT (except `job-worker`, which requires the service role);
+- authenticate the caller from the `Authorization` JWT (except `job-worker`, which requires the service role, and `opds`, which authenticates e-readers with HTTP Basic, §8.5);
 - build URLs with `URL` / `URLSearchParams`, never string concatenation;
 - use `AbortSignal.timeout(10_000)` on every outbound fetch and cap response size at 5 MB;
 - log technical details server-side; return user-safe messages.
@@ -1338,7 +1338,11 @@ Asset state transitions: `pending` → `processing` (first job claimed) → `rea
 
 ### 8.4 `export`
 
-Generates BibTeX, RIS, or CSL-JSON for a set of record IDs owned by the caller (M5). Annotation export (Markdown/JSON) is generated client-side from data the user can already read.
+`POST { recordIds: uuid[] (1–500), format: 'bibtex' | 'ris' | 'csl-json' }` → `{ format, filename, mime, content, count }`. Generates citations for records the caller owns (M5, FR-RES-1). `user` auth with the RLS-scoped client only — ids the caller does not own come back missing, and there is no service-role access. Formatting lives in `_shared/citations.ts` (re-exported by `shared/citations.ts` for tests). Bylines follow FR-CONTRIB-4; for a chapter or article the container title, editors, publisher and date are read from `container_record_id` and never copied onto the chapter (§6.3). Annotation export (Markdown/JSON) is generated client-side from data the user can already read.
+
+### 8.5 `opds`
+
+`GET /functions/v1/opds[?page=N]` — an OPDS 1.2 acquisition feed (FR-SER-3, 100 entries per page, newest first; records with no primary asset are omitted). E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic with the account email and password, exchanged for a session on the request-scoped client. Every query then runs as that user under RLS; no service-role client is used. Accounts that only use magic-link sign-in have no password and cannot use the feed. Files stay private (invariant 7): entries link to `GET /opds/download/{assetId}`, which re-authenticates and redirects to a fresh 300 s signed URL.
 
 ---
 
@@ -1581,12 +1585,12 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Download for non-viewable formats — FR-READ-6
 
 ### M5 — Export and serials
-- [ ] BibTeX / RIS / CSL-JSON — FR-RES-1
-- [ ] Preprint ↔ published linking — FR-RES-2
-- [ ] CSV / DOI-list import — FR-RES-3
-- [ ] Serial issue tracking and completeness — FR-SER-1/2
-- [ ] Chapters / articles inside container records — FR-CONTRIB-10
-- [ ] OPDS feed — FR-SER-3
+- [x] BibTeX / RIS / CSL-JSON — FR-RES-1
+- [x] Preprint ↔ published linking — FR-RES-2 (two `article_version` records under one work, labelled by `records.metadata.version`)
+- [x] CSV / DOI-list import — FR-RES-3
+- [x] Serial issue tracking and completeness — FR-SER-1/2 (issues are expected to run 1..max within a volume; no per-serial expected counts)
+- [x] Chapters / articles inside container records — FR-CONTRIB-10
+- [x] OPDS feed — FR-SER-3
 
 ---
 
