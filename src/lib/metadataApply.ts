@@ -1,4 +1,4 @@
-import { parseAuthorityIdentifier, type AuthorityScheme } from 'shared/identifier';
+import { parseAuthorityIdentifier, parseStandardReference, type AuthorityScheme } from 'shared/identifier';
 import { chooseImportedContributor, fold, isJunk, parseName, type ImportedCandidate } from 'shared/names';
 import { queueCover, type NormalizedMetadata } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 // contributors, and applying the fields, credits and cover the user selected. The component owns
 // the state and the rendering; nothing here touches React.
 export const WORK_FIELDS = ['title', 'subtitle', 'abstract', 'language', 'work_type'] as const;
-export const RECORD_FIELDS = ['publication_date', 'publisher', 'container_title', 'volume', 'issue_number', 'pages'] as const;
+export const RECORD_FIELDS = ['publication_date', 'publisher', 'edition', 'container_title', 'standard_status', 'standard_reference', 'volume', 'issue_number', 'pages'] as const;
 export type Field = (typeof WORK_FIELDS)[number] | (typeof RECORD_FIELDS)[number];
 export type Person = NonNullable<NormalizedMetadata['contributors']>[number];
 export type Match = ReturnType<typeof chooseImportedContributor>;
@@ -120,11 +120,13 @@ function buildPatches({ data, selected, workLocks, recordLocks }: ApplyInput) {
   const workPatch: Record<string, unknown> = {};
   const recordPatch: Record<string, unknown> = {};
   for (const field of selected) {
+    if (field === 'standard_reference') continue;
     const isWork = isWorkField(field);
     if ((isWork ? workLocks : recordLocks).includes(field)) continue;
     const value = data[field];
     if (value) (isWork ? workPatch : recordPatch)[field] = value;
   }
+  if (workPatch.work_type === 'standard' && !recordLocks.includes('record_type')) recordPatch.record_type = 'standard';
   if (selected.includes('publication_date') && data.publication_date_precision && !recordLocks.includes('publication_date')) {
     recordPatch.publication_date_precision = data.publication_date_precision;
   }
@@ -211,24 +213,34 @@ async function applyContributors(input: ApplyInput) {
 
 export async function applyMetadata(input: ApplyInput) {
   const { data, selectedCredits, includeCover, recordId, workId } = input;
+  const reference = input.selected.includes('standard_reference') && data.standard_scheme && data.standard_reference
+    ? parseStandardReference(data.standard_scheme, data.standard_reference) : undefined;
+  if (reference && !reference.ok) throw new Error('Invalid standard reference returned by the catalogue.');
   const { workPatch, recordPatch } = buildPatches(input);
   if (Object.keys(workPatch).length) {
     const { error } = await supabase.from('works').update(workPatch as never).eq('id', workId);
     if (error) throw error;
   }
-  if (Object.keys(workPatch).length || Object.keys(recordPatch).length || selectedCredits.length || includeCover) {
-    if ('container_title' in recordPatch) {
+  if (Object.keys(workPatch).length || Object.keys(recordPatch).length || selectedCredits.length || includeCover || reference?.ok) {
+    const metadataPatch: Record<string, unknown> = {};
+    for (const field of ['container_title', 'standard_status']) {
+      if (field in recordPatch) { metadataPatch[field] = recordPatch[field]; delete recordPatch[field]; }
+    }
+    if (data.source_url) metadataPatch.source_url = data.source_url;
+    if (Object.keys(metadataPatch).length) {
       const { data: current, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
       if (readError) throw readError;
       const metadata = meta(current.metadata);
-      if (!locks(metadata).includes('container_title')) {
-        recordPatch.metadata = { ...metadata, container_title: recordPatch.container_title };
-      }
-      delete recordPatch.container_title;
+      const unlocked = Object.fromEntries(Object.entries(metadataPatch).filter(([field]) => !locks(metadata).includes(field)));
+      if (Object.keys(unlocked).length) recordPatch.metadata = { ...metadata, ...unlocked };
     }
     recordPatch.metadata_source = data.source_provider;
     recordPatch.metadata_fetched_at = input.fetchedAt;
     const { error } = await supabase.from('records').update(recordPatch as never).eq('id', recordId);
+    if (error) throw error;
+  }
+  if (reference?.ok) {
+    const { error } = await supabase.from('identifiers').upsert({ record_id: recordId, scheme: reference.scheme, normalized_value: reference.normalized, original_value: reference.original }, { onConflict: 'record_id,scheme,normalized_value', ignoreDuplicates: true });
     if (error) throw error;
   }
   if (selectedCredits.length) await applyContributors(input);

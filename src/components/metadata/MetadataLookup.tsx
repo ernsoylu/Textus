@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
+import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import type { ImportedCandidate } from 'shared/names';
 import { metadataLookup, type MetadataResponse } from '@/lib/functions';
 import { applyMetadata, defaultSelection, isInvalidPerson, isWorkField, loadCandidates, locks, meta, suggestContributor, RECORD_FIELDS, WORK_FIELDS, type Field, type Person } from '@/lib/metadataApply';
@@ -10,8 +10,7 @@ import { Input } from '@/components/ui/input';
 import { MetadataProgress } from './MetadataProgress';
 
 type Work = { id: string; title: string; subtitle: string | null; abstract: string | null; language: string | null; work_type: string; metadata: unknown };
-type RecordValue = { id: string; title: string | null; publication_date: string | null; publication_date_precision: string | null; publisher: string | null; volume: string | null; issue_number: string | null; pages: string | null; metadata: unknown; record_contributors: { contributor_id: string; role: string; position: number; credited_as: string | null }[]; record_assets: { assets: { metadata: unknown } | null }[] };
-const SCHEMES: IdentifierScheme[] = ['isbn', 'doi', 'arxiv', 'pmid', 'issn'];
+type RecordValue = { id: string; title: string | null; publication_date: string | null; publication_date_precision: string | null; publisher: string | null; edition?: string | null; volume: string | null; issue_number: string | null; pages: string | null; metadata: unknown; identifiers?: { scheme: string; normalized_value: string }[]; record_contributors: { contributor_id: string; role: string; position: number; credited_as: string | null }[]; record_assets: { assets: { metadata: unknown } | null }[] };
 const displayValue = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '—');
 
 export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonly<{ work: Work; record: RecordValue; defaultScheme?: IdentifierScheme }>) {
@@ -36,7 +35,7 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
   async function lookup() {
     setError(''); setDone(''); setResponse(null);
     const parsed = parseIdentifier(scheme, value);
-    if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : `Invalid ${scheme.toUpperCase()} format.`); return; }
+    if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : (STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Enter the standard reference with its edition year, such as ISO/PAS 20065:2016(E).' : `Invalid ${scheme.toUpperCase()} format.`); return; }
     setPending(true);
     setProgressMessage(`Searching ${scheme.toUpperCase()} ${parsed.normalized}…`);
     try {
@@ -81,8 +80,8 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
   return <section className="flex flex-col gap-2 rounded-8 border border-border p-3" aria-label="Metadata lookup">
     <p className="text-label text-fg">Look up metadata</p>
     <div className="flex flex-wrap gap-2">
-      <select value={scheme} onChange={(e) => setScheme(e.target.value as IdentifierScheme)} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
-      <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Identifier" className="w-auto min-w-[190px] flex-1" />
+      <select value={scheme} onChange={(e) => setScheme(e.target.value as IdentifierScheme)} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{IDENTIFIER_SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
+      <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label="Lookup reference" placeholder={(STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Reference number, including year' : 'Identifier'} className="w-auto min-w-[190px] flex-1" />
       <Button onClick={lookup} isLoading={pending} disabled={!value.trim()}>Look up</Button>
     </div>
     <MetadataProgress message={pending ? progressMessage : undefined} />
@@ -94,11 +93,12 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
     {record.record_assets.flatMap(({ assets }) => { const author = meta(assets?.metadata).author_suggestion; return typeof author === 'string' && author.trim() ? [author] : []; }).map((author) => <p key={author} className="text-small text-muted">File author suggestion: {author}</p>)}
     {data && <div className="flex flex-col gap-2">
       <p className="text-small text-muted">From {data.source_provider}{response?.status === 'success' && response.fromCache ? ' · cached' : ''}. Choose fields to apply.</p>
+      {data.source_url?.startsWith('https://') && <a href={data.source_url} target="_blank" rel="noreferrer" className="text-small text-green underline">Open source catalogue</a>}
       {data.role_warning && <p className="text-small text-yellow">{data.role_warning}</p>}
       {[...WORK_FIELDS, ...RECORD_FIELDS].filter((field) => data[field]).map((field) => {
         const isWork = isWorkField(field);
         const locked = (isWork ? workLocks : recordLocks).includes(field);
-        const current = field === 'container_title' ? meta(record.metadata).container_title : isWork ? work[field as keyof Work] : record[field as keyof RecordValue];
+        const current = field === 'container_title' || field === 'standard_status' ? meta(record.metadata)[field] : field === 'standard_reference' ? record.identifiers?.find((identifier) => identifier.scheme === data.standard_scheme)?.normalized_value : isWork ? work[field as keyof Work] : record[field as keyof RecordValue];
         return <div key={field} className="flex items-start gap-2 text-small text-fg"><label><input type="checkbox" checked={selected.includes(field)} disabled={locked} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, field] : prev.filter((f) => f !== field))} /> {field === 'container_title' ? 'Journal / container title' : field.replaceAll('_', ' ')}: {displayValue(current)} → {data[field]}{locked ? ' (locked)' : ''}</label>{locked && <button type="button" className="text-green underline" onClick={() => unlock(field, isWork)}>Unlock</button>}</div>;
       })}
       {recordLocks.includes('contributors') && <button type="button" className="text-left text-small text-green underline" onClick={() => unlock('contributors', false)}>Contributor credits locked by manual edit. Unlock credits</button>}

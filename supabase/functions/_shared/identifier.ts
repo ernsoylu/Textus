@@ -2,7 +2,20 @@
 // Dependency-free so both the SPA and Edge Functions can import it (§12). CLAUDE.md
 // invariant 2: identifiers are validated and normalized here, never stored as JSONB.
 
-export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid';
+export const STANDARD_SCHEMES = ['iso', 'iec', 'astm', 'asme', 'bs'] as const;
+export type StandardScheme = (typeof STANDARD_SCHEMES)[number];
+export const IDENTIFIER_SCHEMES = ['isbn', 'doi', 'issn', 'arxiv', 'pmid', ...STANDARD_SCHEMES] as const;
+export type IdentifierScheme = (typeof IDENTIFIER_SCHEMES)[number];
+
+export function parseStandardReference(scheme: StandardScheme, raw: string): IdentifierResult {
+  let value = raw.trim().toUpperCase().replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\((?:E|F|R|EN|FR|DE)\)$/, '').replace(/\s+/g, '');
+  if (value.includes('://')) return { ok: false, reason: 'invalid_format' };
+  if (!/^(?:ISO|IEC|ASTM|ASME|BS)/.test(value)) value = scheme.toUpperCase() + value;
+  const prefixMatches = scheme === 'iec' ? /^(?:IEC|ISO\/IEC)/.test(value) : value.startsWith(scheme.toUpperCase());
+  const hasYear = scheme === 'astm' ? /-\d{2,4}[A-Z]?\d?(?:\(\d{4}\))?(?:$|[+/])/.test(value) : /[:-](?:19|20)\d{2}(?:$|[+/])/.test(value);
+  if (!prefixMatches || !hasYear || !/^[A-Z0-9/.:+()-]{5,200}$/.test(value)) return { ok: false, reason: 'invalid_format' };
+  return { ok: true, scheme, normalized: value, original: raw };
+}
 
 export interface IdentifierOk {
   ok: true;
@@ -124,6 +137,11 @@ const PARSERS: Record<IdentifierScheme, (raw: string) => IdentifierResult> = {
   issn: parseIssn,
   arxiv: parseArxiv,
   pmid: parsePmid,
+  iso: (raw) => parseStandardReference('iso', raw),
+  iec: (raw) => parseStandardReference('iec', raw),
+  astm: (raw) => parseStandardReference('astm', raw),
+  asme: (raw) => parseStandardReference('asme', raw),
+  bs: (raw) => parseStandardReference('bs', raw),
 };
 
 export function parseIdentifier(scheme: IdentifierScheme, raw: string): IdentifierResult {

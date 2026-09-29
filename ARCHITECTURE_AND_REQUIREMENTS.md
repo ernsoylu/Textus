@@ -230,6 +230,8 @@ Never conflate levels: a PDF is not a book. It is an asset linked to a record, w
 
 ### 6.2 Identifier rules
 
+Standards use `iso`, `iec`, `astm`, `asme` or `bs` schemes. References require an edition year; normalization removes whitespace and a trailing language marker such as `(E)` and preserves parts, amendments and reapproval years. A request such as `ISO/PAS20065:2016(E)` matches `ISO/PAS 20065:2016`. Catalogue lookup never substitutes a different edition. Apply stores the reference in `identifiers`, native record fields such as revision in `records`, and status/source URL in `records.metadata`, while preserving manual locks. Applying work type Standard changes an unlocked record type to Standard.
+
 Stored in the `identifiers` table — never in JSONB. `original_value` keeps what the user typed; `normalized_value` is used for matching and deduplication.
 
 | Scheme | Accepted input | Validation | Normalized form |
@@ -561,7 +563,7 @@ CREATE INDEX idx_records_metadata ON records USING GIN(metadata);
 CREATE TABLE identifiers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     record_id UUID NOT NULL REFERENCES records(id) ON DELETE CASCADE,
-    scheme TEXT NOT NULL CHECK (scheme IN ('isbn', 'doi', 'issn', 'arxiv', 'pmid')),
+    scheme TEXT NOT NULL CHECK (scheme IN ('isbn', 'doi', 'issn', 'arxiv', 'pmid', 'iso', 'iec', 'astm', 'asme', 'bs')),
     normalized_value TEXT NOT NULL,
     original_value TEXT,
     is_primary BOOLEAN DEFAULT FALSE,
@@ -1275,7 +1277,7 @@ Fetches and normalizes metadata for one identifier.
 
 ```typescript
 interface MetadataRequest {
-    identifier: { scheme: 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid'; value: string };
+    identifier: { scheme: IdentifierScheme; value: string };
     bypassCache?: boolean;
 }
 
@@ -1400,7 +1402,7 @@ Properties:
 
 ## 10. External metadata providers
 
-Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`, `archive.org`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
+Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`, `archive.org`, `api.firecrawl.dev`; catalogue results are restricted to official HTTPS product pages at `www.iso.org`, `webstore.iec.ch`, `store.astm.org`, `www.asme.org` and `knowledge.bsigroup.com`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
 
 | Scheme | Provider order |
 |--------|---------------|
@@ -1409,6 +1411,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | `arxiv` | arXiv API → Semantic Scholar (`ARXIV:{id}`) |
 | `pmid` | Semantic Scholar (`PMID:{id}`) |
 | `issn` | Crossref journals (`/journals/{issn}`) |
+| `iso`, `iec`, `astm`, `asme`, `bs` | Official ISO, IEC Webstore, ASTM Store, ASME or BSI Knowledge catalogue, discovered and read through Firecrawl |
 
 | Provider | Endpoint | Auth | Etiquette / limits (verify before release) |
 |----------|----------|------|-------------------------------------------|
@@ -1418,6 +1421,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | Semantic Scholar | `https://api.semanticscholar.org/graph/v1/paper/{id}` | Optional `x-api-key` | Unauthenticated calls share a global pool and may be throttled |
 | Google Books | `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}` | API key (effectively required) | The unauthenticated shared quota was exhausted when checked; skip this provider when no key is configured |
 | Internet Archive | `https://archive.org/advancedsearch.php?q=isbn:{isbn} AND mediatype:texts&output=json` | None | Exact ISBN search, one result; search dates retain year precision because the index expands year-only dates |
+| Official standards catalogues through Firecrawl | `https://api.firecrawl.dev/v2/search`, `/scrape` | Server-only `FIRECRAWL_API_KEY` | Search one authority, inspect at most three official product pages, validate exact reference/year before accepting metadata; typed failures and 30-day success cache |
 
 **Contributor data per provider** (checked against live responses):
 
@@ -1432,7 +1436,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 
 When sources disagree on roles, Crossref wins. A provider listing people as authors on a record whose title or `by_statement` says "edited" is shown as a role warning in the preview.
 
-Provider parsers live together in `supabase/functions/metadata-lookup/index.ts`; mocked-response tests cover each provider. Shared identifier validation lives in `supabase/functions/_shared/identifier.ts` and is re-exported to the SPA from `shared/identifier.ts`.
+Bibliographic provider parsers live in `supabase/functions/metadata-lookup/index.ts`, with official standards catalogue lookup in `standards.ts`; mocked-response tests cover each provider. Shared identifier validation lives in `supabase/functions/_shared/identifier.ts` and is re-exported to the SPA from `shared/identifier.ts`.
 
 ---
 
@@ -1459,7 +1463,7 @@ export type AssetRow = Tables<'assets'>;
 export type ReadingStateRow = Tables<'reading_states'>;
 export type AnnotationRow = Tables<'annotations'>;
 
-export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid';
+export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid' | 'iso' | 'iec' | 'astm' | 'asme' | 'bs';
 export type WorkType = 'book' | 'article' | 'serial' | 'thesis' | 'report' | 'standard' | 'other';
 export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'html' | 'txt' | 'image';
 export type ReadingStatus = 'unread' | 'reading' | 'finished' | 'abandoned';
@@ -1488,6 +1492,10 @@ export interface NormalizedMetadata {
     publication_date_precision?: 'year' | 'month' | 'day';
     publisher?: string;
     container_title?: string | null;        // journal / proceedings, null when checked but unavailable
+    edition?: string;
+    standard_scheme?: 'iso' | 'iec' | 'astm' | 'asme' | 'bs';
+    standard_reference?: string;            // transient response; saved in identifiers
+    standard_status?: string;
     language?: string;                     // BCP 47
     abstract?: string;
     identifiers: Array<{ scheme: IdentifierScheme; value: string }>;

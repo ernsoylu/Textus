@@ -9,7 +9,7 @@ export const RECORD_TYPE_LABELS: Record<(typeof RECORD_TYPES)[number], string> =
 };
 
 export function defaultIdentifierScheme(recordType: string) {
-  return recordType === 'issue' ? 'issn' : ['article_version', 'thesis', 'report'].includes(recordType) ? 'doi' : 'isbn';
+  return recordType === 'standard' ? 'iso' : recordType === 'issue' ? 'issn' : ['article_version', 'thesis', 'report'].includes(recordType) ? 'doi' : 'isbn';
 }
 
 // The first record's type follows the work type (§6.1); a serial starts with no record,

@@ -1,11 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
+import { IDENTIFIER_SCHEMES, parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-const SCHEMES: IdentifierScheme[] = ['isbn', 'doi', 'issn', 'arxiv', 'pmid'];
 
 // FR-CAT-4: validate and normalize before writing (shared/identifier.ts, never JSONB).
 // FR-CAT-5: warn — not block — when the normalized value is already in the user's library.
@@ -73,7 +72,7 @@ export function AddIdentifierForm({ recordId, defaultScheme = 'isbn' }: Readonly
         value={scheme}
         onChange={(e) => setScheme(e.target.value as IdentifierScheme)}
       >
-        {SCHEMES.map((s) => (
+        {IDENTIFIER_SCHEMES.map((s) => (
           <option key={s} value={s}>
             {s.toUpperCase()}
           </option>

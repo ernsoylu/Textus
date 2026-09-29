@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { parseIdentifier, parseAuthorityIdentifier } from './identifier';
 
+it('normalizes standard references without losing editions or amendments', () => {
+  for (const [scheme, raw, normalized] of [
+    ['iso', 'ISO/PAS20065:2016(E)', 'ISO/PAS20065:2016'],
+    ['iso', 'ISO/IEC 27001:2022', 'ISO/IEC27001:2022'],
+    ['iec', 'IEC 60335-1:2020+AMD1:2025', 'IEC60335-1:2020+AMD1:2025'],
+    ['astm', 'D638-14', 'ASTMD638-14'],
+    ['astm', 'ASTM D638-14(2022)', 'ASTMD638-14(2022)'],
+    ['asme', 'ASME B31.3-2024', 'ASMEB31.3-2024'],
+    ['bs', 'BS EN ISO 9001:2015', 'BSENISO9001:2015'],
+  ] as const) expect(parseIdentifier(scheme, raw)).toMatchObject({ ok: true, scheme, normalized });
+  expect(parseIdentifier('iso', 'ISO 9001')).toMatchObject({ ok: false });
+  expect(parseIdentifier('iso', 'IEC 60335-1:2020')).toMatchObject({ ok: false });
+  expect(parseIdentifier('iso', 'https://example.com/ISO9001:2015')).toMatchObject({ ok: false });
+});
+
 describe('isbn (§6.2)', () => {
   it('accepts a valid ISBN-13 and normalizes to digits only', () => {
     const r = parseIdentifier('isbn', '978-0-13-468599-1');

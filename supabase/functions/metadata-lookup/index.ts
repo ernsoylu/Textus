@@ -1,19 +1,20 @@
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
-import { parseIdentifier } from '../_shared/identifier.ts';
+import { readCapped } from '../_shared/http.ts';
+import { standardProvider } from './standards.ts';
+import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, type IdentifierScheme, type StandardScheme, parseIdentifier } from '../_shared/identifier.ts';
 import { stripTags, xmlElementText } from '../_shared/text.ts';
 
 const RequestSchema = z.object({
-  identifier: z.object({ scheme: z.enum(['isbn', 'doi', 'issn', 'arxiv', 'pmid']), value: z.string().min(1).max(300) }),
+  identifier: z.object({ scheme: z.enum(IDENTIFIER_SCHEMES), value: z.string().min(1).max(300) }),
   bypassCache: z.boolean().optional(),
 });
 const CoverSchema = z.object({ action: z.literal('queue-cover'), recordId: z.string().uuid(), url: z.string().url().max(1000) });
-type Metadata = { title?: string; subtitle?: string; abstract?: string; language?: string; publication_date?: string; publication_date_precision?: 'year' | 'month' | 'day'; publisher?: string; container_title?: string | null; volume?: string; issue_number?: string; pages?: string; contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[]; cover_url?: string; role_warning?: string; source_provider: string; source_url?: string; work_type: string };
-type Lookup = { kind: 'success'; data: Metadata } | { kind: 'not_found' } | { kind: 'rate_limited'; retryAfterMs: number } | { kind: 'provider_error'; message: string };
+export type Metadata = { title?: string; subtitle?: string; abstract?: string; language?: string; publication_date?: string; publication_date_precision?: 'year' | 'month' | 'day'; publisher?: string; edition?: string; standard_scheme?: StandardScheme; standard_reference?: string; standard_status?: string; container_title?: string | null; volume?: string; issue_number?: string; pages?: string; contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[]; cover_url?: string; role_warning?: string; source_provider: string; source_url?: string; work_type: string };
+export type Lookup = { kind: 'success'; data: Metadata } | { kind: 'not_found' } | { kind: 'rate_limited'; retryAfterMs: number } | { kind: 'provider_error'; message: string };
 
 const HOSTS = new Set(['openlibrary.org', 'api.crossref.org', 'export.arxiv.org', 'api.semanticscholar.org', 'www.googleapis.com', 'archive.org']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const MAX_RESPONSE_BYTES = 5_000_000;
 
 async function fetchFollowingRedirects(start: URL, headers: Record<string, string>): Promise<Response> {
   if (!HOSTS.has(start.hostname) || start.protocol !== 'https:') throw new Error('provider host is not allowed');
@@ -28,25 +29,6 @@ async function fetchFollowingRedirects(start: URL, headers: Record<string, strin
     if (next.protocol !== 'https:' || next.hostname !== url.hostname || !HOSTS.has(next.hostname)) throw new Error('provider redirect host is not allowed');
     url = next;
   }
-}
-
-async function readCapped(response: Response): Promise<string> {
-  if (Number(response.headers.get('content-length') ?? 0) > MAX_RESPONSE_BYTES) throw new Error('provider response too large');
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('provider returned no body');
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > MAX_RESPONSE_BYTES) { await reader.cancel(); throw new Error('provider response too large'); }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  return new TextDecoder().decode(bytes);
 }
 
 async function get(url: URL, headers: Record<string, string> = {}): Promise<{ response: Response; body: string }> {
@@ -285,6 +267,7 @@ function retryAfterMs(response: Response): number {
 
 export async function provider(name: string, id: string): Promise<Lookup> {
   try {
+    if ((STANDARD_SCHEMES as readonly string[]).includes(name)) return await standardProvider(name as StandardScheme, id);
     const { url, headers } = providerRequest(name, id);
     const { response, body } = await get(url, headers);
     if (response.status === 404) return { kind: 'not_found' };
@@ -325,18 +308,19 @@ async function cachedLookup(ctx: SupabaseContext, scheme: string, id: string): P
   return Response.json({ status: 'success', data: cached.response_data, fromCache: true, fetchedAt: cached.fetched_at ?? new Date().toISOString() });
 }
 
-export function providersFor(scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn'): string[] {
+export function providersFor(scheme: IdentifierScheme): string[] {
   switch (scheme) {
     case 'isbn': return ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : []), 'internet_archive'];
     case 'doi': return ['crossref', 'semantic_scholar'];
     case 'arxiv': return ['arxiv', 'semantic_scholar'];
     case 'pmid': return ['semantic_scholar'];
     case 'issn': return ['crossref_journal'];
+    case 'iso': case 'iec': case 'astm': case 'asme': case 'bs': return [scheme];
     default: { const exhaustive: never = scheme; throw new Error(`Unhandled scheme ${exhaustive}`); }
   }
 }
 
-export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn', id: string): Promise<Response> {
+export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: IdentifierScheme, id: string): Promise<Response> {
   const providers = providersFor(scheme);
   let failure: { provider: string; result: Lookup } | undefined;
   let data: Metadata | undefined;

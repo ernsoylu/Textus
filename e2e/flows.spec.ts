@@ -106,6 +106,47 @@ test('filter by real work types and save specialized article metadata', async ({
   expect(payload.metadata).toMatchObject({ container_title: 'New journal', version: 'published', locked_fields: expect.arrayContaining(['contributors', 'container_title']) });
 });
 
+test('look up an ISO reference and apply its metadata and identifier', async ({ page }) => {
+  await mocks(page);
+  const record = { ...work.records[0], identifiers: [] as { scheme: string; normalized_value: string }[], metadata: { locked_fields: ['contributors'], version: 'existing' } };
+  const standard = { ...work, records: [record] };
+  await page.route('**/rest/v1/works?*', (route) => {
+    if (route.request().method() === 'PATCH') Object.assign(standard, route.request().postDataJSON());
+    return route.fulfill({ json: standard });
+  });
+  await page.route('**/rest/v1/records?*', (route) => {
+    if (route.request().method() === 'PATCH') Object.assign(record, route.request().postDataJSON());
+    return route.fulfill({ json: new URL(route.request().url()).searchParams.has('id') ? record : [] });
+  });
+  await page.route('**/rest/v1/identifiers?*', (route) => {
+    const value = route.request().postDataJSON();
+    record.identifiers.push({ scheme: value.scheme, normalized_value: value.normalized_value });
+    return route.fulfill({ json: [] });
+  });
+  await page.route('**/functions/v1/metadata-lookup', (route) => route.fulfill({ json: {
+    status: 'success', fromCache: false, fetchedAt: '2026-09-30', data: {
+      title: 'Acoustics — Objective method for assessing tones in noise', work_type: 'standard',
+      source_provider: 'iso', source_url: 'https://www.iso.org/standard/66941.html',
+      standard_scheme: 'iso', standard_reference: 'ISO/PAS 20065:2016', standard_status: 'Withdrawn',
+      publisher: 'ISO', edition: '1', publication_date: '2016-03-01', publication_date_precision: 'month',
+    },
+  } }));
+  await page.goto(`/library/${workId}`);
+  const lookup = page.getByRole('region', { name: 'Metadata lookup' });
+  await expect(lookup.getByLabel('Identifier scheme').locator('option')).toContainText(['ISO', 'IEC', 'ASTM', 'ASME', 'BS']);
+  await lookup.getByLabel('Identifier scheme').selectOption('iso');
+  await lookup.getByLabel('Lookup reference').fill('ISO/PAS20065:2016(E)');
+  await lookup.getByRole('button', { name: 'Look up', exact: true }).click();
+  await expect(lookup.getByText('standard reference:', { exact: false })).toBeVisible();
+  await expect(lookup.getByRole('link', { name: 'Open source catalogue' })).toHaveAttribute('href', 'https://www.iso.org/standard/66941.html');
+  await lookup.getByRole('button', { name: 'Apply selected metadata' }).click();
+  await expect(page.getByLabel('Work type', { exact: true })).toHaveValue('standard');
+  await expect(page.getByLabel('Record type')).toHaveValue('standard');
+  await expect(page.getByLabel('Revision')).toHaveValue('1');
+  expect(record.identifiers).toEqual([{ scheme: 'iso', normalized_value: 'ISO/PAS20065:2016' }]);
+  expect(record.metadata).toMatchObject({ version: 'existing', standard_status: 'Withdrawn', source_url: 'https://www.iso.org/standard/66941.html', locked_fields: ['contributors'] });
+});
+
 test('save, display, and clear a personal book rating', async ({ page }) => {
   await mocks(page);
   const book = { ...work };

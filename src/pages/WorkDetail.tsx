@@ -78,6 +78,8 @@ export function WorkDetail() {
           {record.byline && <p className="text-small text-muted">{record.byline}</p>}
           <MetadataProgress message={metadataJobs.data?.[record.id]} />
           {record.metadata_source && <p className="text-small text-muted">Metadata from {record.metadata_source}{record.metadata_fetched_at ? ` · fetched ${new Date(record.metadata_fetched_at).toLocaleDateString()}` : ''}</p>}
+          {typeof meta(record.metadata).standard_status === 'string' && <p className="text-small text-muted">Status: {String(meta(record.metadata).standard_status)}</p>}
+          {typeof meta(record.metadata).source_url === 'string' && String(meta(record.metadata).source_url).startsWith('https://') && <a className="text-small text-green underline" href={String(meta(record.metadata).source_url)} target="_blank" rel="noreferrer">Source catalogue</a>}
 
           {(record.record_type === 'chapter' || record.record_type === 'article_version') && (
             <ContainerPicker workId={data.id} recordId={record.id} containerId={record.container_record_id} />

@@ -287,6 +287,7 @@ The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it mu
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
 | `SEMANTIC_SCHOLAR_API_KEY` | Edge Functions | Optional |
 | `GOOGLE_BOOKS_API_KEY` | Edge Functions | Optional |
+| `FIRECRAWL_API_KEY` | Edge Functions only | Required for ISO/IEC/ASTM/ASME/BS reference lookup |
 
 On self-hosted Supabase, pass provider keys through the `functions` service's `docker-compose.yml` environment and recreate that service after changing `.env`. The SPA never receives these keys. Semantic Scholar may rate-limit unauthenticated PMID requests.
 
@@ -346,3 +347,18 @@ GNU Affero General Public License v3.0 — see [LICENSE](LICENSE).
 - [Calibre](https://calibre-ebook.com/) — inspiration for ebook management
 - [Supabase](https://supabase.com/) — backend platform
 - [Open Library](https://openlibrary.org/), [Crossref](https://www.crossref.org/), [Semantic Scholar](https://www.semanticscholar.org/), [arXiv](https://arxiv.org/) — metadata sources
+
+### Standards metadata lookup
+
+Choose ISO, IEC, ASTM, ASME or BS under **Look up metadata** and enter the full reference with its edition year, for example `ISO/PAS20065:2016(E)`, `IEC 60335-1:2020`, `ASTM D638-14`, `ASME B31.3-2024` or `BS EN ISO 9001:2015`. Review the catalogue source and selected fields, then apply. Missing matches and inaccessible catalogues return an error rather than metadata from another edition.
+
+Standards lookup uses Firecrawl search and structured extraction of official catalogue pages. Set `FIRECRAWL_API_KEY` in the server's Supabase `.env` and pass it to the `functions` service through a compose override:
+
+```yaml
+services:
+  functions:
+    environment:
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+```
+
+Recreate the functions service after configuring the key. Keep this key out of `VITE_*` variables and frontend environment files.

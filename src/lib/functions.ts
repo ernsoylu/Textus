@@ -1,5 +1,5 @@
 import { supabase, supabaseUrl } from './supabase';
-import type { IdentifierScheme } from 'shared/identifier';
+import type { IdentifierScheme, StandardScheme } from 'shared/identifier';
 
 // Typed Edge Function invocations (§12). Edge Functions authenticate the caller from the
 // Authorization JWT themselves (§8) — this just attaches the current session's access token.
@@ -48,6 +48,10 @@ export interface NormalizedMetadata {
   publication_date?: string;
   publication_date_precision?: 'year' | 'month' | 'day';
   publisher?: string;
+  edition?: string;
+  standard_scheme?: StandardScheme;
+  standard_reference?: string;
+  standard_status?: string;
   container_title?: string | null;
   volume?: string;
   issue_number?: string;
