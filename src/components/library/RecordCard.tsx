@@ -23,10 +23,10 @@ export function RecordCard({ workId, title, byline, meta, detail, metadataMessag
       {coverUrl ? (
         <img src={coverUrl} alt="" loading="lazy" className="h-[var(--cover-h)] w-full rounded-4 bg-green-bg object-contain" />
       ) : (
-        <div className="flex h-[var(--cover-h)] w-full flex-col justify-between rounded-4 bg-green-bg p-4">
-          <p className="text-small w-full text-muted">TEXTUS / LIBRARY</p>
-          <p className="text-heading w-full text-fg">{title}</p>
-          <p className="text-small w-full text-fg">{byline || 'Unattributed'}</p>
+        <div className="flex h-[var(--cover-h)] w-full shrink-0 flex-col justify-between gap-2 overflow-hidden rounded-4 bg-green-bg p-4">
+          <p className="text-small w-full shrink-0 text-muted">TEXTUS / LIBRARY</p>
+          <p className="text-heading min-h-0 w-full line-clamp-[var(--cover-title-lines)] break-words text-fg">{title}</p>
+          <p className="text-small w-full shrink-0 line-clamp-2 break-words text-fg">{byline || 'Unattributed'}</p>
         </div>
       )}
       <p className="text-label w-full text-fg">{title}</p>

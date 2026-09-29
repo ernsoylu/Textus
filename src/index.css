@@ -16,9 +16,11 @@
 /* Appearance settings (src/lib/appearance.ts). */
 :root {
   --cover-h: 260px;
+  --cover-title-lines: 5;
 }
 :root[data-density='compact'] {
   --cover-h: 170px;
+  --cover-title-lines: 2;
 }
 :root[data-motion='reduce'] *,
 :root[data-motion='reduce'] *::before,

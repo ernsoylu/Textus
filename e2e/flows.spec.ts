@@ -69,6 +69,35 @@ async function mocks(page: Page, signedIn = true) {
   await page.route('**/reader-fixture.pdf**', (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: pdfFixture() }));
 }
 
+test('long fallback cover titles stay inside the thumbnail in both densities', async ({ page }) => {
+  await mocks(page);
+  const title = 'A very long book title '.repeat(30);
+  await page.route('**/rest/v1/rpc/library_page', (route) => route.fulfill({ json: [{ ...libraryRow, title }] }));
+  await page.goto('/library');
+  const card = page.locator(`a[href="/library/${workId}"]`);
+  await expect(card).toBeVisible();
+  for (const density of ['comfortable', 'compact']) {
+    await page.evaluate((value) => { document.documentElement.dataset.density = value; }, density);
+    const bounds = await card.evaluate((element) => {
+      const cover = element.firstElementChild!;
+      const title = cover.children[1] as HTMLElement;
+      const byline = cover.children[2];
+      return {
+        clipped: title.scrollHeight > title.clientHeight,
+        titleBottom: title.getBoundingClientRect().bottom,
+        bylineTop: byline.getBoundingClientRect().top,
+        bylineBottom: byline.getBoundingClientRect().bottom,
+        coverBottom: cover.getBoundingClientRect().bottom,
+        fullTitle: element.children[1].textContent,
+      };
+    });
+    expect(bounds.clipped).toBe(true);
+    expect(bounds.titleBottom).toBeLessThanOrEqual(bounds.bylineTop);
+    expect(bounds.bylineBottom).toBeLessThanOrEqual(bounds.coverBottom);
+    expect(bounds.fullTitle).toBe(title);
+  }
+});
+
 test('sign in, search the library, and pass the library accessibility scan', async ({ page }) => {
   await mocks(page, false);
   await page.goto('/login');

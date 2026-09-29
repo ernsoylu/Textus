@@ -61,10 +61,10 @@ export function Overview() {
             {current.coverPath && covers.data?.get(current.coverPath) ? (
               <img src={covers.data.get(current.coverPath)} alt="" className="h-[230px] w-full rounded-4 object-cover" />
             ) : (
-              <div className="flex h-[230px] flex-col justify-between rounded-4 bg-green-bg p-3">
-                <p className="text-small text-muted">TEXTUS / LIBRARY</p>
-                <p className="text-label text-fg">{current.title}</p>
-                <p className="text-small text-fg">{current.byline}</p>
+              <div className="flex h-[230px] flex-col justify-between gap-2 overflow-hidden rounded-4 bg-green-bg p-3">
+                <p className="text-small shrink-0 text-muted">TEXTUS / LIBRARY</p>
+                <p className="text-label min-h-0 line-clamp-5 break-words text-fg">{current.title}</p>
+                <p className="text-small shrink-0 line-clamp-2 break-words text-fg">{current.byline}</p>
               </div>
             )}
           </div>
