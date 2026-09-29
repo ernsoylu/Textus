@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-Self--hosted-green)](https://supabase.com/docs/guides/self-hosting)
 
-> **Status:** pre-alpha, in-house development. M1 is functionally complete except OAuth, which is deferred until release planning; M2 metadata is implemented, and its Edge Functions are deployed.
+> **Status:** pre-alpha, in-house development. Milestones M1–M5 are implemented except OAuth, which is deferred until release planning. What is left (polish, hardening, unbuilt design states) is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 > The full specification lives in [ARCHITECTURE_AND_REQUIREMENTS.md](ARCHITECTURE_AND_REQUIREMENTS.md).
 
 ## What is Textus?
@@ -27,44 +27,44 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 ## Features
 
 ### Document management
-- [ ] Upload PDF, EPUB, MOBI with server-side format detection
-- [ ] Automatic metadata retrieval via ISBN, DOI, arXiv, ISSN
-- [ ] Manual metadata entry with validation
-- [ ] Multiple file formats per record
-- [ ] Cover extraction from files or retrieval from providers
-- [ ] Duplicate detection (by identifier or file checksum)
+- [x] Upload PDF, EPUB, MOBI with server-side format detection
+- [x] Automatic metadata retrieval via ISBN, DOI, arXiv, ISSN
+- [x] Manual metadata entry with validation
+- [x] Multiple file formats per record
+- [x] Cover extraction from files or retrieval from providers
+- [x] Duplicate detection (by identifier or file checksum)
 
 ### Authors and contributors
-- [ ] Contributors are identities, not name strings — two people named "John Smith" stay separate, and "J. Smith" / "Smith, John A." can be linked to one person
-- [ ] Roles per credit: author, editor, compiler, translator, illustrator, series editor, introduction
-- [ ] Edited volumes: bylines and citations fall back to editors when there are no authors; chapters link to their volume
-- [ ] Name variants, pseudonyms, ORCID/ISNI/VIAF/Wikidata IDs
-- [ ] Automatic matching with a review queue; merge, split, and "not the same person"
+- [x] Contributors are identities, not name strings — two people named "John Smith" stay separate, and "J. Smith" / "Smith, John A." can be linked to one person
+- [x] Roles per credit: author, editor, compiler, translator, illustrator, series editor, introduction
+- [x] Edited volumes: bylines and citations fall back to editors when there are no authors; chapters link to their volume
+- [x] Name variants, pseudonyms, ORCID/ISNI/VIAF/Wikidata IDs
+- [x] Automatic matching with a review queue; merge, split, and "not the same person"
 
 ### Organization
-- [ ] Colored tags
-- [ ] Collections (shelves)
-- [ ] Full-text and fuzzy search across metadata
-- [ ] Filter by type, author, tag, date, format, language
-- [ ] Sorting and saved searches (virtual libraries)
+- [x] Colored tags
+- [x] Collections (shelves)
+- [x] Full-text and fuzzy search across metadata
+- [x] Filter by type, author, tag, date, format, language
+- [x] Sorting and saved searches (virtual libraries)
 
 ### Reading
-- [ ] In-browser PDF viewer
-- [ ] In-browser EPUB viewer
-- [ ] Reading progress (percentage, page, position)
-- [ ] Color-coded highlights and notes
-- [ ] Annotation export (Markdown, JSON)
+- [x] In-browser PDF viewer
+- [x] In-browser EPUB viewer
+- [x] Reading progress (percentage, page, position)
+- [x] Color-coded highlights and notes
+- [x] Annotation export (Markdown, JSON)
 
 ### Research
-- [ ] DOI lookup via Crossref
-- [ ] arXiv preprint lookup
-- [ ] BibTeX, RIS, CSL-JSON export
-- [ ] Link preprints to published versions
+- [x] DOI lookup via Crossref
+- [x] arXiv preprint lookup
+- [x] BibTeX, RIS, CSL-JSON export
+- [x] Link preprints to published versions
 
 ### Magazines
-- [ ] Serial (journal/magazine) management
-- [ ] Issues with volume/number
-- [ ] Article-level records within issues
+- [x] Serial (journal/magazine) management
+- [x] Issues with volume/number
+- [x] Article-level records within issues
 
 ---
 
@@ -263,17 +263,18 @@ Provider API keys (Crossref, Semantic Scholar, Google Books) go in the Supabase 
 
 ### 4. Frontend
 
-Vite inlines `VITE_*` variables at **build time**, so pass them as build arguments, not runtime environment:
+Vite inlines `VITE_*` variables at **build time**, so they are build arguments, not runtime environment. The provided image serves the SPA with nginx and **proxies `/auth`, `/rest`, `/storage` and `/functions` to the Supabase gateway over Docker's internal network**, so the browser only talks to one origin and API calls skip the public gateway. Run it on the same host as Supabase and join Supabase's compose network:
 
 ```bash
-docker build \
-  --build-arg VITE_SUPABASE_URL=https://supabase.example.com \
-  --build-arg VITE_SUPABASE_ANON_KEY=<anon-key> \
-  -t textus .
-docker run -p 3000:80 textus
+echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL is not needed
+docker compose up -d --build                                  # serves on :8080 (TEXTUS_PORT to change)
 ```
 
-The image is a static build served by any web server (e.g. nginx).
+`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). If Supabase runs elsewhere, set `VITE_SUPABASE_URL` at build time and adjust or drop the proxy.
+
+Point Supabase Auth at the app so magic links and recovery links land on it: set `SITE_URL` (and `ADDITIONAL_REDIRECT_URLS`) to the app's URL in the Supabase `.env`, then `docker compose up -d auth`. Auth emails also need a working SMTP server (`SMTP_*` in the same `.env`); without one, generate links with the admin API (`/auth/v1/admin/generate_link`).
+
+The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it must be reachable without a JWT: `verify_jwt = false` locally (already in `supabase/config.toml`) and `--no-verify-jwt` on hosted projects; the self-hosted `main` router does not verify JWTs unless `VERIFY_JWT=true`.
 
 ### Environment variables
 

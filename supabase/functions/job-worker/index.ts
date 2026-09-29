@@ -16,6 +16,7 @@ import { withSupabase } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { provider } from '../metadata-lookup/index.ts';
+import { runCleanup } from './cleanup.ts';
 
 interface Job {
   id: string;
@@ -254,11 +255,18 @@ const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   extract_text: extractText,
   process_cover: processCover,
   fetch_metadata: fetchMetadata,
+  cleanup: (admin) => runCleanup(admin),
 };
 
 export default {
   fetch: withSupabase({ auth: 'secret' }, async (_req, ctx) => {
     await ctx.supabaseAdmin.rpc('expire_stale_jobs');
+
+    // One system-wide cleanup a day; the idempotency key makes every later tick a no-op.
+    await ctx.supabaseAdmin.from('jobs').upsert(
+      { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
+      { onConflict: 'idempotency_key', ignoreDuplicates: true },
+    );
 
     const { data: jobs, error: claimError } = await ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 5 });
     if (claimError) return Response.json({ error: claimError.message }, { status: 500 });

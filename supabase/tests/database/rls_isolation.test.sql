@@ -2,7 +2,7 @@
 -- Runs in a transaction and rolls back. `supabase test db`, or pipe into psql as postgres.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(54);
+SELECT plan(58);
 
 -- ---------- Fixtures for user A (as postgres, bypassing RLS) ----------
 INSERT INTO auth.users (id, email) VALUES
@@ -120,6 +120,16 @@ SELECT throws_ok($$INSERT INTO record_tags (record_id, tag_id) VALUES ('a0000000
     '42501', NULL, 'B cannot put own tag on A''s record');
 SELECT throws_ok($$INSERT INTO records (work_id, container_record_id, record_type) VALUES ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'chapter')$$,
     '42501', NULL, 'B cannot nest own record inside A''s record');
+
+-- Reading state and annotations must reference the caller's own record and asset (§15 #3).
+SELECT throws_ok($$INSERT INTO reading_states (user_id, record_id) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002')$$,
+    '42501', NULL, 'B cannot track reading on A''s record');
+SELECT throws_ok($$INSERT INTO annotations (user_id, record_id, asset_id, anchor_type, anchor_data) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000005', 'pdf_page', '{"page": 1}')$$,
+    '42501', NULL, 'B cannot annotate A''s record');
+SELECT throws_ok($$INSERT INTO annotations (user_id, record_id, asset_id, anchor_type, anchor_data) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000005', 'pdf_page', '{"page": 1}')$$,
+    '42501', NULL, 'B cannot anchor own annotation to A''s asset');
+SELECT throws_ok($$INSERT INTO reading_states (user_id, record_id, asset_id) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000005')$$,
+    '42501', NULL, 'B cannot point own reading state at A''s asset');
 
 -- ---------- Server-only writes are denied to every client ----------
 SELECT throws_ok($$INSERT INTO assets (user_id, bucket, storage_path, file_size, checksum_sha256, mime_type, file_format) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'documents', 'x', 1, 'x', 'application/pdf', 'pdf')$$,

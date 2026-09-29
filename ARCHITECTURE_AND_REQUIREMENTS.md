@@ -1030,6 +1030,7 @@ Rule: every table has RLS enabled. An operation without a policy is **deliberate
 ```sql
 -- ---------- Owner-scoped tables (user_id column) ----------
 -- works, contributors, tags, collections, saved_searches, reading_states, annotations
+-- (reading_states and annotations also require an owned record and asset on INSERT/UPDATE: migration 20260929000002)
 -- saved_searches: select/insert/update/delete own rows, same shape as tags
 
 ALTER TABLE works ENABLE ROW LEVEL SECURITY;
@@ -1631,7 +1632,7 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 |---|-------|--------|------------------|
 | 1 | **Large files in Edge Functions** | The Edge runtime has memory and wall-clock limits. Hashing and parsing a 500 MB PDF in memory will fail. | Stream the SHA-256 (`@std/crypto` accepts async iterables). Lower the bucket limit to what the self-hosted runtime handles in testing. Revisit if large scans are common. |
 | 2 | PDF text/thumbnail in Deno | `pdf-parse` is Node-oriented; rendering a page to an image in Deno is not trivial. | Evaluate `pdfjs-dist` in Deno for text; for thumbnails consider rendering in the browser on first open and uploading via the normal flow. |
-| 3 | Annotation / reading-state cross-ownership | Their INSERT policies check `user_id` only, not that `record_id`/`asset_id` belong to the user. Not a data leak (other rows remain unreadable) but allows dangling references. | Add `private.is_record_owner(record_id)` to both INSERT/UPDATE checks. |
+| 3 | ~~Annotation / reading-state cross-ownership~~ | Resolved in migration `20260929000002`: INSERT and UPDATE policies on `reading_states` and `annotations` now require `private.is_record_owner(record_id)` and an owned `asset_id`. | Done. |
 | 4 | Old-style arXiv IDs | `hep-th/9901001` format is not accepted. | Add when a user needs it. |
 | 5 | Denormalized `records.user_id` | Every record-scoped check joins `works`. | Add only if RLS shows up in query plans at NFR-PERF-1 scale. |
 | 6 | Search across contributors | FR-SRCH-1 needs names; `works.search_vector` does not include them. | A SQL function combining FTS on works/records with trigram on `contributors.display_name`, `contributor_names.name`, and `record_contributors.credited_as`. "Sort by author" uses primary creators (§6.3) computed in the same query; move to a trigger-maintained column only if it misses NFR-PERF-1. |
