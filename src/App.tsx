@@ -13,6 +13,9 @@ import { ContributorDetail } from '@/pages/ContributorDetail';
 import { Notes } from '@/pages/Notes';
 import { Serials } from '@/pages/Serials';
 import { Import } from '@/pages/Import';
+import { ForgotPassword } from '@/pages/ForgotPassword';
+import { ResetPassword } from '@/pages/ResetPassword';
+import { Settings } from '@/pages/Settings';
 import { Placeholder } from '@/pages/Placeholder';
 
 // pdfjs-dist alone is ~1MB — split out so the rest of the app doesn't pay for it upfront.
@@ -23,6 +26,8 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot" element={<ForgotPassword />} />
+        <Route path="/reset" element={<ResetPassword />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
             <Route index element={<Overview />} />
@@ -44,7 +49,7 @@ export function App() {
             <Route path="notes" element={<Notes />} />
             <Route path="import" element={<Import />} />
             <Route path="activity" element={<Placeholder title="Activity" />} />
-            <Route path="settings" element={<Placeholder title="Settings" />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Route>
       </Routes>

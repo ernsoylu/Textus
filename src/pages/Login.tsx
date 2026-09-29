@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
@@ -86,6 +87,7 @@ export function Login() {
           />
         )}
 
+        {mode === 'sign_in' && <Link to="/forgot" className="text-small text-muted underline">Forgot password?</Link>}
         {formError && <p className="text-small text-red">{formError}</p>}
         {magicLinkSent && <p className="text-small text-green">Check your email for a sign-in link.</p>}
 
