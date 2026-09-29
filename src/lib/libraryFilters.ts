@@ -12,7 +12,7 @@ export const filtersSchema = z.object({
   status: z.string().default(''),
   format: z.string().default(''),
   language: z.string().default(''),
-  sort: z.enum(SORTS).default('relevance'),
+  sort: z.enum(SORTS).default('added'),
 });
 
 export type LibraryFilters = z.infer<typeof filtersSchema>;

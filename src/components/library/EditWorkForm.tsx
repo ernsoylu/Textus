@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUpdateWork, useDeleteWork } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -30,8 +30,18 @@ export function EditWorkForm({
   const update = useUpdateWork(workId);
   const remove = useDeleteWork();
   const [confirming, setConfirming] = useState(false);
+  const previous = useRef({ title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType });
   const patch = { title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType };
   const dirty = patch.title !== initialTitle || patch.subtitle !== (initialSubtitle?.trim() || null) || patch.abstract !== (initialAbstract?.trim() || null) || patch.language !== (initialLanguage?.trim() || null) || workType !== initialWorkType;
+
+  useEffect(() => {
+    if (title === previous.current.title) setTitle(initialTitle);
+    if (subtitle === previous.current.subtitle) setSubtitle(initialSubtitle ?? '');
+    if (abstract === previous.current.abstract) setAbstract(initialAbstract ?? '');
+    if (language === previous.current.language) setLanguage(initialLanguage ?? '');
+    if (workType === previous.current.workType) setWorkType(initialWorkType);
+    previous.current = { title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType };
+  }, [initialTitle, initialSubtitle, initialAbstract, initialLanguage, initialWorkType]);
 
   return (
     <div className="flex flex-col gap-2">

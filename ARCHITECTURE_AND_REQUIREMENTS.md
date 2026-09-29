@@ -1396,11 +1396,11 @@ Properties:
 
 ## 10. External metadata providers
 
-Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
+Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`, `archive.org`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
 
 | Scheme | Provider order |
 |--------|---------------|
-| `isbn` | Open Library → Google Books |
+| `isbn` | Open Library → Google Books → Internet Archive (when neither earlier source finds metadata) |
 | `doi` | Crossref → Semantic Scholar (`DOI:{doi}`) |
 | `arxiv` | arXiv API → Semantic Scholar (`ARXIV:{id}`) |
 | `pmid` | Semantic Scholar (`PMID:{id}`) |
@@ -1413,6 +1413,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | arXiv | `https://export.arxiv.org/api/query?id_list={id}` (Atom XML) | None | ≤ 1 request / 3 s |
 | Semantic Scholar | `https://api.semanticscholar.org/graph/v1/paper/{id}` | Optional `x-api-key` | Unauthenticated calls share a global pool and may be throttled |
 | Google Books | `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}` | API key (effectively required) | The unauthenticated shared quota was exhausted when checked; skip this provider when no key is configured |
+| Internet Archive | `https://archive.org/advancedsearch.php?q=isbn:{isbn} AND mediatype:texts&output=json` | None | Exact ISBN search, one result; search dates retain year precision because the index expands year-only dates |
 
 **Contributor data per provider** (checked against live responses):
 
@@ -1423,6 +1424,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | arXiv | Name strings (parse) | Authors only | — |
 | Semantic Scholar | Name strings (parse) | Authors only | S2 author ID |
 | Google Books | Name strings (parse) | None — editors appear as authors | — |
+| Internet Archive | `creator` strings (parse); may be absent | No structured roles; review editor warnings | — |
 
 When sources disagree on roles, Crossref wins. A provider listing people as authors on a record whose title or `by_statement` says "edited" is shown as a role warning in the preview.
 

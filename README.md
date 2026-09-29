@@ -117,6 +117,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 ```
 
 External metadata providers are **only** called from Edge Functions — never from the browser.
+ISBN lookups use Internet Archive as a third fallback after Open Library and Google Books; no Archive API key is needed.
 
 ### Data model
 

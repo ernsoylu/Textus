@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import type { PageRect } from '@/hooks/useAnnotations';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+const pdfAssets = import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : '/pdfjs/';
 
 export interface PdfHighlight {
   id: string;
@@ -68,7 +69,13 @@ export function PdfViewer({ bucket, storagePath, initialPage = 1, goToPage, high
     (async () => {
       const { data, error: signError } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 300);
       if (signError || !data) throw signError ?? new Error('Could not create a signed URL.');
-      const task = pdfjsLib.getDocument({ url: data.signedUrl });
+      const task = pdfjsLib.getDocument({
+        url: data.signedUrl,
+        wasmUrl: `${pdfAssets}wasm/`,
+        cMapUrl: `${pdfAssets}cmaps/`,
+        cMapPacked: true,
+        standardFontDataUrl: `${pdfAssets}standard_fonts/`,
+      });
       taskRef.current = task;
       const doc = await task.promise;
       if (cancelled) return;

@@ -15,10 +15,11 @@
 import { withSupabase } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
-import { provider } from '../metadata-lookup/index.ts';
+import { provider, providersFor } from '../metadata-lookup/index.ts';
 import { runCleanup } from './cleanup.ts';
 
-const MAX_EXTRACT_BYTES = 100_000_000;
+// ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
+const MAX_EXTRACT_BYTES = 25_000_000;
 const MAX_STORED_TEXT_CHARS = 100_000; // the search index covers the first 100,000 characters (migration 20260929000003)
 
 interface Job {
@@ -67,8 +68,11 @@ async function extractText(admin: any, job: Job) {
   if (asset.file_format !== 'pdf' && asset.file_format !== 'epub') skipReason = `text extraction for '${asset.file_format}' is not implemented yet`;
   else if (asset.file_size > MAX_EXTRACT_BYTES) skipReason = 'file is too large for text extraction';
   if (skipReason) {
-    const { error: readyError } = await admin.from('assets').update({ processing_state: 'ready' }).eq('id', assetId);
+    const filename = typeof job.payload.filename === 'string' ? job.payload.filename : '';
+    const found = identifierSuggestions('', filename);
+    const { error: readyError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, identifier_suggestions: found }, processing_state: 'ready' }).eq('id', assetId);
     if (readyError) throw readyError;
+    await queueMetadata(admin, asset, found);
     return { skipped: true, reason: skipReason };
   }
 
@@ -132,16 +136,11 @@ async function cachedSuggestion(admin: any, scheme: string, value: string) {
   return cached?.response_data;
 }
 
-function metadataProviders(scheme: 'isbn' | 'doi'): string[] {
-  if (scheme === 'doi') return ['crossref', 'semantic_scholar'];
-  return Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['openlibrary', 'google_books'] : ['openlibrary'];
-}
-
 // Tries each provider in order and caches the first hit. A provider failure is only raised when
 // nothing succeeded, so a later provider can still rescue the lookup.
 // deno-lint-ignore no-explicit-any
 async function providerSuggestion(admin: any, scheme: 'isbn' | 'doi', value: string) {
-  const providers = metadataProviders(scheme);
+  const providers = providersFor(scheme);
   let failure = '';
   for (const name of providers) {
     const result = await provider(name, name === 'semantic_scholar' ? `DOI:${value}` : value);

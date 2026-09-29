@@ -36,7 +36,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
     if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : `Invalid ${scheme.toUpperCase()} format.`); return; }
     setPending(true);
     try {
-      const result = await metadataLookup(scheme, value);
+      const result = await metadataLookup(scheme, value, scheme === 'isbn');
       setResponse(result);
       if (result.status === 'success') {
         const selection = defaultSelection(result.data, workLocks, recordLocks);
@@ -84,7 +84,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
     {response?.status === 'rate_limited' && <p className="text-small text-yellow">{response.provider} is rate limited. Try again later.</p>}
     {response?.status === 'provider_error' && <p className="text-small text-red">{response.provider} could not return metadata: {response.message}</p>}
     {response?.status === 'invalid_identifier' && <p className="text-small text-red">Invalid identifier: {response.reason}</p>}
-    {record.record_assets.flatMap(({ assets }) => { const suggestions = meta(assets?.metadata).identifier_suggestions; return Array.isArray(suggestions) ? suggestions : []; }).map((item) => { const suggestion = meta(item); return typeof suggestion.scheme === 'string' && typeof suggestion.value === 'string' ? <button key={`${suggestion.scheme}:${suggestion.value}`} type="button" className="text-left text-small text-green underline" onClick={() => { setScheme(suggestion.scheme as IdentifierScheme); setValue(suggestion.value as string); }}>Found in file: {suggestion.scheme.toUpperCase()} {suggestion.value}</button> : null; })}
+    {record.record_assets.flatMap(({ assets }) => { const suggestions = meta(assets?.metadata).identifier_suggestions; return Array.isArray(suggestions) ? suggestions : []; }).map((item) => meta(item)).filter((suggestion, index, all) => typeof suggestion.scheme === 'string' && typeof suggestion.value === 'string' && (suggestion.scheme !== 'isbn' || all.findIndex((candidate) => candidate.scheme === 'isbn') === index)).map((suggestion) => <button key={`${suggestion.scheme}:${suggestion.value}`} type="button" className="text-left text-small text-green underline" onClick={() => { setScheme(suggestion.scheme as IdentifierScheme); setValue(suggestion.value as string); }}>Found in file: {String(suggestion.scheme).toUpperCase()} {String(suggestion.value)}</button>)}
     {record.record_assets.flatMap(({ assets }) => { const author = meta(assets?.metadata).author_suggestion; return typeof author === 'string' && author.trim() ? [author] : []; }).map((author) => <p key={author} className="text-small text-muted">File author suggestion: {author}</p>)}
     {data && <div className="flex flex-col gap-2">
       <p className="text-small text-muted">From {data.source_provider}{response?.status === 'success' && response.fromCache ? ' · cached' : ''}. Choose fields to apply.</p>

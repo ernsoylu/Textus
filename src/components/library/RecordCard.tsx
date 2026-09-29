@@ -19,7 +19,7 @@ export function RecordCard({ workId, title, byline, meta, detail, coverUrl, sele
   const body = (
     <>
       {coverUrl ? (
-        <img src={coverUrl} alt="" loading="lazy" className="h-[var(--cover-h)] w-full rounded-4 bg-green-bg object-cover" />
+        <img src={coverUrl} alt="" loading="lazy" className="h-[var(--cover-h)] w-full rounded-4 bg-green-bg object-contain" />
       ) : (
         <div className="flex h-[var(--cover-h)] w-full flex-col justify-between rounded-4 bg-green-bg p-4">
           <p className="text-small w-full text-muted">TEXTUS / LIBRARY</p>

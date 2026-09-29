@@ -9,6 +9,7 @@ export function identifierSuggestions(text: string, filename = ''): { scheme: 'i
     const raw = stripTrailing(match[0].trim(), '.)]');
     const scheme = raw.startsWith('10.') ? 'doi' : 'isbn';
     const parsed = parseIdentifier(scheme, raw);
+    if (scheme === 'isbn' && found.some((item) => item.scheme === 'isbn')) continue;
     if (parsed.ok && !found.some((item) => item.scheme === scheme && item.value === parsed.normalized)) found.push({ scheme, value: parsed.normalized });
     if (found.length >= 10) break;
   }

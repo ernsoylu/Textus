@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUpdateRecord, useDeleteRecord } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ export function EditRecordForm({
   const update = useUpdateRecord(workId);
   const remove = useDeleteRecord(workId);
   const [confirming, setConfirming] = useState(false);
+  const previous = useRef({ title: initialTitle ?? '', publisher: initialPublisher ?? '', edition: initialEdition ?? '', volume: initialVolume ?? '', issueNumber: initialIssueNumber ?? '', pages: initialPages ?? '', publicationDate: initialPublicationDate ?? '' });
   const patch = {
     title: title.trim() || null,
     publisher: publisher.trim() || null,
@@ -54,6 +55,17 @@ export function EditRecordForm({
     patch.issue_number !== (initialIssueNumber?.trim() || null) ||
     patch.pages !== (initialPages?.trim() || null) ||
     patch.publication_date !== (initialPublicationDate || null);
+
+  useEffect(() => {
+    if (title === previous.current.title) setTitle(initialTitle ?? '');
+    if (publisher === previous.current.publisher) setPublisher(initialPublisher ?? '');
+    if (edition === previous.current.edition) setEdition(initialEdition ?? '');
+    if (volume === previous.current.volume) setVolume(initialVolume ?? '');
+    if (issueNumber === previous.current.issueNumber) setIssueNumber(initialIssueNumber ?? '');
+    if (pages === previous.current.pages) setPages(initialPages ?? '');
+    if (publicationDate === previous.current.publicationDate) setPublicationDate(initialPublicationDate ?? '');
+    previous.current = { title: initialTitle ?? '', publisher: initialPublisher ?? '', edition: initialEdition ?? '', volume: initialVolume ?? '', issueNumber: initialIssueNumber ?? '', pages: initialPages ?? '', publicationDate: initialPublicationDate ?? '' };
+  }, [initialTitle, initialPublisher, initialEdition, initialVolume, initialIssueNumber, initialPages, initialPublicationDate]);
 
   return (
     <div className="flex flex-col gap-2">

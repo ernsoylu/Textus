@@ -6,7 +6,8 @@ describe('parseFilters', () => {
     expect(parseFilters({ sort: 'bogus' })).toEqual(EMPTY_FILTERS);
     expect(parseFilters({ tagId: 't1' }).tagId).toBe('t1');
   });
-  it('defaults to relevance, which is newest-first when there is no search', () => {
-    expect(EMPTY_FILTERS.sort).toBe('relevance');
+  it('defaults to date added and preserves an explicitly selected sort', () => {
+    expect(EMPTY_FILTERS.sort).toBe('added');
+    expect(parseFilters({ sort: 'title' }).sort).toBe('title');
   });
 });

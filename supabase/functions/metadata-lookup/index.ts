@@ -11,7 +11,7 @@ const CoverSchema = z.object({ action: z.literal('queue-cover'), recordId: z.str
 type Metadata = { title?: string; subtitle?: string; abstract?: string; language?: string; publication_date?: string; publication_date_precision?: 'year' | 'month' | 'day'; publisher?: string; volume?: string; issue_number?: string; pages?: string; contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[]; cover_url?: string; role_warning?: string; source_provider: string; source_url?: string; work_type: string };
 type Lookup = { kind: 'success'; data: Metadata } | { kind: 'not_found' } | { kind: 'rate_limited'; retryAfterMs: number } | { kind: 'provider_error'; message: string };
 
-const HOSTS = new Set(['openlibrary.org', 'api.crossref.org', 'export.arxiv.org', 'api.semanticscholar.org', 'www.googleapis.com']);
+const HOSTS = new Set(['openlibrary.org', 'api.crossref.org', 'export.arxiv.org', 'api.semanticscholar.org', 'www.googleapis.com', 'archive.org']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_RESPONSE_BYTES = 5_000_000;
 
@@ -81,6 +81,14 @@ function providerRequest(name: string, id: string): { url: URL; headers: Record<
     headers['User-Agent'] = `Textus metadata lookup (${Deno.env.get('CROSSREF_MAILTO') ?? 'self-hosted'})`;
     return { url: new URL(`/isbn/${encodeURIComponent(id)}.json`, 'https://openlibrary.org'), headers };
   }
+  if (name === 'internet_archive') {
+    const url = new URL('/advancedsearch.php', 'https://archive.org');
+    url.searchParams.set('q', `isbn:${id} AND mediatype:texts`);
+    for (const field of ['identifier', 'title', 'description', 'creator', 'date', 'publisher', 'language']) url.searchParams.append('fl[]', field);
+    url.searchParams.set('rows', '1');
+    url.searchParams.set('output', 'json');
+    return { url, headers };
+  }
   if (name === 'crossref' || name === 'crossref_journal') {
     const url = new URL(`/${name === 'crossref' ? 'works' : 'journals'}/${encodeURIComponent(id)}`, 'https://api.crossref.org');
     const mailto = Deno.env.get('CROSSREF_MAILTO');
@@ -128,8 +136,10 @@ async function parseOpenLibrary(root: Record<string, unknown>, id: string, name:
   const title = str(root.title);
   if (!title) throw new Error('missing title');
   const coverId = Array.isArray(root.covers) ? root.covers[0] : undefined;
+  const description = typeof root.description === 'string' ? root.description : str(object(root.description).value);
   return {
     title,
+    abstract: description,
     publication_date: year(root.publish_date) ?? yearInText(str(root.publish_date)),
     publication_date_precision: 'year',
     publisher: first(root.publishers),
@@ -164,6 +174,31 @@ function parseGoogleBooks(root: Record<string, unknown>, name: string): Parsed {
     role_warning: editorWarning(title),
     source_provider: name,
     source_url: str(volume.selfLink),
+    work_type: 'book',
+  };
+}
+
+function parseInternetArchive(root: Record<string, unknown>, name: string): Parsed {
+  const docs = object(root.response).docs;
+  const item = object(Array.isArray(docs) ? docs[0] : null);
+  const title = first(item.title);
+  const identifier = str(item.identifier);
+  if (!title || !identifier) return null;
+  const creators = Array.isArray(item.creator) ? item.creator : [item.creator];
+  const description = first(item.description);
+  const publicationDate = yearInText(first(item.date));
+  return {
+    title,
+    abstract: description ? stripTags(description) : undefined,
+    language: first(item.language),
+    publication_date: publicationDate,
+    // Archive's search index expands year-only dates to January 1; retain year precision.
+    publication_date_precision: publicationDate ? 'year' : undefined,
+    publisher: first(item.publisher),
+    contributors: creators.flatMap((value) => { const name = str(value); return name ? [{ name, role: 'author' as const }] : []; }),
+    role_warning: editorWarning(title),
+    source_provider: name,
+    source_url: `https://archive.org/details/${encodeURIComponent(identifier)}`,
     work_type: 'book',
   };
 }
@@ -235,6 +270,7 @@ async function parseBody(name: string, id: string, body: string): Promise<Parsed
   const root = object(JSON.parse(body));
   if (name === 'openlibrary') return await parseOpenLibrary(root, id, name);
   if (name === 'google_books') return parseGoogleBooks(root, name);
+  if (name === 'internet_archive') return parseInternetArchive(root, name);
   if (name === 'crossref' || name === 'crossref_journal') return parseCrossref(root, name);
   return parseSemanticScholar(root, name);
 }
@@ -279,9 +315,9 @@ async function cachedLookup(ctx: SupabaseContext, scheme: string, id: string): P
   return Response.json({ status: 'success', data: cached.response_data, fromCache: true, fetchedAt: cached.fetched_at ?? new Date().toISOString() });
 }
 
-function providersFor(scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn'): string[] {
+export function providersFor(scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn'): string[] {
   switch (scheme) {
-    case 'isbn': return ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : [])];
+    case 'isbn': return ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : []), 'internet_archive'];
     case 'doi': return ['crossref', 'semantic_scholar'];
     case 'arxiv': return ['arxiv', 'semantic_scholar'];
     case 'pmid': return ['semantic_scholar'];
@@ -290,20 +326,28 @@ function providersFor(scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn'): strin
   }
 }
 
-async function lookupAcrossProviders(ctx: SupabaseContext, scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn', id: string): Promise<Response> {
+export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn', id: string): Promise<Response> {
   const providers = providersFor(scheme);
   let failure: { provider: string; result: Lookup } | undefined;
+  let data: Metadata | undefined;
   for (const name of providers) {
+    if (name === 'internet_archive' && data) break;
     const providerId = name === 'semantic_scholar' ? `${scheme.toUpperCase()}:${id}` : id;
     const result = await provider(name, providerId);
     if (result.kind === 'success') {
       const fetchedAt = new Date().toISOString();
       const { error } = await ctx.supabaseAdmin.from('metadata_cache').upsert({ identifier_scheme: scheme, identifier_value: id, provider: name, response_data: result.data, fetched_at: fetchedAt, expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString() }, { onConflict: 'identifier_scheme,identifier_value,provider' });
       if (error) console.error('metadata cache write failed:', error);
-      return Response.json({ status: 'success', data: result.data, fromCache: false, fetchedAt });
+      if (!data) data = result.data;
+      else for (const [key, value] of Object.entries(result.data)) {
+        const current = data[key as keyof Metadata];
+        if ((!current || (Array.isArray(current) && !current.length)) && value) Object.assign(data, { [key]: value });
+      }
+      continue;
     }
     if (result.kind !== 'not_found') failure = { provider: name, result };
   }
+  if (data) return Response.json({ status: 'success', data, fromCache: false, fetchedAt: new Date().toISOString() });
   if (failure?.result.kind === 'rate_limited') return Response.json({ status: 'rate_limited', provider: failure.provider, retryAfterMs: failure.result.retryAfterMs });
   if (failure?.result.kind === 'provider_error') return Response.json({ status: 'provider_error', provider: failure.provider, message: failure.result.message });
   return Response.json({ status: 'not_found', identifier: id, searchedProviders: providers });

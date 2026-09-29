@@ -3,6 +3,7 @@ import { supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
 import { uploadIntent, uploadComplete } from '@/lib/functions';
 
 export type UploadRole = 'primary' | 'supplement' | 'cover';
+export const MAX_UPLOAD_BYTES = 524_288_000;
 
 const REJECTION_MESSAGES: Record<string, string> = {
   missing: 'The upload did not arrive. Try again.',
@@ -29,6 +30,7 @@ function putWithProgress(path: string, token: string, file: File, onProgress: (f
 // FR-FILE-1/2/5, §9.1: intent -> signed upload -> complete. uploadId makes this idempotent —
 // a retry after a network failure reuses the same staging path instead of creating a new one.
 export async function uploadFile(recordId: string, role: UploadRole, file: File, onProgress: (fraction: number) => void = () => undefined) {
+  if (!file.size || file.size > MAX_UPLOAD_BYTES) throw new Error('Choose a nonempty file up to 500 MB.');
   const uploadId = crypto.randomUUID();
   const intent = await uploadIntent({ uploadId, recordId, filename: file.name, size: file.size });
   await putWithProgress(intent.path, intent.token, file, onProgress);

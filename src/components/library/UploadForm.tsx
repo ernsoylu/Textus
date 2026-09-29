@@ -72,10 +72,11 @@ export function UploadForm({ recordId }: Readonly<{ recordId: string }>) {
       </section>
       <ul className="flex flex-col gap-1">
         {items.map((item) => (
-          <li key={item.id} className="flex flex-wrap items-center gap-2 text-small text-fg">
-            <span className="min-w-[160px] truncate">{item.file.name}</span>
+          <li key={item.id} className="flex flex-col gap-1 text-small text-fg">
+            <span className="break-words">{item.file.name}</span>
             <span className="text-muted">{item.role}</span>
-            {item.status === 'uploading' && <progress aria-label={`Uploading ${item.file.name}`} value={item.progress} max={1} className="h-2 w-32" />}
+            <progress aria-label={`Uploading ${item.file.name}`} value={item.progress} max={1} className="h-3 w-full accent-green" />
+            <span className="text-muted">{Math.round(item.progress * 100)}% · {(item.file.size * item.progress / 1_048_576).toFixed(1)} / {(item.file.size / 1_048_576).toFixed(1)} MB</span>
             {item.status === 'done' && <span className="text-green">Uploaded</span>}
             {item.status === 'failed' && (
               <>

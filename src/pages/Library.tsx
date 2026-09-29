@@ -4,7 +4,7 @@ import { useLanguages, useLibrary } from '@/hooks/useLibrary';
 import { useCoverUrls } from '@/hooks/useCoverUrls';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useSavedSearches, useSaveSearch } from '@/hooks/useSavedSearches';
-import { EMPTY_FILTERS, type LibraryFilters } from '@/lib/libraryFilters';
+import { EMPTY_FILTERS, SORTS, type LibraryFilters } from '@/lib/libraryFilters';
 import { RecordCard } from '@/components/library/RecordCard';
 import { LibraryFilterBar } from '@/components/library/LibraryFilterBar';
 import { BulkBar } from '@/components/library/BulkBar';
@@ -26,6 +26,10 @@ export function Library() {
   useEffect(() => {
     if (qParam !== null) setFilters((f) => ({ ...f, q: qParam }));
   }, [qParam]);
+  const sortParam = params.get('sort');
+  useEffect(() => {
+    if (sortParam && SORTS.includes(sortParam as LibraryFilters['sort'])) setFilters((f) => ({ ...f, sort: sortParam as LibraryFilters['sort'] }));
+  }, [sortParam]);
   const savedId = params.get('saved');
   const savedFilters = saved.data?.find((s) => s.id === savedId)?.filters;
   useEffect(() => {
