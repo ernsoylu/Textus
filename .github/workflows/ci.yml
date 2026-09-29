@@ -40,7 +40,7 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
       - run: npm run test:e2e
 
   database:
@@ -72,17 +72,20 @@ jobs:
             fi
           done
       - name: Export local Supabase credentials
-        run: npx supabase status -o env | sed -E 's/^([^=]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
+        run: supabase status -o env | sed -E 's/^([^=]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
       - name: Run Edge Function integration flow
         run: |
-          npx supabase functions serve --no-verify-jwt > /tmp/textus-functions.log 2>&1 &
+          supabase functions serve --no-verify-jwt > /tmp/textus-functions.log 2>&1 &
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/functions/v1/export)
-            if [ "$code" != "000" ]; then break; fi
+            if [ "$code" != "000" ] && [ "$code" != "502" ]; then break; fi
             sleep 1
           done
-          if [ "$code" = "000" ]; then cat /tmp/textus-functions.log; exit 1; fi
-          deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts
+          if [ "$code" = "000" ] || [ "$code" = "502" ]; then cat /tmp/textus-functions.log; exit 1; fi
+          if ! deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts; then
+            cat /tmp/textus-functions.log
+            exit 1
+          fi
 
   edge-functions:
     name: Edge Functions (Deno type-check + lint)

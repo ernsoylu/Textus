@@ -48,7 +48,7 @@ const tag = (name: string, value: string | undefined) => (value ? `<${name}>${xm
 const link = (rel: string, href: string, type: string, extra = '') => `<link rel="${rel}" href="${xmlEscape(href)}" type="${xmlEscape(type)}"${extra}/>`;
 
 function acquisitionXml(a: OpdsAcquisition): string {
-  return link('http://opds-spec.org/acquisition', a.href, a.type, a.length ? ` length="${a.length}"` : '');
+  return link('http://opds-spec.org/acquisition', a.href, a.type, a.length ? ` length="${a.length}"` : ''); // NOSONAR — protocol-defined relation URI, not a network request
 }
 
 function entryXml(e: OpdsEntry): string {
@@ -62,7 +62,7 @@ function entryXml(e: OpdsEntry): string {
     tag('dc:publisher', e.publisher),
     tag('dc:issued', e.issued),
     ...e.identifiers.map((i) => tag('dc:identifier', i)),
-    ...(e.cover ? [link('http://opds-spec.org/image', e.cover.href, e.cover.type), link('http://opds-spec.org/image/thumbnail', e.cover.href, e.cover.type)] : []),
+    ...(e.cover ? [link('http://opds-spec.org/image', e.cover.href, e.cover.type), link('http://opds-spec.org/image/thumbnail', e.cover.href, e.cover.type)] : []), // NOSONAR — required OPDS relation identifiers, not HTTP requests
     ...e.acquisitions.map(acquisitionXml),
     '</entry>',
   ].join('');
