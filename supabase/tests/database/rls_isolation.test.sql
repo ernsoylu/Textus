@@ -2,7 +2,7 @@
 -- Runs in a transaction and rolls back. `supabase test db`, or pipe into psql as postgres.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(50);
+SELECT plan(54);
 
 -- ---------- Fixtures for user A (as postgres, bypassing RLS) ----------
 INSERT INTO auth.users (id, email) VALUES
@@ -44,6 +44,8 @@ INSERT INTO reading_states (user_id, record_id) VALUES
 INSERT INTO annotations (user_id, record_id, asset_id, anchor_type, anchor_data) VALUES
     ('aaaaaaaa-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002',
      'a0000000-0000-0000-0000-000000000005', 'pdf_page', '{"page": 1}');
+INSERT INTO saved_searches (user_id, name) VALUES
+    ('aaaaaaaa-0000-0000-0000-000000000000', 'Unread PDFs');
 INSERT INTO jobs (user_id, job_type, payload) VALUES
     ('aaaaaaaa-0000-0000-0000-000000000000', 'extract_text', '{}');
 INSERT INTO metadata_cache (identifier_scheme, identifier_value, provider, response_data) VALUES
@@ -57,6 +59,7 @@ SET LOCAL request.jwt.claims = '{"sub": "aaaaaaaa-0000-0000-0000-000000000000", 
 SELECT isnt_empty('SELECT 1 FROM works', 'A sees own works');
 SELECT isnt_empty('SELECT 1 FROM identifiers', 'A sees own identifiers');
 SELECT isnt_empty('SELECT 1 FROM record_contributors', 'A sees own credits');
+SELECT isnt_empty('SELECT 1 FROM saved_searches', 'A sees own saved searches');
 SELECT isnt_empty($$SELECT 1 FROM storage.objects WHERE bucket_id = 'documents'$$, 'A sees own documents');
 
 -- ---------- User B: reads ----------
@@ -77,6 +80,7 @@ SELECT is_empty('SELECT 1 FROM collections', 'B cannot read collections');
 SELECT is_empty('SELECT 1 FROM collection_records', 'B cannot read collection_records');
 SELECT is_empty('SELECT 1 FROM reading_states', 'B cannot read reading_states');
 SELECT is_empty('SELECT 1 FROM annotations', 'B cannot read annotations');
+SELECT is_empty('SELECT 1 FROM saved_searches', 'B cannot read saved_searches');
 SELECT is_empty('SELECT 1 FROM jobs', 'B cannot read jobs');
 SELECT is_empty('SELECT 1 FROM storage.objects', 'B cannot read A''s storage objects');
 SELECT isnt_empty('SELECT 1 FROM metadata_cache', 'metadata_cache is shared by design');
@@ -94,6 +98,8 @@ SELECT throws_ok($$INSERT INTO contributor_identifiers (user_id, contributor_id,
     '42501', NULL, 'B cannot add identifiers to A''s contributor');
 SELECT throws_ok($$INSERT INTO contributor_distinctions (user_id, contributor_a, contributor_b) VALUES ('bbbbbbbb-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000004')$$,
     '42501', NULL, 'B cannot record distinctions on A''s contributors');
+SELECT throws_ok($$INSERT INTO saved_searches (user_id, name) VALUES ('aaaaaaaa-0000-0000-0000-000000000000', 'x')$$,
+    '42501', NULL, 'B cannot create saved searches for A');
 SELECT throws_ok($$INSERT INTO record_tags (record_id, tag_id) VALUES ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000006')$$,
     '42501', NULL, 'B cannot tag A''s record');
 SELECT throws_ok($$INSERT INTO collection_records (collection_id, record_id) VALUES ('a0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000002')$$,
@@ -135,7 +141,7 @@ UPDATE records SET title = 'hacked' WHERE id = 'a0000000-0000-0000-0000-00000000
 DELETE FROM works WHERE user_id = 'aaaaaaaa-0000-0000-0000-000000000000';
 DELETE FROM identifiers; DELETE FROM contributors WHERE user_id <> 'bbbbbbbb-0000-0000-0000-000000000000';
 DELETE FROM record_contributors; DELETE FROM record_assets; DELETE FROM record_tags;
-DELETE FROM collection_records; DELETE FROM reading_states; DELETE FROM annotations;
+DELETE FROM collection_records; DELETE FROM reading_states; UPDATE saved_searches SET name = 'hacked'; DELETE FROM saved_searches; DELETE FROM annotations;
 
 RESET ROLE;
 SELECT is((SELECT title FROM works WHERE id = 'a0000000-0000-0000-0000-000000000001'), 'A work', 'A''s work unchanged');
@@ -145,6 +151,7 @@ SELECT is((SELECT count(*)::int FROM identifiers), 1, 'A''s identifiers survive'
 SELECT is((SELECT count(*)::int FROM record_contributors), 1, 'A''s credits survive');
 SELECT is((SELECT count(*)::int FROM record_assets), 1, 'A''s asset links survive');
 SELECT is((SELECT count(*)::int FROM annotations), 1, 'A''s annotations survive');
+SELECT is((SELECT name FROM saved_searches), 'Unread PDFs', 'A''s saved search survives');
 
 -- ---------- Asset immutability holds even for privileged roles ----------
 SELECT throws_ok($$UPDATE assets SET checksum_sha256 = 'def' WHERE id = 'a0000000-0000-0000-0000-000000000005'$$,

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatByline, type Credit } from 'shared/names';
+import type { FilterableWork } from '@/lib/libraryFilters';
 
 // FR-CAT-1/3 read path: a work with its records, each record's credits and contributor
 // names. RLS scopes every row to the caller — no user_id filter needed here (§7.3).
@@ -9,10 +10,16 @@ interface WorkWithRecords {
   title: string;
   subtitle: string | null;
   work_type: string;
+  language: string | null;
+  created_at: string | null;
   records: {
     id: string;
     record_type: string;
     publication_date: string | null;
+    record_tags: { tag_id: string }[];
+    collection_records: { collection_id: string }[];
+    record_assets: { assets: { file_format: string } | null }[];
+    reading_states: { status: string; last_read_at: string | null }[];
     record_contributors: {
       role: string;
       position: number;
@@ -22,10 +29,8 @@ interface WorkWithRecords {
   }[];
 }
 
-export interface WorkListItem {
-  workId: string;
-  title: string;
-  byline: string;
+export interface WorkListItem extends FilterableWork {
+  recordIds: string[];
   meta: string;
 }
 
@@ -45,6 +50,16 @@ function toListItem(work: WorkWithRecords): WorkListItem {
     title: work.title,
     byline: formatByline(credits),
     meta: record ? `${record.record_type}${year ? ` · ${year}` : ''}` : work.work_type,
+    recordIds: work.records.map((r) => r.id),
+    workType: work.work_type,
+    language: work.language,
+    addedAt: work.created_at ?? '',
+    publishedAt: work.records.map((r) => r.publication_date).filter((d): d is string => !!d).sort()[0] ?? null,
+    tagIds: [...new Set(work.records.flatMap((r) => r.record_tags.map((t) => t.tag_id)))],
+    collectionIds: [...new Set(work.records.flatMap((r) => r.collection_records.map((c) => c.collection_id)))],
+    formats: [...new Set(work.records.flatMap((r) => r.record_assets.flatMap((a) => (a.assets ? [a.assets.file_format] : []))))],
+    statuses: [...new Set(work.records.map((r) => r.reading_states[0]?.status ?? 'unread'))],
+    lastReadAt: work.records.flatMap((r) => r.reading_states.map((s) => s.last_read_at)).filter((d): d is string => !!d).sort().at(-1) ?? null,
   };
 }
 
@@ -55,8 +70,10 @@ export function useWorks() {
       const { data, error } = await supabase
         .from('works')
         .select(
-          `id, title, subtitle, work_type,
+          `id, title, subtitle, work_type, language, created_at,
            records ( id, record_type, publication_date,
+             record_tags ( tag_id ), collection_records ( collection_id ), record_assets ( assets ( file_format ) ),
+             reading_states ( status, last_read_at ),
              record_contributors ( role, position, credited_as, contributors ( display_name ) ) )`,
         )
         .order('created_at', { ascending: false })

@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useSavedSearches, useDeleteSavedSearch } from '@/hooks/useSavedSearches';
 
 // Figma: "Navigation / Desktop" (node 8:28), 232px, shown ≥768px per the prototype note in
-// "Start here · Textus". "SAVED SEARCHES" is FR-ORG-5 (M3, no table yet) — omitted rather
-// than shown with fake entries (CLAUDE.md invariant 5).
+// "Start here · Textus". "SAVED SEARCHES" (FR-ORG-5) lists the user's real saved_searches rows.
 const NAV_ITEMS = [
   { to: '/', label: 'Overview' },
   { to: '/library', label: 'Library' },
@@ -19,6 +19,8 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const { session } = useAuth();
+  const saved = useSavedSearches();
+  const remove = useDeleteSavedSearch();
 
   return (
     <nav className="hidden w-[232px] shrink-0 flex-col gap-2 bg-dim p-6 md:flex" aria-label="Main">
@@ -39,6 +41,17 @@ export function Sidebar() {
           {item.label}
         </NavLink>
       ))}
+      {saved.data && saved.data.length > 0 && (
+        <div className="mt-4 flex flex-col gap-1">
+          <p className="text-small text-muted">SAVED SEARCHES</p>
+          {saved.data.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-1">
+              <NavLink to={`/library?saved=${s.id}`} className="text-label min-h-11 flex-1 truncate p-3 text-muted hover:text-fg">{s.name}</NavLink>
+              <button type="button" aria-label={`Delete saved search ${s.name}`} className="text-small text-muted hover:text-red" onClick={() => remove.mutate(s.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="mt-auto flex flex-col gap-1 border-t border-border pt-4">
         <p className="text-label truncate text-fg">{session?.user.email ?? 'Signed out'}</p>
         <p className="text-small text-muted">Private · self-hosted</p>

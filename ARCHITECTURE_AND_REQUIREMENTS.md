@@ -464,7 +464,7 @@ Crossref returned structured `given`/`family`, ORCIDs, and author `sequence` for
 
 ## 7. Database schema
 
-18 tables: 17 domain tables plus `jobs`. The SQL below is the target state of the initial migrations and must be implemented as written; changes go through new migrations and an update to this section.
+19 tables: 18 domain tables plus `jobs` (`saved_searches`, FR-ORG-5, was added in a later migration). The SQL below is the target state of the initial migrations and must be implemented as written; changes go through new migrations and an update to this section.
 
 ### 7.1 Tables
 
@@ -795,6 +795,18 @@ CREATE TABLE metadata_cache (
 );
 
 -- ==========================================
+-- 14b. SAVED_SEARCHES (FR-ORG-5, migration 20260929000001)
+-- ==========================================
+CREATE TABLE saved_searches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(btrim(name)) > 0),
+    filters JSONB NOT NULL DEFAULT '{}', -- library filter/sort state, validated with Zod in the SPA
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, name)
+);
+
+-- ==========================================
 -- 15. JOBS (background processing queue)
 -- ==========================================
 CREATE TABLE jobs (
@@ -1017,7 +1029,8 @@ Rule: every table has RLS enabled. An operation without a policy is **deliberate
 
 ```sql
 -- ---------- Owner-scoped tables (user_id column) ----------
--- works, contributors, tags, collections, reading_states, annotations
+-- works, contributors, tags, collections, saved_searches, reading_states, annotations
+-- saved_searches: select/insert/update/delete own rows, same shape as tags
 
 ALTER TABLE works ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "works_select_own" ON works FOR SELECT TO authenticated USING ((SELECT auth.uid()) = user_id);
@@ -1556,10 +1569,10 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 
 ### M3 — Organization
 - [x] Tags and collections — FR-ORG-1/2
-- [ ] Filtering and sorting — FR-ORG-3
-- [ ] Bulk operations — FR-ORG-4
-- [ ] Saved searches — FR-ORG-5
-- [ ] Contributor merge/split, review queue, duplicate finder, contributor page — FR-CONTRIB-7..9
+- [x] Filtering and sorting — FR-ORG-3
+- [x] Bulk operations — FR-ORG-4
+- [x] Saved searches — FR-ORG-5
+- [x] Contributor merge/split, review queue, duplicate finder, contributor page — FR-CONTRIB-7..9
 
 ### M4 — Reading
 - [ ] EPUB viewer — FR-READ-2

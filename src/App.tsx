@@ -8,6 +8,8 @@ import { Library } from '@/pages/Library';
 import { NewWork } from '@/pages/NewWork';
 import { WorkDetail } from '@/pages/WorkDetail';
 import { Collections } from '@/pages/Collections';
+import { Contributors } from '@/pages/Contributors';
+import { ContributorDetail } from '@/pages/ContributorDetail';
 import { Placeholder } from '@/pages/Placeholder';
 
 // pdfjs-dist alone is ~1MB — split out so the rest of the app doesn't pay for it upfront.
@@ -33,7 +35,8 @@ export function App() {
               }
             />
             <Route path="collections" element={<Collections />} />
-            <Route path="contributors" element={<Placeholder title="Contributors" />} />
+            <Route path="contributors" element={<Contributors />} />
+            <Route path="contributors/:contributorId" element={<ContributorDetail />} />
             <Route path="serials" element={<Placeholder title="Serials" />} />
             <Route path="notes" element={<Placeholder title="Notes" />} />
             <Route path="import" element={<Placeholder title="Import" />} />

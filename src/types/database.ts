@@ -333,6 +333,19 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"saved_searches": {
+                  Row: {
+                    "created_at": string | null,"filters": NonNullable<Json>,"id": string,"name": string,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string | null,"filters"?: NonNullable<Json>,"id"?: string,"name": string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string | null,"filters"?: NonNullable<Json>,"id"?: string,"name"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"tags": {
                   Row: {
                     "color": string | null,"created_at": string | null,"id": string,"name": string,"user_id": string
