@@ -68,11 +68,11 @@ export function Overview() {
               </div>
             )}
           </div>
-          <div className="flex min-w-[240px] flex-1 flex-col justify-center gap-3">
+          <div className="flex min-w-0 flex-1 basis-[240px] flex-col justify-center gap-3">
             <p className="text-small text-green">PICK UP WHERE YOU LEFT OFF</p>
             <p className="font-serif text-title text-fg">{current.title}</p>
             {current.byline && <p className="text-body text-fg">{current.byline}</p>}
-            <div className="flex items-center justify-between text-body text-fg">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-body text-fg">
               <span>{Math.round(reading.data.progress)}% complete</span>
               {reading.data.lastReadAt && <span className="text-muted">Last read {relativeTime(reading.data.lastReadAt)}</span>}
             </div>
@@ -85,7 +85,7 @@ export function Overview() {
       )}
 
       <section className="flex flex-col gap-3">
-        <p className="text-heading text-fg">Recently added</p>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-heading text-fg">Recently added</h2><Link to="/library?sort=added" className="text-small text-green underline">View library</Link></div>
         <div className="flex flex-wrap gap-6">
           {recent.map((w) => (
             <RecordCard key={w.workId} workId={w.workId} title={w.title} byline={w.byline} meta={w.meta} detail={w.detail} userRating={w.userRating} coverUrl={w.coverPath ? covers.data?.get(w.coverPath) : undefined} />

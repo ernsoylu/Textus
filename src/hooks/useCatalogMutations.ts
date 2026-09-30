@@ -1,3 +1,4 @@
+import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -189,4 +190,38 @@ export function useLinkVersion(workId: string) {
     },
     onSuccess: () => queryClient.invalidateQueries(),
   });
+}
+
+// FR-CAT-4: validate and normalize before writing (shared/identifier.ts, never JSONB).
+// FR-CAT-5: warn — not block — when the normalized value is already in the user's library.
+export async function addIdentifier(recordId: string, scheme: IdentifierScheme, raw: string) {
+  const parsed = parseIdentifier(scheme, raw);
+  if (!parsed.ok) {
+    throw new Error(parsed.reason === 'invalid_check_digit' ? 'That check digit is not valid.' : 'That does not look like a valid ' + scheme.toUpperCase() + '.');
+  }
+
+  const { error: insertError } = await supabase
+    .from('identifiers')
+    .insert({ record_id: recordId, scheme, normalized_value: parsed.normalized, original_value: parsed.original });
+  if (insertError) {
+    if (insertError.code === '23505') throw new Error('This record already has that identifier.');
+    throw insertError;
+  }
+
+  if (parsed.scheme === 'arxiv' && parsed.arxivVersion !== undefined) {
+    const { data: record } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+    await supabase
+      .from('records')
+      .update({ metadata: { ...(record?.metadata as object), arxiv_version: parsed.arxivVersion } })
+      .eq('id', recordId);
+  }
+
+  const { data: existingElsewhere } = await supabase
+    .from('identifiers')
+    .select('record_id')
+    .eq('scheme', scheme)
+    .eq('normalized_value', parsed.normalized)
+    .neq('record_id', recordId);
+
+  return { duplicateCount: existingElsewhere?.length ?? 0 };
 }

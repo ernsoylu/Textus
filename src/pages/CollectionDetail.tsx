@@ -40,18 +40,19 @@ export function CollectionDetail() {
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
       <Link to="/collections" className="text-small text-muted underline">Collections</Link>
+      <h1 className="font-serif text-title text-fg">{data.name}</h1>
       <form onSubmit={save} className="flex flex-col gap-2">
-        <Input aria-label="Collection name" value={name} onChange={(e) => setName(e.target.value)} />
-        <textarea aria-label="Description" rows={2} placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" />
+        <label className="flex flex-col gap-2 text-small text-fg">Collection name<Input required value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="flex flex-col gap-2 text-small text-fg">Description (optional)<textarea rows={2} placeholder="What belongs on this shelf?" value={description} onChange={(e) => setDescription(e.target.value)} className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" /></label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="secondary" isLoading={update.isPending} disabled={!name.trim()}>Save</Button>
+          <Button type="submit" variant="secondary" isLoading={update.isPending} disabled={!name.trim() || !dirty}>Save collection</Button>
           <Button type="button" variant="danger" onClick={() => setConfirming(true)}>Delete collection</Button>
           {saved && <output className="text-small text-green">Saved.</output>}
           {update.error && <p className="text-small text-red">{update.error.message}</p>}
         </div>
       </form>
       <section className="flex flex-col gap-2">
-        <p className="text-label text-fg">Records</p>
+        <h2 className="text-heading text-fg">On this shelf</h2>
         <CollectionItems collectionId={data.id} />
       </section>
       <UnsavedChangesGuard dirty={dirty && !!name.trim()} subject="collection" onSave={() => update.mutateAsync({ name, description })} />

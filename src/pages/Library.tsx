@@ -5,6 +5,7 @@ import { useCoverUrls } from '@/hooks/useCoverUrls';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useSavedSearches, useSaveSearch } from '@/hooks/useSavedSearches';
 import { EMPTY_FILTERS, SORTS, type LibraryFilters } from '@/lib/libraryFilters';
+import { BookSearchResults } from '@/components/library/BookSearchResults';
 import { RecordCard } from '@/components/library/RecordCard';
 import { LibraryFilterBar } from '@/components/library/LibraryFilterBar';
 import { BulkBar } from '@/components/library/BulkBar';
@@ -14,6 +15,7 @@ import { useMetadataJobs } from '@/hooks/useJobs';
 
 export function Library() {
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saveName, setSaveName] = useState('');
@@ -92,7 +94,13 @@ export function Library() {
         </div>
       </div>
 
-      <Input aria-label="Search library" placeholder="Search title, contributor or file text…" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} className="max-w-[424px]" />
+      <div className="relative w-full max-w-[520px]" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }} onKeyDown={(event) => {
+        if (event.key === 'Escape') setSearchOpen(false);
+        if (event.key === 'ArrowDown' && event.target instanceof HTMLInputElement) { event.preventDefault(); event.currentTarget.querySelector<HTMLAnchorElement>('ul a')?.focus(); }
+      }}>
+        <Input aria-label="Search library" placeholder="Search title, contributor or file text…" value={filters.q} onFocus={() => setSearchOpen(true)} onChange={(e) => { setFilters({ ...filters, q: e.target.value }); setSearchOpen(true); }} />
+        {searchOpen && filters.q.trim() && <BookSearchResults items={items.slice(0, 8)} loading={query.isFetching || debouncedQ !== filters.q} error={query.error?.message} onSelect={() => setSearchOpen(false)} />}
+      </div>
       <LibraryFilterBar filters={filters} languages={languages.data ?? []} onChange={setFilters} />
 
       {filtered && (

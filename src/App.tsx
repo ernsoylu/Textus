@@ -38,6 +38,7 @@ const router = createBrowserRouter(
         <Route path="library" element={<Library />} />
         <Route path="library/new" element={<NewWork />} />
         <Route path="library/:workId" element={<WorkDetail />} />
+        <Route path="library/:workId/edit" element={<WorkDetail />} />
         <Route
           path="library/:workId/records/:recordId/assets/:assetId/read"
           element={

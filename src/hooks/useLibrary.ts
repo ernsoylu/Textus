@@ -87,11 +87,11 @@ export function useLibrary(filters: LibraryFilters) {
 }
 
 // A small fixed slice (Overview: the newest four, or one specific work).
-export function useLibraryItems(opts: { limit: number; ids?: string[]; enabled?: boolean }) {
+export function useLibraryItems(opts: { limit: number; ids?: string[]; enabled?: boolean; filters?: Partial<LibraryFilters> }) {
   return useQuery({
-    queryKey: ['works', 'library', 'items', opts.limit, opts.ids],
+    queryKey: ['works', 'library', 'items', opts.limit, opts.ids, opts.filters],
     enabled: opts.enabled ?? true,
-    queryFn: async () => (await fetchPage({ ids: opts.ids, limit: opts.limit, offset: 0 })).items,
+    queryFn: async () => (await fetchPage({ ids: opts.ids, filters: opts.filters, limit: opts.limit, offset: 0 })).items,
   });
 }
 

@@ -1,12 +1,14 @@
-import { lazy, Suspense } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useState } from 'react';
+import { Link, useParams, useSearchParams, useMatch } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
-import { AddIdentifierForm } from '@/components/library/AddIdentifierForm';
+import { useCoverUrls } from '@/hooks/useCoverUrls';
+import { Button } from '@/components/ui/button';
 import { UploadForm } from '@/components/library/UploadForm';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
 import { IdentifierList } from '@/components/library/IdentifierList';
+import { DownloadButton } from '@/components/library/DownloadButton';
 import { FileList } from '@/components/library/FileList';
 import { AddArticleVersionForm } from '@/components/library/AddArticleVersionForm';
 import { AddIssueForm } from '@/components/library/AddIssueForm';
@@ -38,25 +40,76 @@ function hasLookupSuggestions(value: unknown) {
   return !!suggestions && typeof suggestions === 'object' && Object.keys(suggestions).length > 0;
 }
 
-// FR-CAT-1 and M2: catalog editing, identifier lookup, and contributor identity editing.
+// The library opens details; /edit keeps catalog mutations separate from reading.
 export function WorkDetail() {
   const { workId } = useParams<{ workId: string }>();
   const [params] = useSearchParams();
+  const editing = !!useMatch('/library/:workId/edit');
+  const [gathering, setGathering] = useState(false);
   const autoImport = params.get('autofill') === '1';
   const { data, isLoading, error } = useWork(workId);
   const metadataJobs = useMetadataJobs(data?.records.map((record) => record.id) ?? []);
 
+  const cover = data?.records.flatMap((record) => record.record_assets).find(({ role, assets }) => role === 'cover' && assets?.bucket === 'covers')?.assets;
+  const covers = useCoverUrls(cover ? [cover.storage_path] : []);
+
   if (isLoading) return <p className="text-body text-muted">Loading…</p>;
   if (error) return <p className="text-body text-red">Could not load this work: {error.message}</p>;
   if (!data) return null;
-  const preview = data.records.flatMap((record) => record.record_assets.flatMap(({ assets }) => assets && (assets.file_format === 'pdf' || assets.file_format === 'epub') ? [{ asset: assets, recordId: record.id }] : []))[0];
+  const preview = data.records.flatMap((record) => record.record_assets.flatMap(({ role, assets }) => role !== 'cover' && assets?.bucket === 'documents' && (assets.file_format === 'pdf' || assets.file_format === 'epub') ? [{ asset: assets, recordId: record.id }] : []))[0];
+
+  const kind = (WORK_TYPE_LABELS[data.work_type as WorkType] ?? 'Work').toLowerCase();
+  const readerPath = preview ? `/library/${data.id}/records/${preview.recordId}/assets/${preview.asset.id}/read` : null;
+
+  if (!editing) return (
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6">
+      <Link to="/library" className="text-small text-muted underline">Back to library</Link>
+      {data.records.map((record) => (autoImport || hasLookupSuggestions(record.metadata)) && <AutoMetadataImport key={record.id} work={data} record={record} enabled />)}
+      <section className="grid items-start gap-6 rounded-8 border border-border bg-dim p-6 sm:grid-cols-[220px_minmax(0,1fr)]">
+        {cover && covers.data?.get(cover.storage_path) ? <img src={covers.data.get(cover.storage_path)} alt={`Cover of ${data.title}`} className="mx-auto max-h-[330px] w-full max-w-[220px] rounded-8 object-contain shadow-lg" /> : <div className="mx-auto flex aspect-[2/3] w-full max-w-[220px] flex-col justify-between rounded-8 bg-green-bg p-6 shadow-lg"><span className="text-small text-fg">TEXTUS / LIBRARY</span><p className="line-clamp-6 break-words font-serif text-heading text-fg">{data.title}</p><p className="line-clamp-3 text-small text-fg">{data.records[0]?.byline || 'Unattributed'}</p></div>}
+        <div className="flex min-w-0 flex-col gap-4">
+          <p className="text-small uppercase tracking-widest text-green">{kind}</p>
+          <h1 className="break-words font-serif text-[28px] leading-tight text-fg sm:text-[36px]">{data.title}</h1>
+          {data.subtitle && <p className="text-heading text-muted">{data.subtitle}</p>}
+          <p className="text-body text-fg">{data.records[0]?.byline || 'Unattributed'}</p>
+          <div className="flex flex-wrap gap-2">
+            {readerPath ? <Link to={readerPath} className="rounded-8 bg-green px-4 py-3 text-label text-dim">Read {kind}</Link> : <Button disabled>Read {kind}</Button>}
+            <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit {kind}</Link>
+            <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
+          </div>
+          {!readerPath && <p className="text-small text-muted">Add a PDF or EPUB in Edit {kind} to read here.</p>}
+          <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow">{data.user_rating ? '★'.repeat(data.user_rating) : 'Not rated'}</dd></div></dl>
+        </div>
+      </section>
+      {gathering && <section id="book-metadata" className="flex flex-col gap-4">{data.records.map((record) => <MetadataLookup key={record.id} work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />)}{!data.records.length && <p className="text-small text-muted">Add a record in Edit {kind} to look up metadata.</p>}</section>}
+      <section className="rounded-8 border border-border p-6"><h2 className="mb-3 text-heading text-fg">Description</h2><p className="whitespace-pre-wrap break-words text-body text-muted">{data.abstract || 'No description yet.'}</p></section>
+      {data.work_type === 'serial' && <Link to={`/serials/${data.id}`} className="text-small text-green underline">Open the serial view</Link>}
+      {data.records.map((record) => <section key={record.id} className="flex flex-col gap-4 rounded-8 border border-border p-6">
+        <h2 className="text-heading text-fg">{recordLabel(record)}</h2>
+        {record.byline && <p className="text-body text-muted">{record.byline}</p>}
+        <MetadataProgress message={metadataJobs.data?.[record.id]} />
+        <dl className="grid gap-4 text-small sm:grid-cols-2 lg:grid-cols-3">
+          {Object.entries({ Title: record.title, Publisher: record.publisher, Edition: record.edition, 'Publication date': record.publication_date, Volume: record.volume, Issue: record.issue_number, Pages: record.pages, Journal: meta(record.metadata).container_title, Version: meta(record.metadata).version, Degree: meta(record.metadata).degree, Status: meta(record.metadata).standard_status, 'Metadata source': record.metadata_source, 'Metadata fetched': record.metadata_fetched_at, ...Object.fromEntries(record.identifiers.map((id) => [id.scheme.toUpperCase(), record.identifiers.filter((other) => other.scheme === id.scheme).map((other) => other.normalized_value).join(' · ')])) }).filter(([, value]) => value).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted">{label}</dt><dd className="break-words text-fg">{String(value)}</dd></div>)}
+        </dl>
+        {record.container_record_id && <Link to={`/library/${data.id}/edit`} className="text-small text-green underline">View or edit linked container</Link>}
+        {typeof meta(record.metadata).source_url === 'string' && String(meta(record.metadata).source_url).startsWith('https://') && <a href={String(meta(record.metadata).source_url)} target="_blank" rel="noreferrer" className="text-small text-green underline">Source catalogue</a>}
+        <h3 className="text-label text-fg">Files</h3>
+        {record.record_assets.filter(({ role }) => role !== 'cover').map(({ role, assets }) => assets && <div key={`${assets.id}:${role}`} className="flex flex-wrap items-center gap-3 text-small text-muted"><span>{role} · {assets.file_format.toUpperCase()}</span>{(assets.file_format === 'pdf' || assets.file_format === 'epub') ? <Link to={`/library/${data.id}/records/${record.id}/assets/${assets.id}/read`} className="text-green underline">Read {assets.file_format.toUpperCase()}</Link> : <DownloadButton bucket={assets.bucket} storagePath={assets.storage_path} />}</div>)}
+        <div className="border-t border-border pt-4"><h3 className="mb-3 text-label text-fg">Tags & collections</h3><RecordOrganizer recordId={record.id} /></div>
+      </section>)}
+      <ExportButton recordIds={data.records.map((record) => record.id)} />
+    </div>
+  );
 
   return (
-    <div className={preview ? 'max-w-none' : 'max-w-[640px]'}>
-      <div className={preview ? 'grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(400px,640px)_minmax(480px,1fr)]' : 'flex flex-col gap-6'}>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
+      <Link to={`/library/${data.id}`} className="text-small text-muted underline">Back to {kind}</Link>
+      <div className={preview ? 'grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,720px)_minmax(0,1fr)]' : 'flex max-w-[720px] flex-col gap-6'}>
       <div className="flex min-w-0 flex-col gap-6">
       {data.records.map((record) => (autoImport || hasLookupSuggestions(record.metadata)) && <AutoMetadataImport key={`auto-${record.id}`} work={data} record={record} enabled />)}
-      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} userRating={data.user_rating} />
+      <EditWorkForm workId={data.id} title={data.title} subtitle={data.subtitle} abstract={data.abstract} language={data.language} workType={data.work_type} userRating={data.user_rating}>
+        {data.records.map((record) => <section key={record.id} className="my-4 flex flex-col gap-3 border-y border-border py-4"><h2 className="text-label text-fg">Authors & contributors · {recordLabel(record)}</h2><ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} /></section>)}
+      </EditWorkForm>
 
       <ExportButton recordIds={data.records.map((r) => r.id)} />
 
@@ -100,11 +153,8 @@ export function WorkDetail() {
           />
 
           <IdentifierList workId={data.id} recordId={record.id} identifiers={record.identifiers} />
-          <AddIdentifierForm recordId={record.id} defaultScheme={defaultIdentifierScheme(record.record_type)} />
-          <RecordOrganizer recordId={record.id} />
           <MetadataLookup work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />
-
-          <ContributorEditor workId={data.id} recordId={record.id} existingCredits={record.record_contributors} />
+          <details><summary className="cursor-pointer text-label text-fg">Tags & collections</summary><RecordOrganizer recordId={record.id} /></details>
 
           <FileList workId={data.id} recordId={record.id} files={record.record_assets} />
           <UploadForm recordId={record.id} />

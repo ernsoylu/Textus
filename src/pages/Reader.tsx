@@ -93,7 +93,7 @@ export function Reader() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to={`/library/${workId}`} className="text-small text-muted underline">Back to work</Link>
+        <Link to={`/library/${workId}`} className="text-small text-muted underline">Back to book</Link>
         <label className="flex items-center gap-2 text-small text-fg">
           Status{' '}
           <select
@@ -141,7 +141,7 @@ export function Reader() {
         </div>
 
         {(isPdf || isEpub) && (
-          <div className="flex w-[300px] flex-col gap-4">
+          <div className="flex w-full flex-col lg:w-[300px] gap-4">
             {isPdf && (
               <AnnotationForm
                 label={`Add note to page ${page}`}

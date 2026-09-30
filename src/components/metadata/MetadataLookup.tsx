@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import type { ImportedCandidate } from 'shared/names';
 import { metadataLookup, type MetadataResponse } from '@/lib/functions';
@@ -7,6 +7,7 @@ import { applyMetadata, defaultSelection, isInvalidPerson, isWorkField, loadCand
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { addIdentifier } from '@/hooks/useCatalogMutations';
 import { MetadataProgress } from './MetadataProgress';
 
 type Work = { id: string; title: string; subtitle: string | null; abstract: string | null; language: string | null; work_type: string; metadata: unknown };
@@ -17,7 +18,14 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
   const query = useQueryClient();
   const [scheme, setScheme] = useState<IdentifierScheme>(defaultScheme);
   useEffect(() => setScheme(defaultScheme), [defaultScheme]);
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(() => record.identifiers?.find((id) => id.scheme === defaultScheme)?.normalized_value ?? '');
+  const saveIdentifier = useMutation({
+    mutationFn: () => addIdentifier(record.id, scheme, value),
+    onSuccess: ({ duplicateCount }) => {
+      setDone(duplicateCount ? 'Identifier saved. Another record in your library has this identifier.' : 'Identifier saved.');
+      query.invalidateQueries({ queryKey: ['works'] });
+    },
+  });
   const [response, setResponse] = useState<MetadataResponse | null>(null);
   const [selected, setSelected] = useState<Field[]>([]);
   const [selectedCredits, setSelectedCredits] = useState<number[]>([]);
@@ -78,11 +86,12 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
   }
 
   return <section className="flex flex-col gap-2 rounded-8 border border-border p-3" aria-label="Metadata lookup">
-    <p className="text-label text-fg">Look up metadata</p>
+    <p className="text-label text-fg">Identifiers & metadata</p>
     <div className="flex flex-wrap gap-2">
-      <select value={scheme} onChange={(e) => setScheme(e.target.value as IdentifierScheme)} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{IDENTIFIER_SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
+      <select value={scheme} onChange={(e) => { setScheme(e.target.value as IdentifierScheme); setValue(record.identifiers?.find((id) => id.scheme === e.target.value)?.normalized_value ?? ''); saveIdentifier.reset(); setDone(''); }} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{IDENTIFIER_SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
       <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label="Lookup reference" placeholder={(STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Reference number, including year' : 'Identifier'} className="w-auto min-w-[190px] flex-1" />
-      <Button onClick={lookup} isLoading={pending} disabled={!value.trim()}>Look up</Button>
+      <Button variant="secondary" onClick={() => { setDone(''); saveIdentifier.mutate(); }} isLoading={saveIdentifier.isPending} disabled={!value.trim() || pending}>Save identifier</Button>
+      <Button onClick={lookup} isLoading={pending} disabled={!value.trim() || saveIdentifier.isPending}>Look up</Button>
     </div>
     <MetadataProgress message={pending ? progressMessage : undefined} />
     {response?.status === 'not_found' && <p className="text-small text-yellow">No metadata found in {response.searchedProviders.join(', ')}.</p>}
@@ -106,6 +115,7 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
       {data.cover_url && <label className="text-small text-fg"><input type="checkbox" checked={includeCover} onChange={(e) => setIncludeCover(e.target.checked)} /> Retrieve cover</label>}
       <Button onClick={apply} isLoading={pending} disabled={!selected.length && !selectedCredits.length && !includeCover}>Apply selected metadata</Button>
     </div>}
+    {saveIdentifier.error && <p className="text-small text-red" role="alert">{saveIdentifier.error.message}</p>}
     {error && <p className="text-small text-red" role="alert">{error}</p>}
     {done && <output className="text-small text-green">{done}</output>}
   </section>;

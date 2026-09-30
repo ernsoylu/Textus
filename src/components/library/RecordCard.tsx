@@ -30,9 +30,9 @@ export function RecordCard({ workId, title, byline, meta, detail, metadataMessag
           <p className="text-small w-full shrink-0 line-clamp-2 break-words text-fg">{byline || 'Unattributed'}</p>
         </div>
       )}
-      <p className="text-label w-full text-fg">{title}</p>
+      <p title={title} className="text-label w-full line-clamp-2 break-words text-fg">{title}</p>
       {userRating != null && <p className="text-small text-yellow" aria-label={`Your rating: ${userRating} out of 5 stars`}>{'★'.repeat(userRating)}{'☆'.repeat(5 - userRating)}</p>}
-      <p className="text-small w-full text-muted">{byline || 'Unattributed'}</p>
+      <p title={byline} className="text-small w-full line-clamp-2 break-words text-muted">{byline || 'Unattributed'}</p>
       <p className="text-small w-full text-green">{meta}</p>
       {detail && <p className="text-small w-full text-muted">{detail}</p>}
       <MetadataProgress message={metadataMessage} />
@@ -40,13 +40,13 @@ export function RecordCard({ workId, title, byline, meta, detail, metadataMessag
   );
   if (!onToggleSelect) {
     return (
-      <Link to={`/library/${workId}`} className="flex w-[236px] flex-col gap-3 rounded-8">
+      <Link to={`/library/${workId}`} className="flex w-[236px] max-w-full min-w-0 flex-col gap-3 rounded-8 transition-colors hover:bg-raised/40">
         {body}
       </Link>
     );
   }
   return (
-    <label className={`flex w-[236px] cursor-pointer flex-col gap-3 rounded-8 ${selected ? 'ring-2 ring-green' : ''}`}>
+    <label className={`flex w-[236px] max-w-full min-w-0 cursor-pointer flex-col gap-3 rounded-8 ${selected ? 'ring-2 ring-green' : ''}`}>
       <input type="checkbox" checked={!!selected} onChange={onToggleSelect} aria-label={`Select ${title}`} className="self-start" />
       {body}
     </label>

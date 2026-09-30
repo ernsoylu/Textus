@@ -170,13 +170,15 @@ export function NewWork() {
         <button type="button" className="self-start text-small text-green underline" disabled={busy} onClick={() => setMode('manual')}>Add manually</button>
       </> : <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-heading text-fg">Add a work manually</p>
-        <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label className="flex flex-col gap-2 text-small text-fg">Type
         <select className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={workType} onChange={(e) => setWorkType(e.target.value as (typeof WORK_TYPES)[number])}>
           {WORK_TYPES.map((t) => <option key={t} value={t}>{WORK_TYPE_LABELS[t]}</option>)}
         </select>
-        {workType !== 'serial' && <Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} />}
+        </label>
+        <label className="flex flex-col gap-2 text-small text-fg">Title<Input required placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+        {workType !== 'serial' && <label className="flex flex-col gap-2 text-small text-fg">Author (optional)<Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} /></label>}
         {mutation.isError && <p className="text-small text-red">{mutation.error.message}</p>}
-        <Button type="submit" isLoading={mutation.isPending} disabled={!title.trim()}>{mutation.isPending ? 'Saving…' : 'Save'}</Button>
+        <Button type="submit" isLoading={mutation.isPending} disabled={!title.trim()}>{mutation.isPending ? 'Adding…' : 'Add to library'}</Button>
         <button type="button" className="self-start text-small text-green underline" onClick={() => setMode('upload')}>Upload files instead</button>
       </form>}
     </div>

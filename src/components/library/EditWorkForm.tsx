@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useUpdateWork, useDeleteWork } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { WORK_TYPES, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 
 export function EditWorkForm({
   workId,
+  children,
   title: initialTitle,
   subtitle: initialSubtitle,
   abstract: initialAbstract,
@@ -17,6 +18,7 @@ export function EditWorkForm({
   userRating: initialUserRating = null,
 }: Readonly<{
   workId: string;
+  children?: ReactNode;
   title: string;
   subtitle: string | null;
   abstract: string | null;
@@ -50,12 +52,7 @@ export function EditWorkForm({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-heading text-fg">Edit {WORK_TYPE_LABELS[workType as WorkType]?.toLowerCase() ?? 'work'}</p>
-      <label className="text-small text-muted">{WORK_TYPE_LABELS[workType as WorkType] ?? 'Work'} title<Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" /></label>
-      <label className="text-small text-muted">Subtitle (optional)<Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" /></label>
-      <label className="text-small text-muted">Language<Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" /></label>
-      <label className="flex flex-col text-small text-muted">{['book', 'serial', 'standard', 'other'].includes(workType) ? 'Description' : 'Abstract'} (optional)
-      <textarea className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={abstract} onChange={(e) => setAbstract(e.target.value)} placeholder="Abstract (optional)" rows={3} />
-      </label>
+      <label className="flex flex-col gap-1 text-small text-muted">Type
       <select
         aria-label="Work type"
         className="rounded-8 border border-muted bg-dim p-4 text-body text-fg"
@@ -68,6 +65,14 @@ export function EditWorkForm({
           </option>
         ))}
       </select>
+      </label>
+      <label className="text-small text-muted">{WORK_TYPE_LABELS[workType as WorkType] ?? 'Work'} title<Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" /></label>
+      <label className="text-small text-muted">Subtitle (optional)<Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" /></label>
+      {children}
+      <label className="text-small text-muted">Language<Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="Language (BCP 47)" /></label>
+      <label className="flex flex-col text-small text-muted">{['book', 'serial', 'standard', 'other'].includes(workType) ? 'Description' : 'Abstract'} (optional)
+      <textarea className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={abstract} onChange={(e) => setAbstract(e.target.value)} placeholder="Abstract (optional)" rows={3} />
+      </label>
       {workType === 'book' && <label className="text-small text-muted">Your rating
         <select aria-label="Your rating" className="block w-full rounded-8 border border-muted bg-dim p-3 text-body text-fg" value={userRating ?? ''} onChange={(e) => setUserRating(e.target.value ? Number(e.target.value) : null)}>
           <option value="">Not rated</option>
