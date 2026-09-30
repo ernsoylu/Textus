@@ -177,7 +177,7 @@ test('long fallback cover titles stay inside the thumbnail in both densities', a
   const title = 'A very long book title '.repeat(30);
   await page.route('**/rest/v1/rpc/library_page', (route) => route.fulfill({ json: [{ ...libraryRow, title }] }));
   await page.goto('/library');
-  const card = page.locator(`a[href="/library/${workId}"]`);
+  const card = page.getByRole('link', { name: `Open ${title}`, exact: true });
   await expect(card).toBeVisible();
   for (const density of ['comfortable', 'compact']) {
     await page.evaluate((value) => { document.documentElement.dataset.density = value; }, density);
@@ -191,7 +191,7 @@ test('long fallback cover titles stay inside the thumbnail in both densities', a
         bylineTop: byline.getBoundingClientRect().top,
         bylineBottom: byline.getBoundingClientRect().bottom,
         coverBottom: cover.getBoundingClientRect().bottom,
-        fullTitle: element.children[1].textContent,
+        fullTitle: element.closest('article')!.children[1].textContent,
       };
     });
     expect(bounds.clipped).toBe(true);
@@ -247,7 +247,7 @@ test('library opens book details, metadata shares one input, and Read opens the 
   const book = { ...work, subtitle: 'A practical guide', abstract: 'Grow a beautiful garden.', records: [{ ...work.records[0], publisher: 'Garden Press', pages: '120', identifiers: [{ scheme: 'isbn', normalized_value: '9780261103252' }], record_assets: [{ role: 'primary', assets: { id: assetId, bucket: 'documents', storage_path: 'fixture.pdf', file_format: 'pdf', processing_state: 'ready', file_size: 1024 } }] }] };
   await page.route('**/rest/v1/works?*', (route) => route.fulfill({ json: book }));
   await page.goto('/library');
-  await page.locator(`a[href="/library/${workId}"]`).click();
+  await page.getByRole('link', { name: 'The Garden Book', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The Garden Book', exact: true })).toBeVisible();
   await expect(page.getByText('Grow a beautiful garden.')).toBeVisible();
   await expect(page.getByText('Garden Press')).toBeVisible();
@@ -357,4 +357,51 @@ test('one identifier input saves a DOI and rejects invalid ISBNs before writing'
   await lookup.getByRole('button', { name: 'Save identifier' }).click();
   expect((await saved).postDataJSON()).toMatchObject({ record_id: recordId, scheme: 'doi', normalized_value: '10.1000/182' });
   await expect(lookup.getByText('Identifier saved.', { exact: true })).toBeVisible();
+});
+
+
+test('cover hover opens the reader directly and saves half-star ratings', async ({ page }) => {
+  await mocks(page);
+  const book = { ...work };
+  await page.route('**/rest/v1/works?*', (route) => {
+    if (route.request().method() === 'PATCH') Object.assign(book, route.request().postDataJSON());
+    return route.fulfill({ json: book });
+  });
+  await page.route('**/rest/v1/rpc/library_page', (route) => route.fulfill({ json: [{ ...libraryRow, user_rating: book.user_rating, formats: ['pdf'], read_record_id: recordId, read_asset_id: assetId }] }));
+  await page.goto('/library');
+  const card = page.locator('article').filter({ has: page.getByRole('link', { name: 'The Garden Book', exact: true }) });
+  await card.locator('.group').hover();
+  await expect(card.locator('.absolute.inset-0').first()).toHaveCSS('opacity', '1');
+  await expect(card.getByRole('link', { name: 'Open The Garden Book', exact: true })).toHaveCSS('filter', 'blur(4px)');
+  await expect(card.getByRole('link', { name: 'Read book', exact: true })).toBeVisible();
+  await expect(card.getByRole('link', { name: 'Open book page' })).toBeVisible();
+  const rating = card.getByRole('slider', { name: 'Rate The Garden Book' });
+  await rating.focus();
+  await rating.press('End');
+  await expect.poll(() => book.user_rating).toBe(5);
+  await rating.press('ArrowLeft');
+  await expect.poll(() => book.user_rating).toBe(4.5);
+  await expect(card.getByText('4.5 / 5 ★')).toBeVisible();
+  await rating.press('Home');
+  await expect.poll(() => book.user_rating).toBe(0.5);
+  for (const density of ['comfortable', 'compact']) {
+    await page.evaluate((value) => { document.documentElement.dataset.density = value; }, density);
+    await card.locator('.group').hover();
+    const fits = await card.locator('.group').evaluate((cover) => {
+      const bounds = cover.getBoundingClientRect();
+      return Array.from(cover.querySelectorAll('a, input')).every((element) => { const rect = element.getBoundingClientRect(); return rect.top >= bounds.top && rect.bottom <= bounds.bottom; });
+    });
+    expect(fits).toBe(true);
+  }
+  const hoverScan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  expect(hoverScan.violations, JSON.stringify(hoverScan.violations, null, 2)).toEqual([]);
+  await page.screenshot({ path: '/tmp/textus-cover-controls.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await card.getByRole('link', { name: 'Read book', exact: true }).click();
+  await expect(page).toHaveURL(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
+  await expect(page.getByText('Textus reader fixture')).toBeVisible();
+  await page.goto('/library');
+  await page.getByRole('link', { name: 'The Garden Book', exact: true }).click();
+  await expect(page).toHaveURL(`/library/${workId}`);
 });

@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { Link, useParams, useSearchParams, useMatch } from 'react-router-dom';
 import { useWork } from '@/hooks/useWork';
 import { useCoverUrls } from '@/hooks/useCoverUrls';
+import { StarRating } from '@/components/library/StarRating';
 import { Button } from '@/components/ui/button';
 import { UploadForm } from '@/components/library/UploadForm';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
@@ -78,7 +79,7 @@ export function WorkDetail() {
             <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
           </div>
           {!readerPath && <p className="text-small text-muted">Add a PDF or EPUB in Edit {kind} to read here.</p>}
-          <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow">{data.user_rating ? '★'.repeat(data.user_rating) : 'Not rated'}</dd></div></dl>
+          <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow"><StarRating value={data.user_rating} /></dd></div></dl>
         </div>
       </section>
       {gathering && <section id="book-metadata" className="flex flex-col gap-4">{data.records.map((record) => <MetadataLookup key={record.id} work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />)}{!data.records.length && <p className="text-small text-muted">Add a record in Edit {kind} to look up metadata.</p>}</section>}

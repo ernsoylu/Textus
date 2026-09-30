@@ -9,6 +9,8 @@ import type { LibraryFilters } from '@/lib/libraryFilters';
 // happen in Postgres, so the browser never holds more than the pages it has shown.
 export interface WorkListItem {
   workId: string;
+  workType: string;
+  readerPath: string | null;
   title: string;
   byline: string;
   meta: string; // "edition · 2019"
@@ -36,6 +38,8 @@ function toItem(row: Row): WorkListItem {
   const year = row.publication_date ? new Date(row.publication_date).getFullYear() : null;
   return {
     workId: row.work_id,
+    workType: row.work_type,
+    readerPath: row.read_record_id && row.read_asset_id ? `/library/${row.work_id}/records/${row.read_record_id}/assets/${row.read_asset_id}/read` : null,
     title: row.title,
     byline: formatByline(credits),
     meta: row.record_type ? [row.record_type, year].filter(Boolean).join(' · ') : row.work_type,

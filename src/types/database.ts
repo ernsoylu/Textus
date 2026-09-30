@@ -435,7 +435,7 @@ isOneToOne: false
                            },
 "library_page":
 { Args: { "p_collection"?: string,"p_format"?: string,"p_ids"?: (string)[],"p_language"?: string,"p_limit"?: number,"p_offset"?: number,"p_q"?: string,"p_sort"?: string,"p_status"?: string,"p_tag"?: string,"p_work_type"?: string }; Returns: {
-              "collection_ids": (string)[],"cover_path": string,"created_at": string,"credits": Json,"formats": (string)[],"language": string,"last_read_at": string,"progress": number,"publication_date": string,"record_ids": (string)[],"record_type": string,"statuses": (string)[],"tag_ids": (string)[],"title": string,"total": number,"user_rating": number,"work_id": string,"work_type": string
+              "collection_ids": (string)[],"cover_path": string,"created_at": string,"credits": Json,"formats": (string)[],"language": string,"last_read_at": string,"progress": number,"publication_date": string,"record_ids": (string)[],"record_type": string,"statuses": (string)[],"tag_ids": (string)[],"title": string,"total": number,"user_rating": number,"read_record_id": string | null,"read_asset_id": string | null,"work_id": string,"work_type": string
             }[]
                            },
 "merge_contributors":

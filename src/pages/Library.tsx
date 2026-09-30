@@ -81,7 +81,7 @@ export function Library() {
     // overflow-anchor: none — otherwise the browser keeps the viewport pinned to the sentinel as pages arrive, and the
     // list would load itself all the way to the end.
     <div className="flex flex-col gap-6 [overflow-anchor:none]">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-heading text-fg">Library</p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => (selecting ? stopSelecting() : setSelecting(true))}>{selecting ? 'Done selecting' : 'Select'}</Button>
@@ -124,6 +124,8 @@ export function Library() {
           <RecordCard
             key={item.workId}
             workId={item.workId}
+            workType={item.workType}
+            readerPath={item.readerPath}
             title={item.title}
             byline={item.byline}
             meta={item.meta}

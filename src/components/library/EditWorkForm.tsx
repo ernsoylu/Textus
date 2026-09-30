@@ -76,7 +76,7 @@ export function EditWorkForm({
       {workType === 'book' && <label className="text-small text-muted">Your rating
         <select aria-label="Your rating" className="block w-full rounded-8 border border-muted bg-dim p-3 text-body text-fg" value={userRating ?? ''} onChange={(e) => setUserRating(e.target.value ? Number(e.target.value) : null)}>
           <option value="">Not rated</option>
-          {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? 'star' : 'stars'}</option>)}
+          {Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? 'star' : 'stars'}</option>)}
         </select>
       </label>}
       <div className="flex gap-2">
