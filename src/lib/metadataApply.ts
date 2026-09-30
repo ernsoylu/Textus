@@ -217,6 +217,15 @@ export async function applyMetadata(input: ApplyInput) {
     ? parseStandardReference(data.standard_scheme, data.standard_reference) : undefined;
   if (reference && !reference.ok) throw new Error('Invalid standard reference returned by the catalogue.');
   const { workPatch, recordPatch } = buildPatches(input);
+  // ponytail: catches replacement glyphs and in-word '?'; broader mojibake needs source verification.
+  // Prefer the attached file's intact title, preserving the current title when none exists.
+  if (typeof workPatch.title === 'string' && /\uFFFD|\p{L}\?\p{L}/u.test(workPatch.title)) {
+    const { data: files, error } = await supabase.from('record_assets').select('assets(metadata)').eq('record_id', recordId);
+    if (error) throw error;
+    const fileTitle = files?.map(({ assets }) => meta(assets?.metadata).title_suggestion).find((title) => typeof title === 'string' && title.trim() && !/\uFFFD|\p{L}\?\p{L}/u.test(title));
+    if (typeof fileTitle === 'string') workPatch.title = fileTitle.normalize('NFC');
+    else delete workPatch.title;
+  }
   if (Object.keys(workPatch).length) {
     const { error } = await supabase.from('works').update(workPatch as never).eq('id', workId);
     if (error) throw error;

@@ -46,7 +46,7 @@ export function fold(input: string): string {
   let s = input.toLowerCase();
   s = s.replace(/[ıøłđðþßæœ]/g, (ch) => FOLD_MAP[ch] ?? ch);
   s = s.normalize('NFKD').replace(/[̀-ͯ]/g, ''); // strip combining marks (incl. cedilla, acute, etc.)
-  s = s.replace(/[^a-z]/g, ''); // letters only — apostrophes, digits, spaces, hyphens disappear
+  s = s.replace(/[^\p{L}\p{M}]|[ʹʺʼ]/gu, ''); // Unicode letters and script marks — punctuation, digits and spaces disappear
   return s;
 }
 

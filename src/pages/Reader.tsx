@@ -93,7 +93,7 @@ export function Reader() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to={`/library/${workId}`} className="text-small text-muted underline">Back to book</Link>
+        <Link to={`/library/${workId}`} className="text-small text-muted underline">Back to details</Link>
         <label className="flex items-center gap-2 text-small text-fg">
           Status{' '}
           <select

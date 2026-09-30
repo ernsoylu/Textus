@@ -260,13 +260,13 @@ test('library opens book details, metadata shares one input, and Read opens the 
   await expect(lookup.getByRole('button', { name: 'Look up', exact: true })).toBeVisible();
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.getByRole('link', { name: 'Read book', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Read', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   await page.screenshot({ path: '/tmp/textus-book-page.png', fullPage: true });
   const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
-  await page.getByRole('link', { name: 'Edit book', exact: true }).click();
+  await page.getByRole('link', { name: 'Edit', exact: true }).click();
   await expect(page).toHaveURL(`/library/${workId}/edit`);
   await expect(page.getByLabel('Work type', { exact: true })).toBeVisible();
   const order = await page.locator('main').evaluate((main) => {
@@ -277,8 +277,8 @@ test('library opens book details, metadata shares one input, and Read opens the 
     return [type, title, authors].every((node, index) => !!(node.compareDocumentPosition([title, authors, description][index]) & Node.DOCUMENT_POSITION_FOLLOWING));
   });
   expect(order).toBe(true);
-  await page.getByRole('link', { name: 'Back to book' }).click();
-  await page.getByRole('link', { name: 'Read book', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to details' }).click();
+  await page.getByRole('link', { name: 'Read', exact: true }).click();
   await expect(page).toHaveURL(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
   await expect(page.getByLabel('Reading status')).toBeVisible();
   await expect(page.getByText('Textus reader fixture')).toBeVisible();
@@ -373,8 +373,8 @@ test('cover hover opens the reader directly and saves half-star ratings', async 
   await card.locator('.group').hover();
   await expect(card.locator('.absolute.inset-0').first()).toHaveCSS('opacity', '1');
   await expect(card.getByRole('link', { name: 'Open The Garden Book', exact: true })).toHaveCSS('filter', 'blur(4px)');
-  await expect(card.getByRole('link', { name: 'Read book', exact: true })).toBeVisible();
-  await expect(card.getByRole('link', { name: 'Open book page' })).toBeVisible();
+  await expect(card.getByRole('link', { name: 'Read', exact: true })).toBeVisible();
+  await expect(card.getByRole('link', { name: 'View details' })).toBeVisible();
   const rating = card.getByRole('slider', { name: 'Rate The Garden Book' });
   await rating.focus();
   await rating.press('End');
@@ -398,7 +398,8 @@ test('cover hover opens the reader directly and saves half-star ratings', async 
   await page.screenshot({ path: '/tmp/textus-cover-controls.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await card.getByRole('link', { name: 'Read book', exact: true }).click();
+  await card.locator('.group').hover();
+  await card.getByRole('link', { name: 'Read', exact: true }).click();
   await expect(page).toHaveURL(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
   await expect(page.getByText('Textus reader fixture')).toBeVisible();
   await page.goto('/library');
@@ -449,4 +450,30 @@ test('tags get automatic colors from book details and Tags, and keep them when r
   await page.locator('li').filter({ has: page.getByLabel('Name of Gardening', { exact: true }) }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByLabel('Name of Garden books', { exact: true })).toBeVisible();
   expect(tags[0].color).toBe(originalColor);
+});
+
+
+test('dropdown arrows have consistent inset and text clearance across pages', async ({ page }) => {
+  await mocks(page);
+  const state = { status: 'unread' };
+  await page.route('**/rest/v1/reading_states*', (route) => {
+    if (route.request().method() === 'POST') Object.assign(state, route.request().postDataJSON());
+    return route.fulfill({ json: state });
+  });
+  for (const path of ['/library', `/library/${workId}/edit`, `/library/${workId}/records/${recordId}/assets/${assetId}/read`]) {
+    await page.goto(path);
+    await expect(page.getByRole('combobox').first()).toBeVisible();
+    const styles = await page.getByRole('combobox').evaluateAll((selects) => selects.map((select) => {
+      const style = getComputedStyle(select);
+      return { padding: parseFloat(style.paddingRight), appearance: style.appearance, position: style.backgroundPosition, image: style.backgroundImage };
+    }));
+    for (const style of styles) {
+      expect(style.padding).toBeGreaterThanOrEqual(40);
+      expect(style.appearance).toBe('none');
+      expect(style.position).toContain('12px');
+      expect(style.image).toContain('image/svg+xml');
+    }
+  }
+  await page.getByLabel('Reading status').selectOption('reading');
+  await expect(page.getByLabel('Reading status')).toHaveValue('reading');
 });

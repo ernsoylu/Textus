@@ -159,7 +159,7 @@ export function NewWork() {
             <p className="text-muted">{Math.round(item.progress * 100)}% · {(item.file.size * item.progress / 1_048_576).toFixed(1)} / {(item.file.size / 1_048_576).toFixed(1)} MB</p>
             {item.message && <p role="status" className="text-muted">{item.message}</p>}
             {item.error && <p role="alert" className="text-red">{item.error}</p>}
-            {item.workId && <Link to={`/library/${item.workId}`} className={`text-green underline ${busy ? 'pointer-events-none' : ''}`} aria-disabled={busy}>Open this work</Link>}
+            {item.workId && <Link to={`/library/${item.workId}`} className={`text-green underline ${busy ? 'pointer-events-none' : ''}`} aria-disabled={busy}>View details</Link>}
           </li>)}
         </ul>}
         {uploads.length > 1 && <div className="flex flex-col gap-1 text-small text-muted">

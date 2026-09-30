@@ -2,7 +2,7 @@
 -- FR-SRCH-1, NFR-PERF-1) and isolation between users. Runs in a transaction and rolls back.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(33);
+SELECT plan(43);
 
 INSERT INTO auth.users (id, email) VALUES
     ('aaaaaaaa-1111-0000-0000-000000000000', 'la@test.local'),
@@ -82,6 +82,30 @@ SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'quantum')), ARRAY['Alpha 
 SELECT is((SELECT count(*)::int FROM search_library('secrets')), 0, 'B''s file text is invisible to A');
 SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Author')), ARRAY['Gamma Garden', 'Alpha Garden'], 'search matches contributor names');
 SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'garden', p_work_type => 'article')), ARRAY[]::text[], 'search and filters combine');
+
+-- Partial and multilingual metadata matches, without losing intact titles.
+RESET ROLE;
+WITH added AS (
+    INSERT INTO works (user_id, work_type, title, abstract) VALUES
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'The Economist style guide', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Electric Vehicle Design', 'Economics textbook'),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Türkiye Üzerine Tezler', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Преступление и наказание', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', '中国文学', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'الأدب العربي', NULL)
+    RETURNING id
+) INSERT INTO records (work_id, record_type) SELECT id, 'edition' FROM added;
+SET LOCAL ROLE authenticated;
+SELECT is((SELECT title FROM library_page(p_q => 'Eco', p_sort => 'relevance') LIMIT 1), 'The Economist style guide', 'partial title matches rank above abstract matches');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Türk')), ARRAY['Türkiye Üzerine Tezler'], 'Turkish partial title search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'turkiye')), ARRAY['Türkiye Üzerine Tezler'], 'accent-insensitive Turkish search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => U&'Tu\0308rkiye')), ARRAY['Türkiye Üzerine Tezler'], 'decomposed Unicode search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'преступ')), ARRAY['Преступление и наказание'], 'Cyrillic partial search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '文学')), ARRAY['中国文学'], 'Chinese substring search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'العربي')), ARRAY['الأدب العربي'], 'Arabic substring search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '%')), ARRAY[]::text[], 'percent search stays literal');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '_')), ARRAY[]::text[], 'underscore search stays literal');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Zed')), ARRAY['Alpha Garden'], 'partial author search');
 
 -- ---------- As user B ----------
 SET LOCAL request.jwt.claims = '{"sub": "bbbbbbbb-1111-0000-0000-000000000000", "role": "authenticated"}';

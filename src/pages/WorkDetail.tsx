@@ -74,15 +74,15 @@ export function WorkDetail() {
           {data.subtitle && <p className="text-heading text-muted">{data.subtitle}</p>}
           <p className="text-body text-fg">{data.records[0]?.byline || 'Unattributed'}</p>
           <div className="flex flex-wrap gap-2">
-            {readerPath ? <Link to={readerPath} className="rounded-8 bg-green px-4 py-3 text-label text-dim">Read {kind}</Link> : <Button disabled>Read {kind}</Button>}
-            <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit {kind}</Link>
+            {readerPath ? <Link to={readerPath} className="rounded-8 bg-green px-4 py-3 text-label text-dim">Read</Link> : <Button disabled>Read</Button>}
+            <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit</Link>
             <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
           </div>
-          {!readerPath && <p className="text-small text-muted">Add a PDF or EPUB in Edit {kind} to read here.</p>}
+          {!readerPath && <p className="text-small text-muted">Add a PDF or EPUB in Edit to read here.</p>}
           <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow"><StarRating value={data.user_rating} /></dd></div></dl>
         </div>
       </section>
-      {gathering && <section id="book-metadata" className="flex flex-col gap-4">{data.records.map((record) => <MetadataLookup key={record.id} work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />)}{!data.records.length && <p className="text-small text-muted">Add a record in Edit {kind} to look up metadata.</p>}</section>}
+      {gathering && <section id="book-metadata" className="flex flex-col gap-4">{data.records.map((record) => <MetadataLookup key={record.id} work={data} record={record} defaultScheme={defaultIdentifierScheme(record.record_type)} />)}{!data.records.length && <p className="text-small text-muted">Add a record in Edit to look up metadata.</p>}</section>}
       <section className="rounded-8 border border-border p-6"><h2 className="mb-3 text-heading text-fg">Description</h2><p className="whitespace-pre-wrap break-words text-body text-muted">{data.abstract || 'No description yet.'}</p></section>
       {data.work_type === 'serial' && <Link to={`/serials/${data.id}`} className="text-small text-green underline">Open the serial view</Link>}
       {data.records.map((record) => <section key={record.id} className="flex flex-col gap-4 rounded-8 border border-border p-6">
@@ -104,7 +104,7 @@ export function WorkDetail() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
-      <Link to={`/library/${data.id}`} className="text-small text-muted underline">Back to {kind}</Link>
+      <Link to={`/library/${data.id}`} className="text-small text-muted underline">Back to details</Link>
       <div className={preview ? 'grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,720px)_minmax(0,1fr)]' : 'flex max-w-[720px] flex-col gap-6'}>
       <div className="flex min-w-0 flex-col gap-6">
       {data.records.map((record) => (autoImport || hasLookupSuggestions(record.metadata)) && <AutoMetadataImport key={`auto-${record.id}`} work={data} record={record} enabled />)}
