@@ -72,7 +72,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 ### Files (M1)
 | ID | Requirement |
 |----|-------------|
-| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ files and attach them to a record. |
+| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu files and attach them to a record. |
 | FR-FILE-2 | The server verifies size, detects the real MIME type from file bytes, and computes SHA-256. |
 | FR-FILE-3 | Uploading bytes already in the user's library reuses the existing asset (deduplication by checksum). |
 | FR-FILE-4 | A record can have several assets with roles: primary, supplement, cover, converted, thumbnail. |
@@ -83,7 +83,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 | ID | Requirement | Milestone |
 |----|-------------|-----------|
 | FR-SRCH-1 | Full-text search over title, subtitle, abstract, and contributor names, with fuzzy matching on titles and names. | M1 |
-| FR-ORG-1 | Colored tags; many tags per record. | M3 |
+| FR-ORG-1 | Colored tags; many tags per record, collection and note (annotation). A tag's page lists everything it labels. | M3 |
 | FR-ORG-2 | Collections (shelves) with manual ordering. | M3 |
 | FR-ORG-3 | Filter by work type, tag, collection, reading status, file format, language; sort by title, author, date added, date published, recently read. | M3 |
 | FR-ORG-4 | Bulk tag / move / delete. | M3 |
@@ -104,12 +104,12 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 ### Reading (M1, M4)
 | ID | Requirement | Milestone |
 |----|-------------|-----------|
-| FR-READ-1 | In-browser PDF viewer with page navigation and zoom. | M1 |
-| FR-READ-2 | In-browser EPUB viewer. | M4 |
+| FR-READ-1 | In-browser PDF viewer: continuous scrolling, page navigation and labels, fit width / fit page / zoom, two-page spreads, outline, text search, fullscreen. | M1 |
+| FR-READ-2 | In-browser EPUB viewer: paginated or scrolling layout, one or two columns, contents, progress slider, full-text search, text size / line spacing / theme, fullscreen. | M4 |
 | FR-READ-3 | Reading progress (percentage, page, position) and status (unread, reading, finished, abandoned) sync across devices. | M4 |
-| FR-READ-4 | Highlights and notes with colors, anchored to a specific asset. | M4 |
+| FR-READ-4 | Highlights and notes with colors, anchored to a specific asset. Text is highlighted from a right-click menu on the selection; a highlight with a comment shows a marker in the text, and clicking it opens the comment in place (Word-style). The Notes page lists every note by book, searchable and filterable by tag, color and comment, and opens a note in its book. | M4 |
 | FR-READ-5 | Export annotations as Markdown and JSON. | M4 |
-| FR-READ-6 | MOBI/AZW3/CBZ assets are downloadable; in-browser reading for them is not required. | M4 |
+| FR-READ-6 | MOBI, AZW3 (KF8) and CBZ are read in the browser with the EPUB viewer, DjVu with a page viewer that uses the file's hidden OCR text for selection and highlights; other formats (and DRM-protected Kindle files) are downloadable. | M4 |
 
 ### Research and serials (M5)
 | ID | Requirement |
@@ -160,7 +160,7 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | Scheduling | `pg_cron` + `pg_net` | Supabase-bundled |
 | Validation | Zod | 3+ |
 | Testing | Vitest + Testing Library | latest |
-| Readers | pdf.js, epub.js | latest |
+| Readers | pdf.js (`pdfjs-dist` viewer components), foliate-js (EPUB, MOBI, AZW3, FB2, CBZ; pinned GitHub tarball, not on npm), DjVu.js (vendored in `src/vendor/djvu`, GPL-2.0-or-later) | pinned |
 
 **Constraints (fixed decisions):**
 - No other React framework (Next.js, Remix, …). The app is a Vite SPA.
@@ -468,7 +468,7 @@ Crossref returned structured `given`/`family`, ORCIDs, and author `sequence` for
 
 ## 7. Database schema
 
-19 tables: 18 domain tables plus `jobs` (`saved_searches`, FR-ORG-5, was added in a later migration). The SQL below is the target state of the initial migrations and must be implemented as written; changes go through new migrations and an update to this section.
+21 tables: 20 domain tables plus `jobs` (`saved_searches`, FR-ORG-5, and the `collection_tags` / `annotation_tags` junctions, FR-ORG-1, were added in later migrations). The SQL below is the target state of the initial migrations and must be implemented as written; changes go through new migrations and an update to this section.
 
 ### 7.1 Tables
 
@@ -669,7 +669,7 @@ CREATE TABLE assets (
     file_size BIGINT NOT NULL,
     checksum_sha256 TEXT NOT NULL,
     mime_type TEXT NOT NULL, -- detected server-side from bytes
-    file_format TEXT NOT NULL CHECK (file_format IN ('pdf', 'epub', 'mobi', 'azw3', 'cbz', 'html', 'txt', 'image')),
+    file_format TEXT NOT NULL CHECK (file_format IN ('pdf', 'epub', 'mobi', 'azw3', 'cbz', 'djvu', 'html', 'txt', 'image')),
     processing_state TEXT NOT NULL DEFAULT 'pending' CHECK (processing_state IN ('pending', 'processing', 'ready', 'failed')),
     processing_error TEXT,
     metadata JSONB DEFAULT '{}', -- page count, dimensions, extracted-text info, etc.
@@ -715,6 +715,21 @@ CREATE TABLE record_tags (
 );
 
 CREATE INDEX idx_record_tags_tag ON record_tags(tag_id);
+
+-- The same tags label collections and notes (FR-ORG-1).
+CREATE TABLE collection_tags (
+    collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (collection_id, tag_id)
+);
+CREATE INDEX idx_collection_tags_tag ON collection_tags(tag_id);
+
+CREATE TABLE annotation_tags (
+    annotation_id UUID NOT NULL REFERENCES annotations(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (annotation_id, tag_id)
+);
+CREATE INDEX idx_annotation_tags_tag ON annotation_tags(tag_id);
 
 -- ==========================================
 -- 10. COLLECTIONS (shelves)
@@ -774,6 +789,8 @@ CREATE TABLE annotations (
     record_id UUID NOT NULL REFERENCES records(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE, -- anchored to specific bytes
     anchor_type TEXT NOT NULL CHECK (anchor_type IN ('pdf_page', 'epub_cfi', 'text_quote')),
+    -- 'pdf_page' anchors any fixed page (PDF and DjVu): {page, rects:[{x1,y1,x2,y2}]} in page fractions, rects
+    -- omitted for a page note. 'epub_cfi' anchors every foliate-js format (EPUB, MOBI, AZW3): {cfi}.
     anchor_data JSONB NOT NULL, -- {page, rects:[{x1,y1,x2,y2}]} | {cfi} | {quote, context}
     highlighted_text TEXT,
     note TEXT,
@@ -1176,6 +1193,19 @@ CREATE POLICY "record_tags_insert" ON record_tags FOR INSERT TO authenticated WI
 );
 CREATE POLICY "record_tags_delete" ON record_tags FOR DELETE TO authenticated USING (private.is_record_owner(record_id));
 
+-- ---------- COLLECTION_TAGS / ANNOTATION_TAGS (migration 20260930000005) ----------
+-- Visible and removable when the labelled item is the caller's; INSERT also requires the tag to be theirs.
+-- No UPDATE policy: a junction row is replaced, never edited.
+ALTER TABLE collection_tags ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "collection_tags_select" ON collection_tags FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid())));
+CREATE POLICY "collection_tags_insert" ON collection_tags FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid()))
+    AND EXISTS (SELECT 1 FROM tags t WHERE t.id = tag_id AND t.user_id = (SELECT auth.uid())));
+CREATE POLICY "collection_tags_delete" ON collection_tags FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid())));
+-- annotation_tags: the same three policies against annotations.user_id.
+
 -- ---------- COLLECTION_RECORDS ----------
 ALTER TABLE collection_records ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "collection_records_select" ON collection_records FOR SELECT TO authenticated USING (
@@ -1218,7 +1248,7 @@ CREATE POLICY "jobs_select_own" ON jobs FOR SELECT TO authenticated USING ((SELE
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
     ('documents', 'documents', FALSE, 524288000, ARRAY[
         'application/pdf', 'application/epub+zip', 'application/x-mobipocket-ebook',
-        'application/vnd.amazon.ebook', 'application/vnd.comicbook+zip', 'text/html', 'text/plain']),
+        'application/vnd.amazon.ebook', 'application/vnd.comicbook+zip', 'image/vnd.djvu', 'text/html', 'text/plain']),
     ('covers', 'covers', FALSE, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp']),
     ('staging', 'staging', FALSE, 524288000, NULL) -- type is detected server-side after upload
 ON CONFLICT (id) DO NOTHING;
@@ -1394,9 +1424,9 @@ Properties:
 
 ### 9.3 Reading
 
-1. SPA picks the asset (the one in `reading_states.asset_id`, else the primary), requests a 5-minute signed URL, and loads it into pdf.js / epub.js.
+1. SPA picks the asset (the one in `reading_states.asset_id`, else the primary), requests a 5-minute signed URL, and loads it into pdf.js (PDF), foliate-js (EPUB, MOBI, AZW3, CBZ) or DjVu.js (DjVu). Books render in iframes whose own scripts never run: the page CSP (`deploy/security-headers.conf`) blocks them, and every book page also gets a `script-src 'none'` meta policy (`src/lib/inertBookHtml.ts`) for servers that send no CSP.
 2. Progress is saved (debounced, ~5 s) with an upsert on `reading_states (user_id, record_id)`.
-3. Annotations are stored against the exact `asset_id` they were made on.
+3. Annotations are stored against the exact `asset_id` they were made on. `/…/read?annotation=<id>` opens the book at a note with its comment showing.
 
 ---
 
@@ -1465,7 +1495,7 @@ export type AnnotationRow = Tables<'annotations'>;
 
 export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid' | 'iso' | 'iec' | 'astm' | 'asme' | 'bs';
 export type WorkType = 'book' | 'article' | 'serial' | 'thesis' | 'report' | 'standard' | 'other';
-export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'html' | 'txt' | 'image';
+export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'djvu' | 'html' | 'txt' | 'image';
 export type ReadingStatus = 'unread' | 'reading' | 'finished' | 'abandoned';
 export type ContributorRole = CreditRow['role'];
 ```
@@ -1534,7 +1564,7 @@ textus/
 │   │   ├── library/          # DocumentGrid, RecordCard, FilterBar
 │   │   ├── metadata/         # IdentifierInput, MetadataPreview, ContributorEditor
 │   │   ├── contributors/     # ContributorPage, ContributorReviewQueue, MergeDialog
-│   │   ├── reader/           # PdfViewer, EpubViewer, AnnotationPanel
+│   │   ├── reader/           # PdfViewer, BookViewer (foliate-js), DjvuViewer, NoteCard, AnnotationPanel
 │   │   └── layout/           # Header, Sidebar, TagBrowser
 │   ├── hooks/                # useRecords, useMetadataLookup, useReadingState, useCollections
 │   ├── lib/
@@ -1601,8 +1631,8 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 ### M4 — Reading
 - [x] EPUB viewer — FR-READ-2
 - [x] Progress sync — FR-READ-3
-- [x] Highlights and annotations, export — FR-READ-4/5 (EPUB: text highlights by CFI; PDF: page-anchored notes, since the canvas viewer has no text layer)
-- [x] Download for non-viewable formats — FR-READ-6
+- [x] Highlights and annotations, export — FR-READ-4/5 (text highlights by CFI in foliate-js formats and by page rectangles in PDF and DjVu; page notes; tags on notes; right-click menu and in-text comment markers)
+- [x] MOBI / AZW3 / CBZ / DjVu reading, download for the rest — FR-READ-6
 
 ### M5 — Export and serials
 - [x] BibTeX / RIS / CSL-JSON — FR-RES-1
@@ -1642,6 +1672,9 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 | 20 | Contributor model redesigned (§6.3): removed `UNIQUE(user_id, name_normalized)`; added structured names, `contributor_names`, `contributor_identifiers`, `contributor_distinctions`; credits get `position`, `credited_as`, `affiliation`, `resolved_by`; roles extended | The unique name forced different people with the same name into one contributor (Calibre's flaw). There was no way to represent variants, pseudonyms, or editor-only books properly. |
 | 21 | `records.container_record_id`; `chapter` work and record types | "Article-level records within issues" and chapters of edited volumes were required but could not be modeled. |
 | 22 | ORCID moved from a `contributors` column to `contributor_identifiers` | One mechanism for all authority IDs, with uniqueness per library. |
+| 23 | epub.js replaced by foliate-js | epub.js reads EPUB only and is unmaintained; foliate-js (MIT, used by the Foliate app) reads EPUB, MOBI, AZW3/KF8, FB2 and CBZ through one API with CFI annotations and search, so FR-READ-6 formats became readable. It is not on npm and is pinned to a commit tarball. Existing EPUB CFIs carry over (both follow the EPUB CFI spec). |
+| 24 | DjVu added (`file_format 'djvu'`, `image/vnd.djvu`, sniffed from `AT&TFORM…DJVU/DJVM`) | Scanned books are common in DjVu; DjVu.js (GPL-2.0-or-later, compatible with AGPL-3.0) renders it in a worker. |
+| 25 | `collection_tags` and `annotation_tags` | FR-ORG-1 tags now label collections and notes as well as records. |
 
 ---
 

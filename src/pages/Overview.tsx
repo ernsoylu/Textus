@@ -23,7 +23,7 @@ function Welcome() {
         <Link to="/import"><Button variant="secondary">Look up an identifier</Button></Link>
         <Link to="/library/new"><Button variant="ghost">Create manually</Button></Link>
       </div>
-      <p className="text-small text-muted">PDF, EPUB, MOBI, AZW3 and CBZ supported.</p>
+      <p className="text-small text-muted">PDF, EPUB, MOBI, AZW3, CBZ and DjVu supported.</p>
     </div>
   );
 }

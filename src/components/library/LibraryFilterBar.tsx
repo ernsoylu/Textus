@@ -7,7 +7,7 @@ const SORT_LABELS: Record<(typeof SORTS)[number], string> = {
   relevance: 'Relevance / newest', added: 'Date added', title: 'Title', author: 'Author', published: 'Date published', recent: 'Recently read',
 };
 const STATUSES = ['unread', 'reading', 'finished', 'abandoned'];
-const FORMATS = ['pdf', 'epub'];
+const FORMATS = ['pdf', 'epub', 'mobi', 'azw3', 'cbz', 'djvu'];
 const SELECT = 'rounded-8 border border-muted bg-dim p-3 text-body text-fg';
 
 // FR-ORG-3: filter by work type, tag, collection, reading status, file format, language; sort.

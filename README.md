@@ -17,7 +17,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 ### Key differentiators
 
 - **Proper domain model** — separates intellectual works from specific editions and from file assets
-- **Multi-format** — one book can have PDF, EPUB, and MOBI files
+- **Multi-format** — one book can have PDF, EPUB, MOBI, AZW3, CBZ and DjVu files, all readable in the browser
 - **Research-ready** — DOI, arXiv, and PMID lookup with citation export
 - **Magazine-aware** — serial/issue relationships with completeness tracking
 - **Self-hosted** — your data stays on your infrastructure
@@ -27,7 +27,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 ## Features
 
 ### Document management
-- [x] Upload PDF, EPUB, MOBI with server-side format detection
+- [x] Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu with server-side format detection
 - [x] Automatic metadata retrieval via ISBN, DOI, arXiv, ISSN
 - [x] Manual metadata entry with validation
 - [x] Multiple file formats per record
@@ -82,7 +82,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 | Job queue | PostgreSQL `jobs` table + `pg_cron` | Background processing (no Redis) |
 | Search | PostgreSQL FTS + `pg_trgm` | Full-text and fuzzy search |
 | Validation | Zod | Runtime schema validation |
-| Readers | pdf.js, epub.js | Client-side rendering |
+| Readers | pdf.js, foliate-js, DjVu.js | Client-side rendering; foliate-js is pinned to a GitHub tarball, DjVu.js is vendored in `src/vendor/djvu` (GPL-2.0-or-later) |
 
 ---
 
@@ -302,6 +302,7 @@ On self-hosted Supabase, pass provider keys through the `functions` service's `d
 - Uploaded files are verified server-side (size, detected MIME type, SHA-256). Client-reported MIME types are ignored.
 - Assets can only be created by the server after verification, and are immutable afterwards.
 - Provider API keys live only in Edge Functions. Outbound fetches have timeouts, response size limits, and host allowlists.
+- Books never run their own scripts. The Content-Security-Policy in `deploy/security-headers.conf` blocks them in the reader's book iframes, and every book page also carries a `script-src 'none'` policy, which covers servers that send no CSP header.
 
 ---
 

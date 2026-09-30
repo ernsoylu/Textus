@@ -18,6 +18,7 @@ const DOCUMENT_MIME_TYPES: Record<string, string> = {
   'application/x-mobipocket-ebook': 'mobi',
   'application/vnd.amazon.ebook': 'azw3',
   'application/vnd.comicbook+zip': 'cbz',
+  'image/vnd.djvu': 'djvu',
   'text/html': 'html',
   'text/plain': 'txt',
 };

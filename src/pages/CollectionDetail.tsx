@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCollection, useDeleteCollection, useUpdateCollection } from '@/hooks/useCollections';
 import { CollectionItems } from '@/components/library/CollectionItems';
+import { TagPicker } from '@/components/library/TagPicker';
+import { useCollectionTags, useSetCollectionTag } from '@/hooks/useTags';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 import { Input } from '@/components/ui/input';
@@ -14,6 +16,8 @@ export function CollectionDetail() {
   const { data, isLoading, error } = useCollection(collectionId);
   const update = useUpdateCollection(collectionId!);
   const remove = useDeleteCollection();
+  const tags = useCollectionTags(collectionId!);
+  const setTag = useSetCollectionTag(collectionId!);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -51,6 +55,11 @@ export function CollectionDetail() {
           {update.error && <p className="text-small text-red">{update.error.message}</p>}
         </div>
       </form>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-label text-fg">Tags</h2>
+        <TagPicker selected={tags.data ?? []} busy={setTag.isPending} onToggle={(tagId, on) => setTag.mutateAsync({ tagId, on })} />
+        {setTag.error && <p className="text-small text-red">{setTag.error.message}</p>}
+      </section>
       <section className="flex flex-col gap-2">
         <h2 className="text-heading text-fg">On this shelf</h2>
         <CollectionItems collectionId={data.id} />

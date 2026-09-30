@@ -41,7 +41,7 @@ export function RecordCard({ workId, workType = 'book', readerPath, title, bylin
       {onToggleSelect ? cover : <div className="group relative isolate rounded-4">
         <Link to={`/library/${workId}`} aria-label={`Open ${title}`} className="block transition-[filter] group-hover:blur-sm group-focus-within:blur-sm">{cover}</Link>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-4 bg-dim/90 p-2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-          {readerPath ? <Link to={readerPath} className="flex min-h-11 w-full items-center justify-center rounded-8 bg-green px-3 py-2 text-label text-dim">Read</Link> : <Button disabled title="Attach a PDF or EPUB to read here" className="w-full">Read</Button>}
+          {readerPath ? <Link to={readerPath} className="flex min-h-11 w-full items-center justify-center rounded-8 bg-green px-3 py-2 text-label text-dim">Read</Link> : <Button disabled title="Attach a readable file (PDF, EPUB, MOBI, AZW3, CBZ, DjVu) to read here" className="w-full">Read</Button>}
           <Link to={`/library/${workId}`} className="flex min-h-11 w-full items-center justify-center rounded-8 bg-bg px-3 py-2 text-label text-fg">View details</Link>
           {workType === 'book' && <StarRating value={userRating ?? null} onChange={(value) => rate.mutate({ user_rating: value })} label={`Rate ${title}`} disabled={rate.isPending} />}
         </div>

@@ -22,11 +22,13 @@ import { MetadataLookup } from '@/components/metadata/MetadataLookup';
 import { AutoMetadataImport } from '@/components/metadata/AutoMetadataImport';
 import { defaultIdentifierScheme, RECORD_TYPES, RECORD_TYPE_LABELS, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 import { meta } from '@/lib/metadataApply';
+import { isBookFormat, isViewable } from '@/lib/formats';
 import { useMetadataJobs } from '@/hooks/useJobs';
 import { MetadataProgress } from '@/components/metadata/MetadataProgress';
 
 const PdfViewer = lazy(() => import('@/components/reader/PdfViewer').then((module) => ({ default: module.PdfViewer })));
-const EpubViewer = lazy(() => import('@/components/reader/EpubViewer').then((module) => ({ default: module.EpubViewer })));
+const BookViewer = lazy(() => import('@/components/reader/BookViewer').then((module) => ({ default: module.BookViewer })));
+const DjvuViewer = lazy(() => import('@/components/reader/DjvuViewer').then((module) => ({ default: module.DjvuViewer })));
 
 // "edition · 2019", "article_version · preprint", "issue · vol. 3 no. 2 · 2020".
 function recordLabel(record: { record_type: string; metadata: unknown; volume: string | null; issue_number: string | null; publication_date: string | null }): string {
@@ -57,7 +59,7 @@ export function WorkDetail() {
   if (isLoading) return <p className="text-body text-muted">Loading…</p>;
   if (error) return <p className="text-body text-red">Could not load this work: {error.message}</p>;
   if (!data) return null;
-  const preview = data.records.flatMap((record) => record.record_assets.flatMap(({ role, assets }) => role !== 'cover' && assets?.bucket === 'documents' && (assets.file_format === 'pdf' || assets.file_format === 'epub') ? [{ asset: assets, recordId: record.id }] : []))[0];
+  const preview = data.records.flatMap((record) => record.record_assets.flatMap(({ role, assets }) => role !== 'cover' && assets?.bucket === 'documents' && isViewable(assets.file_format) ? [{ asset: assets, recordId: record.id }] : []))[0];
 
   const kind = (WORK_TYPE_LABELS[data.work_type as WorkType] ?? 'Work').toLowerCase();
   const readerPath = preview ? `/library/${data.id}/records/${preview.recordId}/assets/${preview.asset.id}/read` : null;
@@ -78,7 +80,7 @@ export function WorkDetail() {
             <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit</Link>
             <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
           </div>
-          {!readerPath && <p className="text-small text-muted">Add a PDF or EPUB in Edit to read here.</p>}
+          {!readerPath && <p className="text-small text-muted">Add a PDF, EPUB, MOBI, AZW3, CBZ or DjVu file in Edit to read here.</p>}
           <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow"><StarRating value={data.user_rating} /></dd></div></dl>
         </div>
       </section>
@@ -95,7 +97,7 @@ export function WorkDetail() {
         {record.container_record_id && <Link to={`/library/${data.id}/edit`} className="text-small text-green underline">View or edit linked container</Link>}
         {typeof meta(record.metadata).source_url === 'string' && String(meta(record.metadata).source_url).startsWith('https://') && <a href={String(meta(record.metadata).source_url)} target="_blank" rel="noreferrer" className="text-small text-green underline">Source catalogue</a>}
         <h3 className="text-label text-fg">Files</h3>
-        {record.record_assets.filter(({ role }) => role !== 'cover').map(({ role, assets }) => assets && <div key={`${assets.id}:${role}`} className="flex flex-wrap items-center gap-3 text-small text-muted"><span>{role} · {assets.file_format.toUpperCase()}</span>{(assets.file_format === 'pdf' || assets.file_format === 'epub') ? <Link to={`/library/${data.id}/records/${record.id}/assets/${assets.id}/read`} className="text-green underline">Read {assets.file_format.toUpperCase()}</Link> : <DownloadButton bucket={assets.bucket} storagePath={assets.storage_path} />}</div>)}
+        {record.record_assets.filter(({ role }) => role !== 'cover').map(({ role, assets }) => assets && <div key={`${assets.id}:${role}`} className="flex flex-wrap items-center gap-3 text-small text-muted"><span>{role} · {assets.file_format.toUpperCase()}</span>{isViewable(assets.file_format) ? <Link to={`/library/${data.id}/records/${record.id}/assets/${assets.id}/read`} className="text-green underline">Read {assets.file_format.toUpperCase()}</Link> : <DownloadButton bucket={assets.bucket} storagePath={assets.storage_path} />}</div>)}
         <div className="border-t border-border pt-4"><h3 className="mb-3 text-label text-fg">Tags & collections</h3><RecordOrganizer recordId={record.id} /></div>
       </section>)}
       <ExportButton recordIds={data.records.map((record) => record.id)} />
@@ -166,9 +168,11 @@ export function WorkDetail() {
         <aside className="min-w-0 xl:sticky xl:top-4">
           <p className="text-label text-fg">{WORK_TYPE_LABELS[data.work_type as WorkType] ?? 'Document'} preview</p>
           <p className="mb-2 text-small text-muted">Select and copy an ISBN, DOI or other identifier from the document, then paste it into Look up metadata.</p>
-          <div className="max-h-[calc(100vh-170px)] overflow-auto rounded-8 border border-border">
+          <div className="h-[calc(100vh-170px)] overflow-hidden rounded-8 border border-border p-2">
             <Suspense fallback={<p className="p-4 text-small text-muted">Loading reader…</p>}>
-              {preview.asset.file_format === 'pdf' ? <PdfViewer bucket="documents" storagePath={preview.asset.storage_path} /> : <EpubViewer storagePath={preview.asset.storage_path} highlights={[]} onProgress={() => undefined} onSelect={() => undefined} />}
+              {preview.asset.file_format === 'pdf' && <PdfViewer storagePath={preview.asset.storage_path} annotations={[]} />}
+              {preview.asset.file_format === 'djvu' && <DjvuViewer storagePath={preview.asset.storage_path} annotations={[]} />}
+              {isBookFormat(preview.asset.file_format) && <BookViewer storagePath={preview.asset.storage_path} format={preview.asset.file_format} annotations={[]} />}
             </Suspense>
           </div>
         </aside>

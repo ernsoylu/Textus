@@ -5,7 +5,7 @@
 //
 // Scope of this pass: extract_text for PDF assets only (real pdfjs-dist text extraction,
 // verified against a live signed URL before this was written — see the M1 session notes).
-// EPUB/MOBI/AZW3/CBZ/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
+// EPUB/MOBI/AZW3/CBZ/DjVu/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
 // rather than failing forever on a format this will never handle.
 //
 // generate_thumbnail has no handler here at all, deliberately: thumbnails are captured

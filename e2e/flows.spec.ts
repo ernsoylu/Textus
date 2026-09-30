@@ -410,13 +410,13 @@ test('cover hover opens the reader directly and saves half-star ratings', async 
 
 test('tags get automatic colors from book details and Tags, and keep them when renamed', async ({ page }) => {
   await mocks(page);
-  const tags: { id: string; name: string; color: string; record_tags: { count: number }[] }[] = [];
+  const tags: { id: string; name: string; color: string; record_tags: { count: number }[]; collection_tags: { count: number }[]; annotation_tags: { count: number }[] }[] = [];
   const applied: { tag_id: string }[] = [];
   await page.route('**/rest/v1/tags*', (route) => {
     const request = route.request();
     if (request.method() === 'POST') {
       const { name, color } = request.postDataJSON();
-      const tag = { id: crypto.randomUUID(), name, color, record_tags: [{ count: 0 }] };
+      const tag = { id: crypto.randomUUID(), name, color, record_tags: [{ count: 0 }], collection_tags: [{ count: 0 }], annotation_tags: [{ count: 0 }] };
       tags.push(tag);
       return route.fulfill({ json: { id: tag.id } });
     }

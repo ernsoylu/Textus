@@ -4,7 +4,7 @@ import type { AnnotationItem } from '@/hooks/useAnnotations';
 
 const item = (over: Partial<AnnotationItem>): AnnotationItem => ({
   id: '1', record_id: 'r1', asset_id: 'a1', anchor_type: 'pdf_page', anchor_data: { page: 3 }, highlighted_text: null,
-  note: 'Check this', color: 'yellow', created_at: null, records: { title: null, works: { title: 'Dune' } }, ...over,
+  note: 'Check this', color: 'yellow', created_at: null, records: { title: null, work_id: 'w1', works: { title: 'Dune' } }, annotation_tags: [], ...over,
 });
 
 describe('annotation export', () => {

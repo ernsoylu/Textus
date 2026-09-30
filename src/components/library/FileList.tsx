@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/library/StatusBadge';
 import { DownloadButton } from '@/components/library/DownloadButton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import { isViewable } from '@/lib/formats';
 import type { AssetRow } from '@/types';
 
 interface FileEntry {
@@ -31,7 +32,7 @@ export function FileList({ workId, recordId, files }: Readonly<{ workId: string;
           <div key={`${asset.id}:${role}`} className="flex flex-wrap items-center gap-2">
             <StatusBadge state={asset.processing_state} />
             <p className="text-small text-fg">{role} · {asset.file_format} · {formatSize(asset.file_size)}</p>
-            {(asset.file_format === 'pdf' || asset.file_format === 'epub') ? (
+            {isViewable(asset.file_format) ? (
               <Link to={`/library/${workId}/records/${recordId}/assets/${asset.id}/read`} className="text-small text-green underline">Read</Link>
             ) : (
               <DownloadButton bucket={asset.bucket} storagePath={asset.storage_path} />

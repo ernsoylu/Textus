@@ -27,6 +27,12 @@
   }
 }
 
+/* pdf.js sizes a page's layers for a content-box page with a border; Tailwind's global border-box would shrink
+   the canvas but not the text layer, so selections and highlights drift further off the lower they are. */
+.pdfViewer .page {
+  box-sizing: content-box;
+}
+
 /* Appearance settings (src/lib/appearance.ts). */
 :root {
   --cover-h: 260px;

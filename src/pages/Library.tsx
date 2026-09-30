@@ -24,7 +24,7 @@ export function Library() {
   const saveSearch = useSaveSearch();
   const languages = useLanguages();
 
-  // FR-ORG-5: /library?saved=<id> opens a saved search (virtual library); /library?q=… opens a search.
+  // FR-ORG-5: /library?saved=<id> opens a saved search (virtual library); /library?q=… opens a search; ?tag=<id> a tag.
   const qParam = params.get('q');
   useEffect(() => {
     if (qParam !== null) setFilters((f) => ({ ...f, q: qParam }));
@@ -33,6 +33,10 @@ export function Library() {
   useEffect(() => {
     if (sortParam && SORTS.includes(sortParam as LibraryFilters['sort'])) setFilters((f) => ({ ...f, sort: sortParam as LibraryFilters['sort'] }));
   }, [sortParam]);
+  const tagParam = params.get('tag');
+  useEffect(() => {
+    if (tagParam) setFilters((f) => ({ ...f, tagId: tagParam }));
+  }, [tagParam]);
   const savedId = params.get('saved');
   const savedFilters = saved.data?.find((s) => s.id === savedId)?.filters;
   useEffect(() => {

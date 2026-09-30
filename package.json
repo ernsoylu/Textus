@@ -18,7 +18,7 @@
     "@tanstack/react-query": "^5.56.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "epubjs": "^0.3.93",
+    "foliate-js": "https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1",
     "pdfjs-dist": "^6.3.289",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -48,8 +48,5 @@
     "typescript-eslint": "^8.5.0",
     "vite": "^5.4.3",
     "vitest": "^2.0.5"
-  },
-  "overrides": {
-    "@xmldom/xmldom": "0.9.12"
   }
 }

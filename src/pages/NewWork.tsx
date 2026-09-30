@@ -148,9 +148,9 @@ export function NewWork() {
       {mode === 'upload' ? <>
         <p className="text-heading text-fg">Add to your library</p>
         <p className="text-body text-muted">Upload a book or paper. Textus will look for an ISBN or DOI, fetch matching details and a cover, and add what it finds.</p>
-        <input ref={fileRef} type="file" multiple accept=".pdf,.epub,.mobi,.azw3,.cbz" hidden disabled={busy} onChange={(e) => setUploads(Array.from(e.target.files ?? []).map((file) => ({ file, status: 'queued', progress: 0 })))} />
+        <input ref={fileRef} type="file" multiple accept=".pdf,.epub,.mobi,.azw3,.cbz,.djvu,.djv" hidden disabled={busy} onChange={(e) => setUploads(Array.from(e.target.files ?? []).map((file) => ({ file, status: 'queued', progress: 0 })))} />
         <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-8 border border-dashed border-muted bg-dim p-6 text-fg">
-          <span className="text-label">Choose files</span><span className="text-small text-muted">PDF, EPUB, MOBI, AZW3 or CBZ</span>
+          <span className="text-label">Choose files</span><span className="text-small text-muted">PDF, EPUB, MOBI, AZW3, CBZ or DjVu</span>
         </button>
         {uploads.length > 0 && <ul className="flex flex-col gap-4">
           {uploads.map((item, index) => <li key={`${item.file.name}:${index}`} className="flex flex-col gap-1 text-small text-fg">

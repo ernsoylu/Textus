@@ -37,6 +37,12 @@ describe('sniffHead', () => {
     expect(sniffHead(bytes('<!DOCTYPE html><p>'))?.mimeType).toBe('text/html');
   });
 
+  it('recognises single-page and bundled DjVu, and no other IFF form', () => {
+    expect(sniffHead(bytes('AT&TFORM', [0, 0, 1, 0], 'DJVM', 'DIRM'))?.mimeType).toBe('image/vnd.djvu');
+    expect(sniffHead(bytes('AT&TFORM', [0, 0, 1, 0], 'DJVU', 'INFO'))?.mimeType).toBe('image/vnd.djvu');
+    expect(sniffHead(bytes('AT&TFORM', [0, 0, 1, 0], 'AIFF'))).toBeNull();
+  });
+
   it('tells EPUB from a comic archive and rejects other zips', () => {
     expect(sniffHead(zip('mimetype', 'application/epub+zip'))?.mimeType).toBe('application/epub+zip');
     expect(sniffHead(zip('001.jpg'))?.mimeType).toBe('application/vnd.comicbook+zip');
