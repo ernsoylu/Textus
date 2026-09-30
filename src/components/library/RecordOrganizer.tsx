@@ -5,8 +5,6 @@ import { useCollections, useRecordCollections, useSetCollectionMember } from '@/
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-const DEFAULT_COLOR = '#4ade80';
-
 // FR-ORG-1/2: tag chips (toggle) plus collection membership for one record.
 export function RecordOrganizer({ recordId }: Readonly<{ recordId: string }>) {
   const tags = useTags();
@@ -17,13 +15,12 @@ export function RecordOrganizer({ recordId }: Readonly<{ recordId: string }>) {
   const memberOf = useRecordCollections(recordId);
   const setMember = useSetCollectionMember();
   const [name, setName] = useState('');
-  const [color, setColor] = useState(DEFAULT_COLOR);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      const tagId = await createTag.mutateAsync({ name, color });
+      const tagId = await createTag.mutateAsync({ name });
       await setTag.mutateAsync({ tagId, on: true });
       setName('');
     } catch { /* Mutation errors are displayed below. */ }
@@ -56,7 +53,6 @@ export function RecordOrganizer({ recordId }: Readonly<{ recordId: string }>) {
       </div>
       <form onSubmit={handleCreate} className="flex flex-wrap items-center gap-2">
         <Input aria-label="New tag" placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} className="w-auto min-w-0" />
-        <input type="color" aria-label="Tag color" value={color} onChange={(e) => setColor(e.target.value)} className="h-11 w-11 rounded-8 border border-muted bg-dim" />
         <Button type="submit" variant="secondary" isLoading={createTag.isPending || setTag.isPending} disabled={!name.trim()}>
           Add tag
         </Button>

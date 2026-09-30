@@ -405,3 +405,48 @@ test('cover hover opens the reader directly and saves half-star ratings', async 
   await page.getByRole('link', { name: 'The Garden Book', exact: true }).click();
   await expect(page).toHaveURL(`/library/${workId}`);
 });
+
+
+test('tags get automatic colors from book details and Tags, and keep them when renamed', async ({ page }) => {
+  await mocks(page);
+  const tags: { id: string; name: string; color: string; record_tags: { count: number }[] }[] = [];
+  const applied: { tag_id: string }[] = [];
+  await page.route('**/rest/v1/tags*', (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      const { name, color } = request.postDataJSON();
+      const tag = { id: crypto.randomUUID(), name, color, record_tags: [{ count: 0 }] };
+      tags.push(tag);
+      return route.fulfill({ json: { id: tag.id } });
+    }
+    if (request.method() === 'PATCH') {
+      const patch = request.postDataJSON();
+      expect(patch).not.toHaveProperty('color');
+      const id = new URL(request.url()).searchParams.get('id')?.replace('eq.', '');
+      Object.assign(tags.find((tag) => tag.id === id)!, patch);
+    }
+    return route.fulfill({ json: tags });
+  });
+  await page.route('**/rest/v1/record_tags*', (route) => {
+    if (route.request().method() === 'POST') applied.push({ tag_id: route.request().postDataJSON().tag_id });
+    return route.fulfill({ json: applied });
+  });
+  await page.goto(`/library/${workId}`);
+  await expect(page.locator('input[type="color"]')).toHaveCount(0);
+  await page.getByLabel('New tag', { exact: true }).fill('Gardening');
+  await page.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Gardening', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const palette = ['#b4ca92', '#7fbbb3', '#e67e80', '#dbbc7f', '#83c092', '#d699b6'];
+  expect(palette).toContain(tags[0].color);
+  await page.goto('/tags');
+  await expect(page.locator('input[type="color"]')).toHaveCount(0);
+  await page.getByLabel('New tag', { exact: true }).fill('Research');
+  await page.getByRole('button', { name: 'Create tag', exact: true }).click();
+  await expect(page.getByLabel('Name of Research', { exact: true })).toBeVisible();
+  expect(palette).toContain(tags[1].color);
+  const originalColor = tags[0].color;
+  await page.getByLabel('Name of Gardening', { exact: true }).fill('Garden books');
+  await page.locator('li').filter({ has: page.getByLabel('Name of Gardening', { exact: true }) }).getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByLabel('Name of Garden books', { exact: true })).toBeVisible();
+  expect(tags[0].color).toBe(originalColor);
+});

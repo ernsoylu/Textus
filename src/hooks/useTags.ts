@@ -29,7 +29,9 @@ export function useCreateTag() {
   const queryClient = useQueryClient();
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async ({ name, color }: { name: string; color: string }) => {
+    mutationFn: async ({ name }: { name: string }) => {
+      const colors = ['#b4ca92', '#7fbbb3', '#e67e80', '#dbbc7f', '#83c092', '#d699b6'];
+      const color = colors[Math.floor(Math.random() * colors.length)];
       const { data, error } = await supabase
         .from('tags')
         .insert({ user_id: session!.user.id, name: name.trim(), color })
@@ -74,8 +76,8 @@ function invalidateTags(queryClient: ReturnType<typeof useQueryClient>) {
 export function useUpdateTag() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
-      const { error } = await supabase.from('tags').update({ name: name.trim(), color }).eq('id', id);
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const { error } = await supabase.from('tags').update({ name: name.trim() }).eq('id', id);
       if (error) throw error.code === '23505' ? new Error('You already have a tag with that name.') : error;
     },
     onSuccess: () => invalidateTags(queryClient),

@@ -5,16 +5,15 @@ import { TagRow } from '@/components/library/TagRow';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-// Figma "tags": all tags, create / rename / recolor / delete (FR-ORG-1).
+// Figma "tags": all tags, create / rename / delete (FR-ORG-1).
 export function Tags() {
   const { data, isLoading, error } = useTagList();
   const create = useCreateTag();
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#4ade80');
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (name.trim()) create.mutate({ name, color }, { onSuccess: () => setName('') });
+    if (name.trim()) create.mutate({ name }, { onSuccess: () => setName('') });
   }
 
   return (
@@ -25,8 +24,7 @@ export function Tags() {
         <p className="text-body text-muted">Colored labels you can put on any record.</p>
       </div>
       <form onSubmit={handleSubmit} className="flex flex-wrap items-start gap-2">
-        <input type="color" aria-label="New tag color" value={color} onChange={(e) => setColor(e.target.value)} className="h-11 w-11 rounded-8 border border-muted bg-dim" />
-        <Input placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} error={create.error?.message} className="w-auto min-w-[200px]" />
+        <Input aria-label="New tag" placeholder="New tag" value={name} onChange={(e) => setName(e.target.value)} error={create.error?.message} className="w-auto min-w-[200px]" />
         <Button type="submit" isLoading={create.isPending} disabled={!name.trim()}>Create tag</Button>
       </form>
       {isLoading && <p className="text-body text-muted">Loading…</p>}
