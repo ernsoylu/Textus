@@ -302,7 +302,7 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, onS
         )}
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-8 bg-dim">
           {!doc && <p className="absolute inset-0 z-10 p-4 text-body text-muted">Loading…</p>}
-          <div ref={containerRef} className="absolute inset-0 overflow-auto" onMouseUp={handleMouseUp} onKeyUp={handleMouseUp} onClick={handleClick} onContextMenu={handleContextMenu}>
+          <div ref={containerRef} role="group" aria-label="Document pages" tabIndex={0} className="absolute inset-0 overflow-auto" onMouseUp={handleMouseUp} onKeyUp={handleMouseUp} onClick={handleClick} onContextMenu={handleContextMenu}>
             <div ref={viewerRef} className="pdfViewer" />
           </div>
         </div>

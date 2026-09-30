@@ -31,7 +31,7 @@ export function useCreateTag() {
   return useMutation({
     mutationFn: async ({ name }: { name: string }) => {
       const colors = ['#b4ca92', '#7fbbb3', '#e67e80', '#dbbc7f', '#83c092', '#d699b6'];
-      const color = colors[Math.floor(Math.random() * colors.length)];
+      const color = colors[crypto.getRandomValues(new Uint32Array(1))[0] % colors.length];
       const { data, error } = await supabase
         .from('tags')
         .insert({ user_id: session!.user.id, name: name.trim(), color })

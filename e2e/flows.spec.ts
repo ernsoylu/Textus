@@ -237,6 +237,11 @@ test('upload a file, preview metadata, and open the reader', async ({ page }) =>
   await expect(page.getByLabel('Reading status')).toBeVisible();
   await expect(page.getByText('of 1')).toBeVisible();
   await expect(page.getByText('Textus reader fixture')).toBeVisible();
+  const documentPages = page.getByRole('group', { name: 'Document pages' });
+  await documentPages.focus();
+  await expect(documentPages).toBeFocused();
+  await documentPages.press('ArrowRight');
+  await expect(page.getByText('of 1')).toBeVisible();
   const readerScan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   expect(readerScan.violations, JSON.stringify(readerScan.violations, null, 2)).toEqual([]);
 });

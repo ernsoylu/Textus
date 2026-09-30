@@ -258,7 +258,7 @@ export function DjvuViewer({ storagePath, annotations, goTo, initialPage = 1, on
         )}
         <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto rounded-8 bg-dim p-4">
           {!rendered && <p className="text-body text-muted">Loading…</p>}
-          <div ref={pageRef} className="relative mx-auto bg-white shadow" style={{ width: cssWidth, height: cssHeight }} onMouseUp={() => onSelect?.(currentSelection())} onClick={handleClick} onContextMenu={handleContextMenu}>
+          <div ref={pageRef} className="relative mx-auto bg-white shadow" style={{ width: cssWidth, height: cssHeight }} role="group" aria-label="Document page" tabIndex={0} onMouseUp={() => onSelect?.(currentSelection())} onKeyUp={() => onSelect?.(currentSelection())} onClick={handleClick} onContextMenu={handleContextMenu}>
             <canvas ref={canvasRef} className="block h-full w-full" />
             {rendered && (
               <div ref={textRef} className="absolute inset-0 overflow-hidden leading-none" style={{ color: 'transparent' }}>
