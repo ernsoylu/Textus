@@ -2,7 +2,7 @@
 
 [Figma design file](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3) · [Complete screen index](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=29-2)
 
-Designed from `ARCHITECTURE_AND_REQUIREMENTS.md`, `README.md`, and `CLAUDE.md` on 2026-09-28. The repository is specification-only; this deliverable is an editable Figma design, not frontend implementation.
+Designed from `ARCHITECTURE_AND_REQUIREMENTS.md`, `README.md`, and `CLAUDE.md` on 2026-09-28. This document indexes the original editable Figma design. Textus now has a working frontend; implementation notes below reflect the 2026-09-30 reader and library changes. The linked Figma frames have not been updated to match those changes.
 
 **210 screen states:** 44 pages and 61 dialogs, each in desktop and mobile layouts. Three Figma pages organize the guide/components, desktop designs, and mobile designs. Main journeys have prototype links; the index links to every state.
 
@@ -39,11 +39,15 @@ All desktop/mobile states were checked structurally for horizontal overflow, dup
 
 The prototype illustrates navigation and decisions. Inputs, provider requests, downloads, persistence and export generation are design states rather than working application behavior. Book covers and bibliographic examples are illustrative.
 
-Design assumptions requiring implementation decisions:
+Implementation decisions and changes since the design:
 
-- Google is the representative configured OAuth provider; expose only the providers enabled on the instance.
-- OPDS authentication remains unresolved in specification §15; the design includes an authentication-not-configured state.
-- The expected-issue editor supplies UX for FR-SER-2; persistence for expected issue ranges needs a schema decision.
+- OAuth is deferred; the implementation offers email/password and magic links.
+- OPDS uses HTTP Basic with the account email/password (§8.5); accounts using only magic links need a password for OPDS.
+- Expected issue ranges persist in `works.metadata.expected_issues` (FR-SER-2).
+- Readers use pdf.js, foliate-js (EPUB/MOBI/AZW3/CBZ) and DjVu.js. They support fullscreen, selection-based highlights, comment markers and note deep links. PDF has continuous scrolling, fit modes, spreads and search; reflowable books have layout, font, spacing and theme controls.
+- Library covers expose Read, View details and half-star ratings on hover/focus/touch. Search displays cover ribbons and supports keyboard navigation; metadata search accepts partial Unicode and accent-insensitive matches.
+- Catalog editors expose fields for the selected work/record type, including standards references and journal metadata. Tags get automatic colors and also label collections and notes. Mobile More opens all secondary pages.
+- The Notes page groups notes by book and filters by text, tag, color and comment. A full Figma-to-code reconciliation remains open in [ROADMAP.md](ROADMAP.md).
 - Privacy is owner-only. There are no public shelves, shared-library flows, DRM removal, conversion tools or native-app assumptions.
 
 ## Pages

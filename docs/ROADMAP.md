@@ -1,94 +1,56 @@
-# Textus roadmap: what remains after Phases 1–7
+# Textus roadmap
 
-Audit of 2026-09-29 against `ARCHITECTURE_AND_REQUIREMENTS.md` (FR/NFR/§15), the Figma index in
-[`FRONTEND_DESIGN.md`](FRONTEND_DESIGN.md) (about 105 named states, desktop and mobile), and the code.
-Every milestone item in §13 is checked except OAuth (deferred on purpose). What remains is depth,
-polish, hardening and the Figma states that were never built.
+Updated 2026-09-30 against the latest reader and library commits, the FR/NFR requirements in
+[ARCHITECTURE_AND_REQUIREMENTS.md](../ARCHITECTURE_AND_REQUIREMENTS.md), and the code.
+M1–M5 are implemented except OAuth, which is deferred until release planning.
+The original Figma inventory is retained in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md);
+a full reconciliation of those frames with the implementation remains open.
 
-Status legend: **[ ]** open · **[~]** in progress · **[x]** done
+Status legend: **[ ]** open · **[x]** done
 
-## 1. Stubbed or incomplete in code
+## Implemented
 
-- **App shell**
-  - [x] Global search (⌘K) and "Add to library" are in the top bar.
-  - [ ] Mobile "More" only links to Settings.
-  - [x] 404, offline, empty and loading states are implemented.
-  - [x] Overview has welcome, continue-reading, recent-work and review sections.
-- **Library**
-  - [x] Cards show covers, formats and reading progress.
-  - [x] Filtering and search run server-side with pagination; at 10,000 works, local Postgres p95 was 11.56 ms for listing and 94.56 ms for search (35 warm-cache runs; target <300 ms; repeat with `supabase/tests/database/library_perf.sql`).
-- **Pages**
-  - [x] `/activity` is the "Not built yet" placeholder.
-  - [x] Settings include Appearance and Delete account.
-- **Files**
-  - [x] Upload progress, drag-and-drop, retry and rejection reasons are implemented.
-  - [x] Files can be removed; covers can be uploaded or retrieved from metadata lookup.
-  - [ ] An existing file's role cannot be changed (there is no `record_assets` UPDATE policy).
-- **Catalog**
-  - [x] Identifiers and contributors can be removed.
-  - [ ] Contributor detail cannot edit its primary name or identifiers (name variants can be added from a record).
-  - [ ] `NewWork` matches contributors naively (`ponytail`).
-- **Organization**
-  - [x] Tags and collections have detail/edit flows.
-  - [ ] Saved searches cannot be renamed or updated.
-- **Reader**
-  - [x] PDF annotations are page notes only (no text selection).
-  - [x] EPUB has no table of contents; no go-to-page, reader settings or keyboard navigation.
-- **Research and serials**
-  - [x] Existing records can be linked as preprint/published versions.
-  - [x] CSV import has column mapping and a review step.
-  - [x] Expected-issue ranges and issue editing are implemented.
-  - [x] OPDS includes navigation, collections, search and covers.
-- **Jobs**
-  - [x] `cleanup` job implemented (`export_data` is unused and stays unhandled).
-  - [x] PDF and EPUB extraction feeds search (stored text capped at 100,000 characters per asset).
-- **Docs**
-  - [x] README feature checklist and status are stale; Docker deployment is not described.
+- [x] Email/password, magic links, password recovery, sign-out, unsaved-change dialogs, appearance settings and account deletion with storage cleanup.
+- [x] Overview, background-job Activity, global search (⌘K), Add to library, secondary pages in mobile More, 404/offline/empty/loading states.
+- [x] Work/record editors specialize fields by type and preserve hidden fields and manual metadata locks. Journal metadata and edition-specific ISO/IEC/ASTM/ASME/BS reference lookup are supported.
+- [x] Upload progress, drag-and-drop, retry/rejection, format detection, checksum deduplication, file removal and private covers.
+- [x] Library covers expose Read, View details and half-star book ratings on hover, focus and touch. Ratings persist from 0.5 to 5 and can be cleared in the work editor.
+- [x] Server-side filtered/paged library queries, cover ribbons and keyboard navigation in search; partial Unicode and accent-insensitive metadata matches alongside contributor fuzzy search and PDF/EPUB file-text FTS.
+- [x] Automatic tag colors, tag detail/edit flows, tags on records/collections/notes, ordered collections, bulk actions and saved searches.
+- [x] Contributor matching/review, duplicate finder, merge/split, variants, authority IDs and contributor pages.
+- [x] PDF reader uses pdf.js viewer components for continuous scrolling, fit modes, zoom, spreads, outline, page labels and text search.
+- [x] EPUB/MOBI/AZW3/CBZ reading uses foliate-js; reflowable books have paginated/scrolling layouts, columns, contents, search, position slider, text size, line spacing and themes. Unsupported/DRM-protected files remain downloadable.
+- [x] DjVu reading uses vendored DjVu.js, with page navigation, fit/zoom, contents and OCR text selection where text exists. Scans without text support page notes.
+- [x] Fullscreen (F), keyboard navigation, device-local reader preferences, cross-device reading progress/status and asset-specific resume positions.
+- [x] Selection-based highlights, right-click comments, in-text comment markers, editable/tagged notes, book grouping, text/tag/color/comment filters, reader deep links and Markdown/JSON export.
+- [x] BibTeX/RIS/CSL-JSON export, CSV column mapping/review, DOI import, preprint/published links, serial issue editing and expected-issue ranges, container records and authenticated OPDS.
+- [x] Streaming upload verification/copy and daily cleanup. Background PDF/EPUB extraction stores capped text for search (100,000 indexed characters per asset).
 
-## 2. Requirements not fully met
+## Remaining product and quality work
 
-| Ref | Gap |
-|---|---|
-| FR-AUTH-1 | OAuth deferred until release planning (intentional). |
-| §15 #1 | ~~Upload reads the whole file into memory~~ (streaming checksum and copy; 500 MB limit retained). |
-| §15 #3 | ~~`reading_states` / `annotations` INSERT policies do not check record ownership~~ (fixed by migration `20260929000002`). |
-| §15 #9 | ~~Account deletion leaves storage objects~~ (delete-account sweeps immediately; daily cleanup retries incomplete sweeps). |
-| NFR-PERF-1 | Met locally: 10,000 works/records, 35 warm-cache runs after 5 warmups; p95 11.56 ms for listing and 94.56 ms for search (<300 ms target). This measures PostgreSQL function time in the local Supabase container, not network latency or cold-cache behavior. Repeat with `supabase/tests/database/library_perf.sql`. |
-| NFR-A11Y-1 | Core Library, metadata and reader flows pass axe WCAG 2.1 AA scans; keyboard paging is implemented. Full manual screen-reader coverage remains open. |
-| Testing | Upload component, upload/export/OPDS HTTP integration, and sign-in/search/upload/lookup/read E2E coverage added; broader component coverage remains limited. |
+- [ ] OAuth (FR-AUTH-1), intentionally deferred.
+- [ ] Change an existing file's attachment role; `record_assets` has no client UPDATE policy.
+- [ ] Edit a contributor's primary name and authority IDs directly from contributor detail.
+- [ ] Replace the deliberately simple contributor matching in NewWork if observed mismatches warrant it.
+- [ ] Rename/update saved searches.
+- [ ] Full manual screen-reader and device testing, including the rebuilt readers and annotation menus. Existing axe scans cover Library, work metadata and PDF reader flows, not every format/state.
+- [ ] Reader regression fixtures for EPUB/MOBI/AZW3/CBZ/DjVu, including OCR-less scans, malformed files and existing EPUB CFIs.
+- [ ] Repeat the 10,000-record search benchmark after the Unicode substring-search migration. The earlier local warm-cache PostgreSQL p95 was 11.56 ms for listing and 94.56 ms for search; it predates migration `20260930000004` and excludes network/cold-cache latency. Use `supabase/tests/database/library_perf.sql`.
+- [ ] Measure large-file background extraction; upload streaming is implemented, but PDF/EPUB parsing still reads the file into memory (§15 #1).
+- [ ] Reconcile remaining Figma states with the implemented frontend.
+- [ ] Review nonblocking SonarCloud maintainability findings (including complexity, JSX spacing and repeated SQL literals) as the affected code changes. The quality gate passes; no open PR bugs or vulnerabilities remain from the failed gate.
 
-## 3. Figma states
+## Review and CI
 
-The original inventory lists about 105 named states, but its “about 60 unbuilt” count and state-by-state list were not reconciled after Phases 1–7. Treat the code gaps in Section 1 as current; a Figma-to-code audit remains open.
+- [x] [PR #1](https://github.com/ernsoylu/Textus/pull/1): frontend, database migration/RLS/HTTP integration, Edge Function checks, Snyk workflow and Snyk PR security check pass.
+- [x] SonarCloud quality gate passes with A reliability/security/maintainability ratings. Generated database types and upstream DjVu code are excluded from source analysis; immutable migrations are excluded only from duplication detection, retaining SQL issue analysis.
+- [x] Vitest uses test-only API credentials rather than a developer's local environment and native abort signals compatible with Node's Request. CI/Docker builds use Node.js 24 (pdf.js requires 22.13+). Local validation: 152 unit/component tests and 13 Playwright flows, including reader focus/navigation and axe scans.
 
-## 4. Operations
+## Operations requiring deployment verification
 
-- [~] Push the remaining Phase 6–7 work and confirm green CI. The pushed Snyk check found 14 high dependency advisories; dependency updates are in this worktree.
-- [ ] app02 has no working SMTP, so recovery and magic-link emails are not delivered (links are generated by hand).
-- [ ] The app is only reachable at `http://192.168.1.102:8080`; no public HTTPS route.
-- [ ] `export` and `opds` are synced to app02 but untested there.
-- [ ] 23 SonarCloud issues (SQL literals, generated types) need marking in the SonarCloud UI.
+The following are carried forward from the 2026-09-29 deployment notes; this branch review did not recheck app02:
 
-## Progress
-
-- **Phase 1 (housekeeping): done** except SMTP and the public route, which need infrastructure input.
-- **Phase 2 (daily-use gaps): done.** Also fixed along the way: Tailwind's spacing override made `p-4`, `gap-4`, `w-16` and `h-64` a quarter of their intended size.
-- **Phase 3 (reader): done.** PDF text selection and highlights, EPUB table of contents, go-to, text size and theme, keyboard paging, note filter. A canvas re-render race in the PDF viewer was fixed.
-- **Phase 4 (account): done.** Two-panel sign-in/sign-up/magic-link screens, Overview (welcome, continue reading, recently added, identities to review), sign-out and unsaved-changes dialogs, Appearance settings, delete account. Also fixed: signing in never left the login page.
-- **Phase 5 (research and serials): done.** CSV column mapping and an import review step (duplicates and invalid rows flagged before anything is written, tags imported), linking an existing record as a preprint/published version, expected-issue ranges (stored in `works.metadata.expected_issues`, no migration), a serial detail page with an issue grid, and OPDS navigation, collections, search and covers.
-- **Phase 6 (backend hardening): done.** Streaming upload checksum/copy, PDF/EPUB text search, server-side filtered pagination, MOBI/AZW3 sniffing and CSP are implemented; NFR-PERF-1 passed the 10,000-record local measurement above.
-- **Phase 7 (quality): done.** Added upload component coverage, local HTTP integration coverage for upload/export/OPDS, Playwright flows for sign-in/search/upload/lookup/read, and axe WCAG 2.1 AA scans of the Library, work metadata and reader screens. Fixed the findings (search ARIA, active-link contrast and unlabeled form controls); CI runs each suite.
-
-## Plan
-
-| # | Phase | Size | Contents |
-|---|---|---|---|
-| 1 | Housekeeping | ½ day | `cleanup` job (staging, unreferenced assets, deleted users' folders); RLS ownership migration (§15 #3); README/status; push and CI; SMTP and public route (need infrastructure input). |
-| 2 | Daily-use gaps | ~4 days | Top bar with ⌘K search; covers, formats and progress on cards; Activity page; file management (progress, drag-and-drop, rejection and retry, remove, role, cover); shared dialog replacing `window.confirm` and the delete flows; identifier removal; tags page; collection detail and edit; 404, offline and empty states. |
-| 3 | Reader | ~3 days | EPUB table of contents; go to page; reader settings; keyboard navigation; PDF text-layer highlights; note filter; progress on cards. |
-| 4 | Account | ~3 days | Two-panel sign-in and welcome; sign-out and unsaved-changes dialogs; Appearance; delete account (server function, storage sweep). |
-| 5 | Research and serials | ~3 days | CSV column mapping; link existing versions; expected-issue ranges (schema decision) and issue edit; OPDS navigation and covers. |
-| 6 | Backend hardening | ~4 days | Streaming SHA-256; extracted text feeding search; server-side pagination and search with a 10,000-record benchmark; MOBI/AZW3 detection; Content-Security-Policy header. |
-| 7 | Quality | alongside | Component tests; integration tests for `upload`, `export`, `opds`; Playwright E2E (upload, lookup, read); accessibility audit. |
-
-Phases 1–3 are what is used every day, so they come first.
+- [ ] Configure working SMTP for magic-link and recovery emails.
+- [ ] Provide a public HTTPS route; the recorded app URL is `http://192.168.1.102:8080`.
+- [ ] Verify export and OPDS on app02; local integration tests pass.
+- [ ] Apply the latest ordered migrations and deploy/rebuild the updated functions/frontend on app02, then smoke-test standards lookup, all reader formats, annotations/tags and ratings.

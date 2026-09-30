@@ -28,7 +28,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 
 ### Document management
 - [x] Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu with server-side format detection
-- [x] Automatic metadata retrieval via ISBN, DOI, arXiv, ISSN
+- [x] Metadata lookup via ISBN, DOI, arXiv, PMID, ISSN and ISO/IEC/ASTM/ASME/BS references
 - [x] Manual metadata entry with validation
 - [x] Multiple file formats per record
 - [x] Cover extraction from files or retrieval from providers
@@ -42,17 +42,22 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 - [x] Automatic matching with a review queue; merge, split, and "not the same person"
 
 ### Organization
-- [x] Colored tags
+- [x] Automatically colored tags on records, collections and notes, with a detail page per tag
 - [x] Collections (shelves)
-- [x] Full-text and fuzzy search across metadata
-- [x] Filter by type, author, tag, date, format, language
+- [x] Partial, accent-insensitive Unicode metadata search, fuzzy contributor matching and full-text search of extracted PDF/EPUB text
+- [x] Filter by type, tag, collection, reading status, format and language
 - [x] Sorting and saved searches (virtual libraries)
+- [x] Optional personal book ratings from 0.5 to 5 stars, in half-star steps
+- [x] Cover controls for Read, View details and ratings, accessible on hover, focus and touch
 
 ### Reading
-- [x] In-browser PDF viewer
-- [x] In-browser EPUB viewer
+- [x] PDF: continuous scroll, fit modes, zoom, two-page spreads, contents and text search
+- [x] EPUB/MOBI/AZW3: paginated or scrolling layout, contents, search, text size, line spacing and themes
+- [x] CBZ comics and DjVu scans, with OCR text selection for DjVu files that contain text
+- [x] Fullscreen reading (F) and keyboard navigation
 - [x] Reading progress (percentage, page, position)
-- [x] Color-coded highlights and notes
+- [x] Select text and right-click to highlight or comment; comments open from in-text markers
+- [x] Notes grouped by book, with search, tag/color/comment filters and links to their reader positions
 - [x] Annotation export (Markdown, JSON)
 
 ### Research
@@ -76,7 +81,7 @@ Textus is a web-based personal library manager for **books**, **scientific paper
 | UI | Tailwind CSS + shadcn/ui | Components and styling |
 | State | TanStack Query v5 + Zustand | Server / client state |
 | Database | PostgreSQL 15+ (Supabase) | Persistence with Row-Level Security |
-| Auth | Supabase Auth | Email, OAuth, magic links |
+| Auth | Supabase Auth | Email/password and magic links; OAuth deferred |
 | File storage | Supabase Storage (S3-compatible) | Documents and covers |
 | Backend logic | Supabase Edge Functions (Deno) | Metadata lookup, file processing, export |
 | Job queue | PostgreSQL `jobs` table + `pg_cron` | Background processing (no Redis) |
@@ -147,7 +152,7 @@ This allows one book in several formats, linking preprints to published versions
 
 People and organizations are **contributors** linked to records through **credits** (role + position + the name as printed). See [ARCHITECTURE_AND_REQUIREMENTS.md § 6.3](ARCHITECTURE_AND_REQUIREMENTS.md#63-contributors-authors-editors-and-other-roles) for how this improves on Calibre's model.
 
-The database has 18 tables: `works`, `records`, `identifiers`, `contributors`, `contributor_names`, `contributor_identifiers`, `contributor_distinctions`, `record_contributors`, `assets`, `record_assets`, `tags`, `record_tags`, `collections`, `collection_records`, `reading_states`, `annotations`, `metadata_cache`, and `jobs`. See [ARCHITECTURE_AND_REQUIREMENTS.md § Database schema](ARCHITECTURE_AND_REQUIREMENTS.md#7-database-schema).
+The database has 22 tables: `works`, `records`, `identifiers`, `contributors`, `contributor_names`, `contributor_identifiers`, `contributor_distinctions`, `record_contributors`, `assets`, `record_assets`, `tags`, `record_tags`, `collections`, `collection_records`, `reading_states`, `annotations`, `metadata_cache`, `jobs`, `saved_searches`, `asset_texts`, `collection_tags`, and `annotation_tags`. See [ARCHITECTURE_AND_REQUIREMENTS.md § Database schema](ARCHITECTURE_AND_REQUIREMENTS.md#7-database-schema).
 
 ### Supported identifiers
 
@@ -158,6 +163,7 @@ The database has 18 tables: `works`, `records`, `identifiers`, `contributors`, `
 | `issn` | Check digit (may be `X`) | `0028-0836` |
 | `arxiv` | `YYMM.NNNN(N)` with optional version | `2301.12345v2` |
 | `pmid` | Numeric | `12345678` |
+| `iso`, `iec`, `astm`, `asme`, `bs` | Authority reference with edition year; whitespace and trailing language markers normalized | `ISO 9001:2015`, `ASTM D638-14` |
 
 ---
 
@@ -165,7 +171,7 @@ The database has 18 tables: `works`, `records`, `identifiers`, `contributors`, `
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22.13+ (CI and Docker builds use Node.js 24)
 - Docker (for the local Supabase stack)
 - Git
 
@@ -174,9 +180,9 @@ The database has 18 tables: `works`, `records`, `identifiers`, `contributors`, `
 For development, use the Supabase CLI's local stack — it runs Postgres, Auth, Storage, and Edge Functions in Docker and applies migrations automatically.
 
 ```bash
-git clone https://github.com/<your-org>/textus.git
-cd textus
-npm install
+git clone https://github.com/ernsoylu/Textus.git
+cd Textus
+npm ci --ignore-scripts
 
 # Start local Supabase (prints the API URL and anon key)
 npx supabase start
@@ -201,10 +207,13 @@ npm run dev          # Vite dev server
 npm run build        # Production build
 npm run test         # Vitest
 npm run test:watch   # Vitest in watch mode
+npm run test:e2e     # Playwright; install Chromium once with npx playwright install chromium
 npm run lint         # ESLint
 npm run type-check   # tsc --noEmit
 npm run gen:types    # Regenerate DB types (supabase gen types typescript)
-deno test --config supabase/functions/deno.jsonc --allow-env supabase/functions/job-worker/epub.test.ts supabase/functions/metadata-lookup/index.test.ts
+deno test --config supabase/functions/deno.jsonc --allow-env supabase/functions/
+# HTTP integration needs the local stack and its credentials:
+deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts
 ```
 
 ### Database migrations
@@ -260,7 +269,7 @@ cd /path/to/supabase-project && docker compose restart functions
 
 Functions use [`@supabase/server`](https://github.com/supabase/server)'s `withSupabase()` for auth, CORS, and client creation — `auth: 'user'` requires a caller JWT and gives the handler `ctx.supabase` (RLS-scoped, for ownership checks) and `ctx.supabaseAdmin` (service role, for privileged writes). It needs the new-format API keys and JWT signing keys (`setup.sh` already generates both — see `SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_SECRET_KEYS` / `SUPABASE_JWKS` in the `functions` service's environment in `docker-compose.yml`); legacy `anon`/`service_role` JWT-style keys are not accepted by it.
 
-Provider API keys (Crossref, Semantic Scholar, Google Books) go in the Supabase project's `.env` as function secrets once `metadata-lookup` exists.
+Provider configuration (`CROSSREF_MAILTO`, `SEMANTIC_SCHOLAR_API_KEY`, `GOOGLE_BOOKS_API_KEY`, `FIRECRAWL_API_KEY`) goes in the Supabase project's `.env` and the functions service environment.
 
 ### 4. Frontend
 
@@ -271,7 +280,7 @@ echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL 
 docker compose up -d --build                                  # serves on :8080 (TEXTUS_PORT to change)
 ```
 
-`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). If Supabase runs elsewhere, set `VITE_SUPABASE_URL` at build time and adjust or drop the proxy.
+`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). If Supabase runs elsewhere, build the SPA with `VITE_SUPABASE_URL` and adjust the image/proxy configuration; the provided compose/Dockerfile build only exposes `VITE_SUPABASE_ANON_KEY`.
 
 Point Supabase Auth at the app so magic links and recovery links land on it: set `SITE_URL` (and `ADDITIONAL_REDIRECT_URLS`) to the app's URL in the Supabase `.env`, then `docker compose up -d auth`. Auth emails also need a working SMTP server (`SMTP_*` in the same `.env`); without one, generate links with the admin API (`/auth/v1/admin/generate_link`).
 
@@ -281,7 +290,7 @@ The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it mu
 
 | Variable | Where | Required |
 |----------|-------|----------|
-| `VITE_SUPABASE_URL` | Frontend (build time) | Yes |
+| `VITE_SUPABASE_URL` | Frontend (build time) | Optional; defaults to the app origin and nginx proxy |
 | `VITE_SUPABASE_ANON_KEY` | Frontend (build time) | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions only | Yes |
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
