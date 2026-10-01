@@ -167,7 +167,7 @@ Validation: 25 database assertions cover scope, self-approval denial, two-owner 
 
 ### M6.7 deployment evidence and remaining gates
 
-Implementation and deployment are in progress; the milestone remains open.
+Complete. SMTP delivery is deferred to release planning.
 
 - A quiesced app102 snapshot restored into a network-isolated PostgreSQL instance with cron disabled; all 207 assets matched active Storage versions, sizes and SHA-256, and all 29 M6 migrations applied before production. A later drill found that the logical dump cannot be replayed into a fresh Supabase image: it lost all `auth.users` rows, 11 public foreign keys and the pgsodium root key. Backups now also freeze the physical data directory plus `/etc/postgresql-custom`, and `deploy/restore-drill.sh` checks RLS/policy/grant/function-privilege parity with production. Snapshot frontend images are tagged; the previous image served the SPA side by side, and the snapshot contains the pre-M6 functions tree for rollback.
 - Production migrations and functions are deployed, and the frontend builds with valid Nginx configuration. AI remains disabled pending monster hardening. MCP read/write proposals are enabled with exact owner approval required for every write.
@@ -181,4 +181,6 @@ Implementation and deployment are in progress; the milestone remains open.
 
 - `textus.bff.bz` routes straight to app102:8080 without proxy authentication. The direct-API frontend build had been blocked by its own `connect-src 'self'` CSP and bypassed forced document attachment; the deployed SPA again uses the same-origin proxy. Public sign-up was open with auto-confirm; it is now disabled (`signup` and `otp` return `signup_disabled`), and only the two owner accounts exist. Supabase Auth requires Cloudflare Turnstile for password sign-in, magic links and recovery; missing and forged tokens are rejected through siteverify, and the live login page renders the widget and receives a token under the CSP. OPDS accepts agent tokens instead of account passwords; a temporary read token returned the production start feed and was deleted.
 
-Remaining **P1 deployment gates**: record `deploy/restore-drill.sh` and `deploy/smoke-private-files.sh` results for snapshot `20261001T201430Z`. SMTP is deferred until release planning: the nonexistent `supabase-mail` host means magic-link and recovery emails are not delivered, while password sign-in works. Permanent or expiring agent tokens are independently usable through the validated MCP HTTPS endpoint while AI is disabled.
+- Restore drill on snapshot `20261001T201430Z` (physical data directory, no network, pg_cron jobs off) restored 2 users, 142 works, 207 assets and 209 objects. RLS, policies, table grants, function privileges and private buckets matched production exactly; restored agent tokens were deleted; all 207 assets matched their Storage versions, sizes and SHA-256. Anonymous object, public-object and table reads through the public API were denied.
+
+- [x] **M6.7 — 100%**: verified physical backup/restore drill and rollback image, operational retention, redacted gateway logs, hardened reader, monster model limits, invite-only Turnstile-protected sign-in and token-based OPDS. SMTP is deferred to release planning: magic-link and recovery emails are not delivered; password sign-in works.
