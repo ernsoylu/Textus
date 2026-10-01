@@ -23,6 +23,9 @@ import { Button } from '@/components/ui/button';
 
 type Bubble = { at: Point } & ({ id: string } | { draft: ViewerSelection });
 
+// Stands in for the selection being highlighted or commented on (see `pending` below); never saved or opened.
+const PENDING_ID = 'pending-selection';
+
 const parseAnchor = (a: AnnotationItem) => anchorSchema.safeParse({ anchor_type: a.anchor_type, anchor_data: a.anchor_data });
 
 // FR-READ-1/2/6 viewers, FR-READ-3 progress + status, FR-READ-4/5 annotations. The page owns the reading shell:
@@ -48,6 +51,8 @@ export function Reader() {
   const [selection, setSelection] = useState<ViewerSelection | null>(null);
   const [menuAt, setMenuAt] = useState<Point | null>(null);
   const [bubble, setBubble] = useState<Bubble | null>(null);
+  // The selection the notes form took focus from; the browser drops its own selection then.
+  const [held, setHeld] = useState<ViewerSelection | null>(null);
   const [goTo, setGoTo] = useState<{ anchor: Anchor }>();
 
   const handleFirstPageRendered = useCallback(
@@ -73,16 +78,22 @@ export function Reader() {
     [saveProgress],
   );
 
+  // Focusing a comment box clears the document's text selection, so the viewers draw the selection being
+  // commented on like a highlight until it is saved or dismissed.
+  const pending = bubble && 'draft' in bubble ? bubble.draft : held && held === selection ? held : null;
   const viewerAnnotations = useMemo<ViewerAnnotation[]>(
-    () =>
-      (annotations.data ?? []).flatMap((a) => {
+    () => [
+      ...(annotations.data ?? []).flatMap((a) => {
         const anchor = parseAnchor(a);
         return anchor.success ? [{ id: a.id, anchor: anchor.data, color: highlightFill(a.color), note: a.note }] : [];
       }),
-    [annotations.data],
+      ...(pending ? [{ id: PENDING_ID, anchor: pending.anchor, color: highlightFill('blue'), note: null }] : []),
+    ],
+    [annotations.data, pending],
   );
 
   const openAnnotation = useCallback((id: string, at: Point) => {
+    if (id === PENDING_ID) return;
     setMenuAt(null);
     setBubble({ id, at });
   }, []);
@@ -208,13 +219,15 @@ export function Reader() {
         {readable && notesOpen && (
           <aside aria-label="Notes" className="absolute inset-y-0 right-0 z-30 flex w-[min(22rem,100%)] flex-col gap-3 overflow-auto rounded-8 border border-border bg-bg p-3 shadow-xl xl:static xl:z-auto xl:w-80 xl:shrink-0 xl:shadow-none">
             {selection && (
-              <AnnotationForm
-                label="Highlight selection"
-                quote={selection.text}
-                isLoading={createAnnotation.isPending}
-                onCancel={() => setSelection(null)}
-                onSubmit={(color, note) => highlight(color, note)}
-              />
+              <div onFocus={() => setHeld(selection)}>
+                <AnnotationForm
+                  label="Highlight selection"
+                  quote={selection.text}
+                  isLoading={createAnnotation.isPending}
+                  onCancel={() => setSelection(null)}
+                  onSubmit={(color, note) => highlight(color, note)}
+                />
+              </div>
             )}
             {pageFormat && page && !selection && (
               <AnnotationForm

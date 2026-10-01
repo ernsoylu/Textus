@@ -5,6 +5,8 @@ import { useCoverUrls } from '@/hooks/useCoverUrls';
 import { StarRating } from '@/components/library/StarRating';
 import { Button } from '@/components/ui/button';
 import { UploadForm } from '@/components/library/UploadForm';
+import { DuplicateNotice } from '@/components/library/DuplicateNotice';
+import { DeleteWorkButton } from '@/components/library/DeleteWorkButton';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
@@ -68,6 +70,7 @@ export function WorkDetail() {
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6">
       <Link to="/library" className="text-small text-muted underline">Back to library</Link>
       {data.records.map((record) => (autoImport || hasLookupSuggestions(record.metadata)) && <AutoMetadataImport key={record.id} work={data} record={record} enabled />)}
+      <DuplicateNotice workId={data.id} />
       <section className="grid items-start gap-6 rounded-8 border border-border bg-dim p-6 sm:grid-cols-[220px_minmax(0,1fr)]">
         {cover && covers.data?.get(cover.storage_path) ? <img src={covers.data.get(cover.storage_path)} alt={`Cover of ${data.title}`} className="mx-auto max-h-[330px] w-full max-w-[220px] rounded-8 object-contain shadow-lg" /> : <div className="mx-auto flex aspect-[2/3] w-full max-w-[220px] flex-col justify-between rounded-8 bg-green-bg p-6 shadow-lg"><span className="text-small text-fg">TEXTUS / LIBRARY</span><p className="line-clamp-6 break-words font-serif text-heading text-fg">{data.title}</p><p className="line-clamp-3 text-small text-fg">{data.records[0]?.byline || 'Unattributed'}</p></div>}
         <div className="flex min-w-0 flex-col gap-4">
@@ -79,6 +82,7 @@ export function WorkDetail() {
             {readerPath ? <Link to={readerPath} className="rounded-8 bg-green px-4 py-3 text-label text-dim">Read</Link> : <Button disabled>Read</Button>}
             <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit</Link>
             <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
+            <DeleteWorkButton workId={data.id} title={data.title} kind={kind} />
           </div>
           {!readerPath && <p className="text-small text-muted">Add a PDF, EPUB, MOBI, AZW3, CBZ or DjVu file in Edit to read here.</p>}
           <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow"><StarRating value={data.user_rating} /></dd></div></dl>

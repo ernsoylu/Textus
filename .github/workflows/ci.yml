@@ -61,9 +61,9 @@ jobs:
       - run: supabase start
       # Default local ports/credentials for `supabase start` (stable across CLI versions,
       # unlike relying on `supabase status`'s output format).
-      - name: Run pgTAP tests (RLS isolation, library search and paging)
+      - name: Run pgTAP tests (RLS isolation, library search and paging, duplicate works)
         run: |
-          for f in rls_isolation library_page; do
+          for f in rls_isolation library_page duplicate_works; do
             psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
               -v ON_ERROR_STOP=1 -f "supabase/tests/database/$f.test.sql" | tee "pgtap-$f.log"
             if grep -q 'not ok' "pgtap-$f.log"; then
@@ -76,12 +76,15 @@ jobs:
       - name: Run Edge Function integration flow
         run: |
           supabase functions serve --no-verify-jwt > /tmp/textus-functions.log 2>&1 &
-          for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/functions/v1/export)
-            if [ "$code" != "000" ] && [ "$code" != "502" ]; then break; fi
+          # The runtime from `supabase start` answers first, then `functions serve` restarts it (502s in between);
+          # only a request logged by serve itself proves the new runtime is up.
+          ready=false
+          for i in $(seq 1 90); do
+            curl -s -o /dev/null http://127.0.0.1:54321/functions/v1/export || true
+            if grep -q 'serving the request with supabase/functions/export' /tmp/textus-functions.log; then ready=true; break; fi
             sleep 1
           done
-          if [ "$code" = "000" ] || [ "$code" = "502" ]; then cat /tmp/textus-functions.log; exit 1; fi
+          if [ "$ready" != true ]; then cat /tmp/textus-functions.log; exit 1; fi
           if ! deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts; then
             cat /tmp/textus-functions.log
             exit 1
