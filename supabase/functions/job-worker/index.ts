@@ -12,11 +12,12 @@
 // client-side on first read instead (Reader.tsx's onFirstPageRendered), per §15 open
 // question 2's own proposed resolution — Deno's edge runtime has no canvas to rasterize a
 // PDF page into an image. upload/complete no longer enqueues that job type.
-import { withSupabase } from '@supabase/server';
+import { withSupabase, type SupabaseContext } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
 import { runCleanup } from './cleanup.ts';
+import { checked, withBudget, boundedFetch as fetch } from '../_shared/budget.ts';
 
 // ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
 const MAX_EXTRACT_BYTES = 25_000_000;
@@ -28,6 +29,8 @@ interface Job {
   payload: Record<string, unknown>;
   attempts: number;
   max_attempts: number;
+  claim_generation: number;
+  user_id: string | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -59,7 +62,7 @@ async function extractText(admin: any, job: Job) {
   const assetId = job.payload.asset_id as string | undefined;
   if (!assetId) throw new Error('extract_text job missing payload.asset_id');
 
-  const { data: asset, error: assetError } = await admin.from('assets').select('*').eq('id', assetId).single();
+  const { data: asset, error: assetError } = await admin.from('assets').select('*').eq('id', assetId).eq('user_id', job.user_id!).is('deleting_at', null).single();
   if (assetError || !asset) throw new Error(assetError?.message ?? 'asset not found');
 
   // Text is read into memory, so very large files and formats with no extractor are marked ready without it
@@ -260,8 +263,11 @@ async function processCover(admin: any, job: Job) {
   const { extension, mime } = sniffCover(bytes);
   const checksum = await sha256Hex(bytes);
   const path = `${userId}/${checksum}.${extension}`;
-  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: mime, upsert: true });
-  if (storageError) throw storageError;
+  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: mime, upsert: false });
+  if (storageError) {
+    const { data: exists } = await admin.storage.from('covers').exists(path);
+    if (!exists) throw storageError;
+  }
   const asset = await ensureCoverAsset(admin, userId, path, bytes.length, checksum, mime);
   const { error: linkError } = await admin.from('record_assets').upsert({ record_id: recordId, asset_id: asset.id, role: 'cover' }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
   if (linkError) throw linkError;
@@ -277,38 +283,27 @@ const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
 };
 
 export default {
-  fetch: withSupabase({ auth: 'secret' }, async (_req, ctx) => {
-    await ctx.supabaseAdmin.rpc('expire_stale_jobs');
-
-    // One system-wide cleanup a day; the idempotency key makes every later tick a no-op.
-    await ctx.supabaseAdmin.from('jobs').upsert(
+  fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
+    await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
+    await checked(ctx.supabaseAdmin.from('jobs').upsert(
       { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
       { onConflict: 'idempotency_key', ignoreDuplicates: true },
-    );
-
-    const { data: jobs, error: claimError } = await ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 5 });
-    if (claimError) return Response.json({ error: claimError.message }, { status: 500 });
-
+    ));
+    const jobs = await checked(ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 1 })) as Job[];
     const results = [];
-    for (const job of (jobs ?? []) as Job[]) {
-      const handler = HANDLERS[job.job_type];
+    for (const job of jobs ?? []) {
       try {
-        if (!handler) throw new Error(`no handler for job_type '${job.job_type}'`);
+        const handler = HANDLERS[job.job_type];
+        if (!handler) throw new Error('unsupported job type');
         const result = await handler(ctx.supabaseAdmin, job);
-        await ctx.supabaseAdmin.from('jobs').update({ status: 'succeeded', completed_at: new Date().toISOString(), result }).eq('id', job.id);
-        results.push({ id: job.id, status: 'succeeded' });
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error(`job ${job.id} (${job.job_type}) failed:`, message);
-        if (job.attempts >= job.max_attempts) {
-          await ctx.supabaseAdmin.from('jobs').update({ status: 'failed', completed_at: new Date().toISOString(), last_error: message }).eq('id', job.id);
-          results.push({ id: job.id, status: 'failed', error: message });
-        } else {
-          // Left 'running' on purpose: the lease expires and claim_jobs() retries it.
-          results.push({ id: job.id, status: 'retrying', error: message });
-        }
+        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
+        results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
+      } catch {
+        // Logs/results contain neither provider URLs, book text nor credentials.
+        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
+        results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });
       }
     }
-    return Response.json({ claimed: (jobs ?? []).length, results });
-  }),
+    return Response.json({ claimed: jobs?.length ?? 0, results });
+  })),
 };

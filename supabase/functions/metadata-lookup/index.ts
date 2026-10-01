@@ -1,3 +1,4 @@
+import { boundedFetch as fetch, withBudget } from '../_shared/budget.ts';
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
 import { readCapped } from '../_shared/http.ts';
@@ -348,7 +349,7 @@ export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: Identi
 }
 
 export default {
-  fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
+  fetch: withSupabase({ auth: 'user' }, withBudget(async (req: Request, ctx: SupabaseContext) => {
     const body = await req.json().catch(() => null);
     const cover = CoverSchema.safeParse(body);
     if (cover.success) return await queueCover(ctx, cover.data);
@@ -362,5 +363,5 @@ export default {
       if (cached) return cached;
     }
     return await lookupAcrossProviders(ctx, scheme, identifier.normalized);
-  }),
+  })),
 };

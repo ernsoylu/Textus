@@ -36,6 +36,7 @@ jobs:
           cache: npm
       # --ignore-scripts: no dependency lifecycle scripts run in CI (none are needed to type-check, test or build).
       - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test
@@ -63,7 +64,7 @@ jobs:
       # unlike relying on `supabase status`'s output format).
       - name: Run pgTAP tests (RLS isolation, library search and paging, duplicate works)
         run: |
-          for f in rls_isolation library_page duplicate_works; do
+          for f in rls_isolation library_page duplicate_works m6_integrity; do
             psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
               -v ON_ERROR_STOP=1 -f "supabase/tests/database/$f.test.sql" | tee "pgtap-$f.log"
             if grep -q 'not ok' "pgtap-$f.log"; then
@@ -107,3 +108,5 @@ jobs:
           done
       - name: deno lint
         run: deno lint supabase/functions
+      - name: Edge unit tests
+        run: deno test --allow-env --allow-net --config supabase/functions/deno.jsonc supabase/functions
