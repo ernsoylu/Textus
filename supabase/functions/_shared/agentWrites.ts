@@ -59,7 +59,7 @@ export async function agentWrite(principal: AgentPrincipal, client: SupabaseClie
   if (action.status !== 'approved' || new Date(action.expires_at).getTime() <= Date.now()) return { status: action.status === 'approved' ? 'expired' : action.status, actionId: action.id, arguments: action.arguments, preview: action.preview, approvalUrl: `${Deno.env.get('TEXTUS_SITE_URL') ?? ''}/settings?tab=agents`, message: 'The owner must review this exact action in Textus. After approval, repeat this tool with the same requestId and arguments. An agent-supplied confirmation cannot approve it.' };
   if (tool !== 'add_file_from_url') return await checked(admin.rpc('execute_agent_action', { p_action: action.id, p_token: principal.token_id }));
   // Reuse the pinned public-address downloader and immutable/replayable upload pipeline.
-  const response = await handleFromUrl(new Request('http://internal/upload/from-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...action.arguments, uploadId: action.id }) }), { supabase: client, supabaseAdmin: admin, userId: principal.user_id, agentAction: { id: action.id, tokenId: principal.token_id } }, deadline());
+  const response = await handleFromUrl(new Request('https://internal/upload/from-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...action.arguments, uploadId: action.id }) }), { supabase: client, supabaseAdmin: admin, userId: principal.user_id, agentAction: { id: action.id, tokenId: principal.token_id } }, deadline());
   const result = await response.json();
   // Storage/public-fetch failures leave approval intact, allowing the same action to retry safely.
   return result;

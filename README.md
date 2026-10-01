@@ -323,18 +323,7 @@ Run `bash deploy/restore-drill.sh <snapshot>` on app102 after each backup. It ve
 
 Deploy migrations, functions and frontend with `AI_ENABLED`, `MCP_ENABLED` and `MCP_WRITES_ENABLED` false. Run HTTPS, private-file and login smoke tests before enabling MCP; enable AI only after monster's network/local-model restrictions pass. If a release fails, disable these flags first and restore the saved functions/frontend image. Keep additive database migrations; use the verified full snapshot only for disaster recovery.
 
-Before setting `AI_ENABLED=true`, restrict Ollama on monster to local models and to the Edge Functions host. This drop-in leaves the existing override untouched; delete it to roll back. It also blocks Ollama's own outbound traffic, so lift it temporarily to pull a model.
-
-```bash
-sudo tee /etc/systemd/system/ollama.service.d/textus.conf <<'EOF'
-[Service]
-Environment="OLLAMA_NO_CLOUD=1"
-Environment="OLLAMA_MAX_QUEUE=4"
-IPAddressDeny=any
-IPAddressAllow=localhost 192.168.1.102
-EOF
-sudo systemctl daemon-reload && sudo systemctl restart ollama
-```
+Before setting `AI_ENABLED=true`, run `ssh -t monster 'sudo sh -s' < deploy/ollama-hardening.sh`. It disables Ollama cloud inference and bounds concurrency/queueing in a separate systemd drop-in; Ollama stays reachable from the LAN for other uses. Textus only selects models in `OLLAMA_ALLOWED_MODELS`, but other LAN clients can manage models and share the GPU outside Textus's lease, so busy-GPU AI jobs defer rather than fail.
 
 Rollback: `docker tag textus-web:backup-<snapshot> textus-web:latest && docker compose up -d --no-build textus`, and extract `volumes/functions` from the snapshot's `configuration.tar.gz` before restarting the `functions` service.
 
