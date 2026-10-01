@@ -39,3 +39,13 @@ export function stripTrailing(text: string, chars: string): string {
   while (end > 0 && chars.includes(text[end - 1])) end--;
   return text.slice(0, end);
 }
+
+// Keep complete UTF-8 characters inside a conservative model context budget.
+export function truncateUtf8(text: string, maximumBytes: number): string {
+  const bytes = new TextEncoder().encode(text);
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  for (let end = Math.min(bytes.length, maximumBytes); end >= Math.max(0, Math.min(bytes.length, maximumBytes) - 3); end--) {
+    try { return decoder.decode(bytes.subarray(0, end)); } catch { /* incomplete final character */ }
+  }
+  return '';
+}

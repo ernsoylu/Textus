@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import type { ImportedCandidate } from 'shared/names';
-import { metadataLookup, type MetadataResponse } from '@/lib/functions';
+import { titleMetadataSearch, metadataLookup, type MetadataResponse, type NormalizedMetadata } from '@/lib/functions';
 import { applyMetadata, defaultSelection, isInvalidPerson, isWorkField, loadCandidates, locks, meta, suggestContributor, RECORD_FIELDS, WORK_FIELDS, type Field, type Person } from '@/lib/metadataApply';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,10 @@ const displayValue = (value: unknown) => (typeof value === 'string' || typeof va
 
 export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonly<{ work: Work; record: RecordValue; defaultScheme?: IdentifierScheme }>) {
   const query = useQueryClient();
+  const [searchTitle, setSearchTitle] = useState(work.title);
+  const [searchAuthor, setSearchAuthor] = useState('');
+  const [externalConsent, setExternalConsent] = useState(false);
+  const titleSearch = useMutation({ mutationFn: () => titleMetadataSearch(record.id, searchTitle, searchAuthor) });
   const [scheme, setScheme] = useState<IdentifierScheme>(defaultScheme);
   useEffect(() => setScheme(defaultScheme), [defaultScheme]);
   const [value, setValue] = useState(() => record.identifiers?.find((id) => id.scheme === defaultScheme)?.normalized_value ?? '');
@@ -100,9 +104,46 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
     {response?.status === 'invalid_identifier' && <p className="text-small text-red">Invalid identifier: {response.reason}</p>}
     {record.record_assets.flatMap(({ assets }) => { const suggestions = meta(assets?.metadata).identifier_suggestions; return Array.isArray(suggestions) ? suggestions : []; }).map((item) => meta(item)).filter((suggestion, index, all) => typeof suggestion.scheme === 'string' && typeof suggestion.value === 'string' && (suggestion.scheme !== 'isbn' || all.findIndex((candidate) => candidate.scheme === 'isbn') === index)).map((suggestion) => <button key={`${suggestion.scheme}:${suggestion.value}`} type="button" className="text-left text-small text-green underline" onClick={() => { setScheme(suggestion.scheme as IdentifierScheme); setValue(suggestion.value as string); }}>Found in file: {String(suggestion.scheme).toUpperCase()} {String(suggestion.value)}</button>)}
     {record.record_assets.flatMap(({ assets }) => { const author = meta(assets?.metadata).author_suggestion; return typeof author === 'string' && author.trim() ? [author] : []; }).map((author) => <p key={author} className="text-small text-muted">File author suggestion: {author}</p>)}
+    {Object.entries(meta(meta(record.metadata).lookup_suggestions)).filter(([key]) => key.startsWith('llm:')).map(([key, raw]) => {
+      const suggestion = meta(raw);
+      const proposed = meta(suggestion.data);
+      if (typeof proposed.title !== 'string' || typeof proposed.source_provider !== 'string') return null;
+      return <Button key={key} variant="secondary" disabled={pending} onClick={async () => {
+        setError(''); setDone(''); setPending(true);
+        try {
+          const proposal = proposed as unknown as NormalizedMetadata;
+          setResponse({ status: 'success', data: proposal, fromCache: false, fetchedAt: typeof suggestion.fetched_at === 'string' ? suggestion.fetched_at : new Date().toISOString() });
+          setSearchTitle(proposal.title ?? work.title); setSearchAuthor(proposal.contributors?.[0]?.name ?? '');
+          setSelected([]); setSelectedCredits([]); setIncludeCover(false);
+          setCandidates(await loadCandidates(proposal));
+        } catch { setError('Could not prepare suggestion review.'); }
+        finally { setPending(false); }
+      }}>Review AI suggestion: {proposed.title}</Button>;
+    })}
+    <div className="flex flex-col gap-2 rounded-8 border border-border p-3">
+      <p className="text-small text-muted">No identifier? Search public catalogs with a title and author. Only these two fields are sent to Open Library and Crossref.</p>
+      <Input aria-label="Title for public catalog search" maxLength={200} value={searchTitle} onChange={(e) => setSearchTitle(e.target.value)} />
+      <Input aria-label="Author for public catalog search" maxLength={200} value={searchAuthor} onChange={(e) => setSearchAuthor(e.target.value)} />
+      <label className="text-small text-fg"><input type="checkbox" checked={externalConsent} onChange={(e) => setExternalConsent(e.target.checked)} /> Allow sending this title and author to these public catalogs</label>
+      <Button variant="secondary" disabled={!externalConsent || !searchTitle.trim() || pending} isLoading={titleSearch.isPending} onClick={() => titleSearch.mutate()}>Search public catalogs</Button>
+      {titleSearch.error && <p role="alert">Public catalog search failed. Try again later.</p>}
+      {titleSearch.isSuccess && !titleSearch.data.candidates.length && <p role="status">No catalog candidates found.</p>}
+      {titleSearch.data?.candidates.map((candidate, index) => <Button key={index} variant="ghost" disabled={pending} onClick={async () => {
+        setPending(true); setError(''); setDone('');
+        try {
+          setResponse({ status: 'success', data: candidate.data, fromCache: false, fetchedAt: new Date().toISOString() });
+          const selection = defaultSelection(candidate.data, workLocks, recordLocks);
+          setSelected(selection.fields); setSelectedCredits(selection.credits); setIncludeCover(false);
+          if (candidate.identifier) { setScheme(candidate.identifier.scheme); setValue(candidate.identifier.value); }
+          setCandidates(await loadCandidates(candidate.data));
+        } catch { setError('Could not prepare candidate review.'); }
+        finally { setPending(false); }
+      }}>Review {candidate.data.title} · {candidate.data.source_provider}</Button>)}
+    </div>
     {data && <div className="flex flex-col gap-2">
       <p className="text-small text-muted">From {data.source_provider}{response?.status === 'success' && response.fromCache ? ' · cached' : ''}. Choose fields to apply.</p>
       {data.source_url?.startsWith('https://') && <a href={data.source_url} target="_blank" rel="noreferrer" className="text-small text-green underline">Open source catalogue</a>}
+      {typeof (data as unknown as Record<string, unknown>).evidence === 'string' && <p className="text-small text-muted">Front matter evidence: {String((data as unknown as Record<string, unknown>).evidence)}</p>}
       {data.role_warning && <p className="text-small text-yellow">{data.role_warning}</p>}
       {[...WORK_FIELDS, ...RECORD_FIELDS].filter((field) => data[field]).map((field) => {
         const isWork = isWorkField(field);

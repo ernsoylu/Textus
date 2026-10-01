@@ -105,3 +105,5 @@ export interface AiStatus { enabled: boolean; reachable: boolean; defaultModel: 
 export interface AiModel { name: string; family?: string; parameterSize?: string; quantization?: string; sizeBytes: number }
 export const aiStatus = () => callFunction<AiStatus>('ai', { action: 'status' });
 export const aiModels = () => callFunction<{ models: AiModel[] }>('ai', { action: 'models' });
+
+export const titleMetadataSearch = (recordId: string, title: string, author: string) => callFunction<{ candidates: { data: NormalizedMetadata; identifier?: { scheme: 'isbn' | 'doi'; value: string } }[] }>('metadata-lookup', { action: 'search-title', recordId, title, author, consent: true });

@@ -1,6 +1,7 @@
 import { boundedFetch as fetch, withBudget } from '../_shared/budget.ts';
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
+import { jsonBody, rateLimit } from '../_shared/limits.ts';
 import { readCapped } from '../_shared/http.ts';
 import { standardProvider } from './standards.ts';
 import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, type IdentifierScheme, type StandardScheme, parseIdentifier } from '../_shared/identifier.ts';
@@ -348,9 +349,51 @@ export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: Identi
   return Response.json({ status: 'not_found', identifier: id, searchedProviders: providers });
 }
 
+const TitleSearchSchema = z.object({ action: z.literal('search-title'), recordId: z.string().uuid(), title: z.string().trim().min(1).max(200), author: z.string().trim().max(200), consent: z.literal(true) }).strict();
+export async function searchTitleMetadata(title: string, author: string) {
+  const open = new URL('/search.json', 'https://openlibrary.org');
+  open.searchParams.set('title', title); if (author) open.searchParams.set('author', author);
+  open.searchParams.set('limit', '3'); open.searchParams.set('fields', 'key,title,author_name,first_publish_year,isbn,publisher');
+  const cross = new URL('/works', 'https://api.crossref.org');
+  cross.searchParams.set('query.title', title); if (author) cross.searchParams.set('query.author', author);
+  cross.searchParams.set('rows', '3');
+  const settled = await Promise.allSettled([get(open), get(cross)]);
+  const candidates: { data: Metadata; identifier?: { scheme: 'isbn' | 'doi'; value: string } }[] = [];
+  for (const [index, result] of settled.entries()) {
+    if (result.status !== 'fulfilled' || !result.value.response.ok) continue;
+    const root = object(JSON.parse(result.value.body));
+    const entries = index === 0 ? root.docs : object(root.message).items;
+    if (!Array.isArray(entries)) continue;
+    for (const item of entries.slice(0, 3)) {
+      const row = object(item);
+      if (index === 0) {
+        const name = str(row.title), key = str(row.key);
+        if (!name || !key || !/^\/works\/OL\d+W$/.test(key)) continue;
+        const values = Array.isArray(row.isbn) ? row.isbn : [];
+        const identifier = values.flatMap((value) => { const parsed = typeof value === 'string' ? parseIdentifier('isbn', value) : null; return parsed?.ok ? [{ scheme: 'isbn' as const, value: parsed.normalized }] : []; })[0];
+        candidates.push({ data: { title: name, work_type: 'book', source_provider: 'openlibrary_title_search', source_url: new URL(key, open).href, publication_date: year(row.first_publish_year), publication_date_precision: 'year', publisher: first(row.publisher), contributors: (Array.isArray(row.author_name) ? row.author_name : []).slice(0, 12).flatMap((name) => typeof name === 'string' ? [{ name, role: 'author' as const }] : []), role_warning: EDITOR_WARNING }, ...(identifier ? { identifier } : {}) });
+      } else {
+        const data = parseCrossref({ message: row }, 'crossref');
+        if (!data.title) continue;
+        const parsed = typeof row.DOI === 'string' ? parseIdentifier('doi', row.DOI) : null;
+        candidates.push({ data, ...(parsed?.ok ? { identifier: { scheme: 'doi' as const, value: parsed.normalized } } : {}) });
+      }
+    }
+  }
+  return candidates;
+}
+
 export default {
   fetch: withSupabase({ auth: 'user' }, withBudget(async (req: Request, ctx: SupabaseContext) => {
-    const body = await req.json().catch(() => null);
+    if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+    const body = await jsonBody(req);
+    await rateLimit(ctx.supabaseAdmin, `metadata:${ctx.userClaims!.id}`, 20);
+    const search = TitleSearchSchema.safeParse(body);
+    if (search.success) {
+      const { data: record, error } = await ctx.supabase.from('records').select('id').eq('id', search.data.recordId).maybeSingle();
+      if (error || !record) return Response.json({ error: 'not_found' }, { status: 404 });
+      return Response.json({ candidates: await searchTitleMetadata(search.data.title, search.data.author), disclosedTo: ['Open Library', 'Crossref'] });
+    }
     const cover = CoverSchema.safeParse(body);
     if (cover.success) return await queueCover(ctx, cover.data);
     const parsed = RequestSchema.safeParse(body);

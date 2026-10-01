@@ -110,6 +110,12 @@ test('look up an ISO reference and apply its metadata and identifier', async ({ 
   await mocks(page);
   const record = { ...work.records[0], identifiers: [] as { scheme: string; normalized_value: string }[], metadata: { locked_fields: ['contributors'], version: 'existing' } };
   const standard = { ...work, records: [record] };
+  await page.route('**/rest/v1/rpc/apply_metadata_fields', (route) => {
+    const args = route.request().postDataJSON() as { p_work_patch: Record<string, unknown>; p_record_patch: Record<string, unknown>; p_metadata_patch: Record<string, unknown> };
+    Object.assign(standard, args.p_work_patch); Object.assign(record, args.p_record_patch);
+    record.metadata = { ...record.metadata, ...args.p_metadata_patch };
+    return route.fulfill({ json: null });
+  });
   await page.route('**/rest/v1/works?*', (route) => {
     if (route.request().method() === 'PATCH') Object.assign(standard, route.request().postDataJSON());
     return route.fulfill({ json: standard });
@@ -259,7 +265,7 @@ test('library opens book details, metadata shares one input, and Read opens the 
   await expect(page.getByLabel('Book title', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Gather metadata' }).click();
   const lookup = page.getByRole('region', { name: 'Metadata lookup' });
-  await expect(lookup.getByRole('textbox')).toHaveCount(1);
+  await expect(lookup.getByRole('textbox', { name: 'Lookup reference', exact: true })).toHaveCount(1);
   await expect(lookup.getByLabel('Lookup reference')).toHaveValue('9780261103252');
   await expect(lookup.getByRole('button', { name: 'Save identifier' })).toBeVisible();
   await expect(lookup.getByRole('button', { name: 'Look up', exact: true })).toBeVisible();

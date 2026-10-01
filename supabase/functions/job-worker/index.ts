@@ -15,6 +15,9 @@ import { withSupabase, type SupabaseContext } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
+import { extractAiMetadata } from '../_shared/aiMetadata.ts';
+import { aiConfig } from '../_shared/ollama.ts';
+import { HttpError } from '../_shared/http.ts';
 import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
 import { checked, withBudget, boundedFetch as fetch } from '../_shared/budget.ts';
@@ -35,10 +38,11 @@ interface Job {
 
 // deno-lint-ignore no-explicit-any
 async function queueMetadata(admin: any, asset: { id: string; user_id: string }, found: { scheme: 'isbn' | 'doi'; value: string }[]) {
-  if (!found.length) return;
+  if (!found.length && !aiConfig().enabled) return;
   const { data: links, error } = await admin.from('record_assets').select('record_id').eq('asset_id', asset.id);
   if (error) throw error;
   for (const link of links ?? []) {
+    if (!found.length) await checked(admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'extract_metadata_ai', payload: { asset_id: asset.id, record_id: link.record_id }, idempotency_key: `extract_metadata_ai:${asset.id}:${link.record_id}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true }));
     for (const identifier of found.slice(0, 3)) {
       const { error: queueError } = await admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'fetch_metadata', payload: { record_id: link.record_id, ...identifier }, idempotency_key: `fetch_metadata:${link.record_id}:${identifier.scheme}:${identifier.value}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
       if (queueError) throw queueError;
@@ -275,6 +279,7 @@ async function processCover(admin: any, job: Job) {
 const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   extract_text: extractText,
   index_passages: indexPassages,
+  extract_metadata_ai: extractAiMetadata,
   process_cover: processCover,
   fetch_metadata: fetchMetadata,
   cleanup: (admin) => runCleanup(admin),
@@ -301,7 +306,12 @@ export default {
         }
         const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
         results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
-      } catch {
+      } catch (error) {
+        if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'timeout'].includes(error.code) && ['extract_metadata_ai', 'embed_passages'].includes(job.job_type)) {
+          await checked(ctx.supabaseAdmin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
+          results.push({ id: job.id, status: 'paused' });
+          continue;
+        }
         // Logs/results contain neither provider URLs, book text nor credentials.
         const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
         results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });

@@ -64,7 +64,7 @@ jobs:
       # unlike relying on `supabase status`'s output format).
       - name: Run pgTAP tests (RLS isolation, library search and paging, duplicate works)
         run: |
-          for f in rls_isolation library_page duplicate_works m6_integrity ai_foundation passages; do
+          for f in rls_isolation library_page duplicate_works m6_integrity ai_foundation passages catalog metadata_review; do
             psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
               -v ON_ERROR_STOP=1 -f "supabase/tests/database/$f.test.sql" | tee "pgtap-$f.log"
             if grep -q 'not ok' "pgtap-$f.log"; then

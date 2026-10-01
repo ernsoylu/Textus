@@ -119,6 +119,19 @@ isOneToOne: true
                   Relationships: [
 
                   ]
+                },"catalog_requests": {
+                  Row: {
+                    "created_at": string,"id": string,"payload": NonNullable<Json>,"result": NonNullable<Json>,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id": string,"payload": NonNullable<Json>,"result": NonNullable<Json>,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"payload"?: NonNullable<Json>,"result"?: NonNullable<Json>,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
                 },"collection_records": {
                   Row: {
                     "added_at": string | null,"collection_id": string,"display_order": number | null,"record_id": string
@@ -523,6 +536,9 @@ isOneToOne: false
 "active_job_count":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
+"apply_metadata_fields":
+{ Args: { "p_metadata_patch": Json,"p_record": string,"p_record_patch": Json,"p_work": string,"p_work_patch": Json }; Returns: undefined
+                           },
 "begin_upload":
 { Args: { "p_id": string,"p_intent": Json,"p_record": string,"p_user": string }; Returns: Json
                            },
@@ -582,6 +598,12 @@ isOneToOne: false
                            },
 "control_passage_index":
 { Args: { "p_action": string,"p_asset"?: string }; Returns: number
+                           },
+"create_catalog":
+{ Args: { "p_payload": Json,"p_request": string }; Returns: Json
+                           },
+"defer_ai_job":
+{ Args: { "p_generation": number,"p_id": string,"p_reason": string }; Returns: boolean
                            },
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -643,6 +665,9 @@ isOneToOne: false
               "asset_id": string,"byline": string,"cfi": string,"content": string,"id": number,"page": number,"page_label": string,"record_id": string,"score": number,"section": number,"title": string,"work_id": string,"year": number
             }[]
                            },
+"set_metadata_contributors":
+{ Args: { "p_credits": Json,"p_record": string }; Returns: boolean
+                           },
 "set_record_contributors":
 { Args: { "p_credits": Json,"p_record_id": string }; Returns: undefined
                            },
@@ -651,6 +676,9 @@ isOneToOne: false
                            },
 "show_trgm":
 { Args: { "": string }; Returns: (string)[]
+                           },
+"store_ai_metadata_suggestion":
+{ Args: { "p_asset": string,"p_data": Json,"p_key": string,"p_record": string,"p_user": string }; Returns: boolean
                            },
 "unaccent":
 { Args: { "": string }; Returns: string
