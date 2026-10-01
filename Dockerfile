@@ -1,11 +1,12 @@
 # Textus SPA: build with Vite, serve with unprivileged nginx (deploy/nginx.conf).
-# VITE_SUPABASE_URL is deliberately not set here: the SPA uses its own origin and nginx proxies
-# the Supabase API over the internal Docker network.
+# Production talks directly to the HTTPS Supabase gateway.
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY . .
+ARG VITE_SUPABASE_URL=https://base.textus.bff.bz
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build

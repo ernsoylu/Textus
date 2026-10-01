@@ -276,11 +276,11 @@ Provider configuration (`CROSSREF_MAILTO`, `SEMANTIC_SCHOLAR_API_KEY`, `GOOGLE_B
 Vite inlines `VITE_*` variables at **build time**, so they are build arguments, not runtime environment. The provided image serves the SPA with nginx and **proxies `/auth`, `/rest`, `/storage` and `/functions` to the Supabase gateway over Docker's internal network**, so the browser only talks to one origin and API calls skip the public gateway. Run it on the same host as Supabase and join Supabase's compose network:
 
 ```bash
-echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL is not needed
+echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # HTTPS API URL defaults to https://base.textus.bff.bz
 docker compose up -d --build                                  # serves on :8080 (TEXTUS_PORT to change)
 ```
 
-`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). If Supabase runs elsewhere, build the SPA with `VITE_SUPABASE_URL` and adjust the image/proxy configuration; the provided compose/Dockerfile build only exposes `VITE_SUPABASE_ANON_KEY`.
+`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). The production build calls `https://base.textus.bff.bz` directly by default. Override `VITE_SUPABASE_URL` for another gateway; both URL and anon key are build arguments. The nginx API proxy remains available for same-origin deployments.
 
 Point Supabase Auth at the app so magic links and recovery links land on it: set `SITE_URL` (and `ADDITIONAL_REDIRECT_URLS`) to the app's URL in the Supabase `.env`, then `docker compose up -d auth`. Auth emails also need a working SMTP server (`SMTP_*` in the same `.env`); without one, generate links with the admin API (`/auth/v1/admin/generate_link`).
 
@@ -290,7 +290,7 @@ The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it mu
 
 | Variable | Where | Required |
 |----------|-------|----------|
-| `VITE_SUPABASE_URL` | Frontend (build time) | Optional; defaults to the app origin and nginx proxy |
+| `VITE_SUPABASE_URL` | Frontend (build time) | Production defaults to https://base.textus.bff.bz; an empty value uses the app proxy |
 | `VITE_SUPABASE_ANON_KEY` | Frontend (build time) | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions only | Yes |
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
@@ -317,22 +317,28 @@ On self-hosted Supabase, pass provider keys through the `functions` service's `d
 
 ## Backup and recovery
 
-Back up three things: the **PostgreSQL database**, **Storage objects**, and **configuration** (`.env`, compose files).
+Run `bash deploy/backup.sh` on app102. It briefly pauses API writers, snapshots the committed database and filesystem Storage together, captures private configuration and the deployed frontend image ID, then resumes services even after failure. Snapshots live under `~/.local/share/textus-backups/` with restricted permissions; keep an encrypted off-host copy. Never commit or publish their contents.
+
+Run `bash deploy/restore-drill.sh <snapshot>` on app102 after each backup. It verifies `SHA256SUMS`, starts the frozen `postgres.tar` data directory (including the pgsodium root key Vault needs) in a network-less container with pg_cron jobs disabled, then fails unless every public table has RLS, every bucket is private, and policies, table grants and function privileges match production exactly. It deletes the restored `agent_tokens` and verifies every asset against its Storage object version, byte size and SHA-256. For real recovery, restore `postgres.tar` into the `db` volumes of the same `supabase/postgres` image and `storage.tar` into Storage before starting services, delete restored `agent_tokens` before enabling MCP, discard abandoned staging uploads, and rebuild derived passage/vector indexes. `database.dump` is for inspecting or extracting individual tables only: replaying it into a fresh Supabase image collides with the image's own `auth`/`storage` schemas and silently drops users and foreign keys. `bash deploy/smoke-private-files.sh` proves that anonymous object/table reads through the public API fail.
+
+Deploy migrations, functions and frontend with `AI_ENABLED`, `MCP_ENABLED` and `MCP_WRITES_ENABLED` false. Run HTTPS, private-file and login smoke tests before enabling MCP; enable AI only after monster's network/local-model restrictions pass. If a release fails, disable these flags first and restore the saved functions/frontend image. Keep additive database migrations; use the verified full snapshot only for disaster recovery.
+
+Before setting `AI_ENABLED=true`, restrict Ollama on monster to local models and to the Edge Functions host. This drop-in leaves the existing override untouched; delete it to roll back. It also blocks Ollama's own outbound traffic, so lift it temporarily to pull a model.
 
 ```bash
-# Database
-pg_dump "postgresql://postgres:<password>@<host>:5432/postgres" > backup_$(date +%Y%m%d).sql
-
-# Storage (S3-compatible endpoint)
-rclone sync <remote>:documents ./backup/documents
-rclone sync <remote>:covers    ./backup/covers
-
-# Restore
-psql "postgresql://postgres:<password>@<host>:5432/postgres" < backup_20260101.sql
-rclone sync ./backup/documents <remote>:documents
+sudo tee /etc/systemd/system/ollama.service.d/textus.conf <<'EOF'
+[Service]
+Environment="OLLAMA_NO_CLOUD=1"
+Environment="OLLAMA_MAX_QUEUE=4"
+IPAddressDeny=any
+IPAddressAllow=localhost 192.168.1.102
+EOF
+sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-Database and storage must be backed up together — an asset row without its file (or vice versa) is an inconsistency.
+Rollback: `docker tag textus-web:backup-<snapshot> textus-web:latest && docker compose up -d --no-build textus`, and extract `volumes/functions` from the snapshot's `configuration.tar.gz` before restarting the `functions` service.
+
+Daily cleanup retains completed jobs for 30 days and removes rate counters after two idle days. Agent action replay results remain while their token can authenticate, then become eligible 30 days after token expiry or deletion. Library text/notes remain owner data until deletion. Operational logs contain no token values, tool arguments, questions or signed URL query strings; frontend Docker logs rotate at 10 MB × 3.
 
 ---
 

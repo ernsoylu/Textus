@@ -1,0 +1,12 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
+SELECT plan(4);
+INSERT INTO private.request_limits(key,window_id,count,updated_at) VALUES('retention-old',1,1,now()-interval '3 days'),('retention-live',1,1,now());
+SELECT public.prune_operational_history();
+SELECT is((SELECT count(*)::int FROM private.request_limits WHERE key='retention-old'),0,'old counters are pruned');
+SELECT is((SELECT count(*)::int FROM private.request_limits WHERE key='retention-live'),1,'live counters remain');
+SELECT ok(public.check_request_limit('retention-day',1,86400),'daily quota accepts first call');
+SELECT public.prune_operational_history();
+SELECT ok(NOT public.check_request_limit('retention-day',1,86400),'housekeeping does not reset a live daily quota');
+SELECT * FROM finish();
+ROLLBACK;

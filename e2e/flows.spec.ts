@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -487,4 +488,22 @@ test('dropdown arrows have consistent inset and text clearance across pages', as
   }
   await page.getByLabel('Reading status').selectOption('reading');
   await expect(page.getByLabel('Reading status')).toHaveValue('reading');
+});
+
+for (const mobile of [false, true]) test(`hostile EPUB retains a second-spine CFI and blocks active content (${mobile ? 'mobile' : 'desktop'})`, async ({ page }) => {
+  await mocks(page);
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+  const escapedRequests: string[] = [];
+  await page.route('**/*evil.test/**', (route) => { escapedRequests.push(route.request().url()); return route.abort(); });
+  await page.route('**/rest/v1/assets?*', (route) => route.fulfill({ json: { id: assetId, bucket: 'documents', storage_path: 'hostile.epub', file_format: 'epub' } }));
+  await page.route('**/reader-fixture.pdf**', (route) => route.fulfill({ status: 200, contentType: 'application/epub+zip', body: readFileSync('e2e/fixtures/hostile.epub') }));
+  const cfi = 'epubcfi(/6/4!/4/2/1:0)';
+  await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read?cfi=${encodeURIComponent(cfi)}`);
+  await expect.poll(() => page.evaluate(() => {
+    const view = document.querySelector('foliate-view') as HTMLElement & { renderer?: { getContents(): { doc: Document; index: number }[] } };
+    return view?.renderer?.getContents().map(({ doc, index }) => ({ index, evidence: doc.querySelector('#deep')?.textContent, active: doc.querySelectorAll('script,iframe,form,[onerror]').length }));
+  })).toEqual([{ index: 1, evidence: 'Deep evidence', active: 0 }]);
+  expect(await page.evaluate(() => document.body.dataset.exploited)).toBeUndefined();
+  expect(escapedRequests).toEqual([]);
+  await expect(page.getByLabel('Reading status')).toBeVisible();
 });

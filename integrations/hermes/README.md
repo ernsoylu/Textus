@@ -1,6 +1,6 @@
 Textus uses the pinned official TypeScript MCP SDK with stateless Streamable HTTP and JSON responses. AI and MCP are disabled by default. The administrator sets `MCP_ENABLED=true` after deployment checks; AI remains independently optional.
 
-In Textus Settings → Agents, create a read token and copy it once. Save it as `TEXTUS_AGENT_TOKEN` in the private Hermes environment (mode 600). Add this to Hermes `config.yaml`:
+In Textus Settings → Agents, create a named token and copy it once. Read access is the default; expiry choices are 7, 30 or 90 days, or permanent. Each token acts within your own account and can be revoked independently. Save it as `TEXTUS_AGENT_TOKEN` in the private Hermes environment (mode 600). Add this to Hermes `config.yaml`:
 
 ```yaml
 mcp_servers:

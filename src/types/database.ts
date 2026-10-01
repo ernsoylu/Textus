@@ -692,6 +692,9 @@ isOneToOne: false
               "contributor_a": string,"contributor_b": string
             }[]
                            },
+"prune_operational_history":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
 "queue_embedding_jobs":
 { Args: { "p_digest": string }; Returns: number
                            },

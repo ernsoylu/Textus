@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // SQL qualifies candidates before limiting and marks assets as deleting under row locks.
 // Every linking path rejects that state. Claims survive storage failures and worker crashes.
 export async function runCleanup(admin: SupabaseClient, signal = AbortSignal.timeout(45_000)) {
+  await checked(admin.rpc('prune_operational_history'));
   const claims = await checked(admin.rpc('claim_storage_cleanup', { p_limit: 100 })) as { bucket: string; path: string; asset_id: string | null }[];
   let removed = 0;
   for (const claim of claims) {

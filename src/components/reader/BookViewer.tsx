@@ -109,6 +109,13 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
     view.style.cssText = 'display:block;width:100%;height:100%';
     host.append(view);
     viewRef.current = view;
+    view.addEventListener('external-link', (event) => {
+      event.preventDefault();
+      try {
+        const url = new URL((event as CustomEvent<{ href_: string }>).detail.href_);
+        if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) globalThis.open(url.href, '_blank', 'noopener,noreferrer');
+      } catch { /* Invalid/untrusted schemes cannot navigate out of the reader. */ }
+    });
     const drawnNow = drawn.current;
 
     const annotationFor = (cfi: string) => annotationsRef.current.find((a) => a.anchor.anchor_type === 'epub_cfi' && a.anchor.anchor_data.cfi === cfi);
@@ -179,7 +186,7 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
       if (cancelled) return;
       view.book.transformTarget?.addEventListener('data', (e) => {
         const detail = (e as CustomEvent<{ data: unknown; type: string }>).detail;
-        if (/html/.test(detail.type)) detail.data = Promise.resolve(detail.data).then((d) => (typeof d === 'string' ? inertBookHtml(d) : d));
+        if (/(?:html|svg)/.test(detail.type)) detail.data = Promise.resolve(detail.data).then((d) => (typeof d === 'string' ? inertBookHtml(d) : d));
       });
       setFixedLayout(view.isFixedLayout);
       setToc(toToc(view.book.toc));
