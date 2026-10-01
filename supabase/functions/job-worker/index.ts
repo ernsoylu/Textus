@@ -5,7 +5,7 @@
 //
 // Scope of this pass: extract_text for PDF assets only (real pdfjs-dist text extraction,
 // verified against a live signed URL before this was written — see the M1 session notes).
-// EPUB/MOBI/AZW3/CBZ/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
+// EPUB/MOBI/AZW3/CBZ/DjVu/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
 // rather than failing forever on a format this will never handle.
 //
 // generate_thumbnail has no handler here at all, deliberately: thumbnails are captured
@@ -15,7 +15,7 @@
 import { withSupabase } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
-import { provider, providersFor } from '../metadata-lookup/index.ts';
+import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
 import { runCleanup } from './cleanup.ts';
 
 // ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
@@ -132,8 +132,8 @@ const CACHE_TTL_MS = 30 * 86_400_000;
 
 // deno-lint-ignore no-explicit-any
 async function cachedSuggestion(admin: any, scheme: string, value: string) {
-  const { data: cached } = await admin.from('metadata_cache').select('response_data').eq('identifier_scheme', scheme).eq('identifier_value', value).gt('expires_at', new Date().toISOString()).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
-  return cached?.response_data;
+  const { data: cached } = await admin.from('metadata_cache').select('response_data').eq('identifier_scheme', scheme).eq('identifier_value', value).gt('expires_at', new Date().toISOString()).order(scheme === 'doi' ? 'provider' : 'fetched_at', { ascending: scheme === 'doi' }).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
+  return needsJournalRefresh(cached?.response_data) ? undefined : cached?.response_data;
 }
 
 // Tries each provider in order and caches the first hit. A provider failure is only raised when

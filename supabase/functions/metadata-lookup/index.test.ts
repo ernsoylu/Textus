@@ -1,13 +1,13 @@
-import { lookupAcrossProviders, provider, providersFor } from './index.ts';
+import { lookupAcrossProviders, needsJournalRefresh, provider, providersFor } from './index.ts';
 
 Deno.test('provider parsers return real titles and typed failures', async () => {
   const original = globalThis.fetch;
   const fixtures: Record<string, unknown> = {
     '/books/OL33912545M.json': { title: 'The Lord of the Rings', publish_date: '2004', publishers: ['HarperCollins'], authors: [{ key: '/authors/OL26320A' }], covers: [123] },
     '/authors/OL26320A.json': { name: 'J. R. R. Tolkien' },
-    '/works/10.1000%2Ftest': { message: { title: ['Paper title'], author: [{ given: 'Jane', family: 'Smith', ORCID: 'https://orcid.org/0000-0001-0002-0003' }], published: { 'date-parts': [[2024, 5, 1]] } } },
+    '/works/10.1000%2Ftest': { message: { title: ['Paper title'], 'container-title': ['Energy Conversion and Management'], author: [{ given: 'Jane', family: 'Smith', ORCID: 'https://orcid.org/0000-0001-0002-0003' }], published: { 'date-parts': [[2024, 5, 1]] } } },
     '/api/query': '<feed><entry><title>Preprint title</title><author><name>John Smith</name></author></entry></feed>',
-    '/graph/v1/paper/PMID%3A123': { title: 'Medical paper', authors: [{ name: 'A. Writer', authorId: '42' }] },
+    '/graph/v1/paper/PMID%3A123': { title: 'Medical paper', journal: { name: 'Medical journal' }, authors: [{ name: 'A. Writer', authorId: '42' }] },
     '/books/v1/volumes': { items: [{ volumeInfo: { title: 'Book title', authors: ['Jane Smith'] } }] },
   };
   globalThis.fetch = ((input) => {
@@ -26,6 +26,16 @@ Deno.test('provider parsers return real titles and typed failures', async () => 
     ]) {
       const result = await provider(name, id);
       if (result.kind !== 'success' || result.data.title !== expected) throw new Error(`${name}: ${JSON.stringify(result)}`);
+    }
+    const article = await provider('crossref', '10.1000/test');
+    if (article.kind !== 'success' || article.data.container_title !== 'Energy Conversion and Management') throw new Error('Crossref journal was discarded');
+    const paper = await provider('semantic_scholar', 'PMID:123');
+    if (paper.kind !== 'success' || paper.data.container_title !== 'Medical journal') throw new Error('Semantic Scholar journal was discarded');
+    if (!needsJournalRefresh({ source_provider: 'crossref' }) || needsJournalRefresh({ source_provider: 'crossref', container_title: null }) || needsJournalRefresh({ source_provider: 'openlibrary' })) throw new Error('legacy cache handling is incorrect');
+    for (const [type, expected] of [['standard', 'standard'], ['report', 'report'], ['dissertation', 'thesis']]) {
+      fixtures['/works/10.1000%2Ftyped'] = { message: { title: ['Typed publication'], type } };
+      const typed = await provider('crossref', '10.1000/typed');
+      if (typed.kind !== 'success' || typed.data.work_type !== expected) throw new Error(`${type} incorrectly classified`);
     }
     const missing = await provider('crossref', '10.1000/missing');
     if (missing.kind !== 'not_found') throw new Error('missing result was not typed as not_found');

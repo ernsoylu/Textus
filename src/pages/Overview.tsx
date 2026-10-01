@@ -23,7 +23,7 @@ function Welcome() {
         <Link to="/import"><Button variant="secondary">Look up an identifier</Button></Link>
         <Link to="/library/new"><Button variant="ghost">Create manually</Button></Link>
       </div>
-      <p className="text-small text-muted">PDF, EPUB, MOBI, AZW3 and CBZ supported.</p>
+      <p className="text-small text-muted">PDF, EPUB, MOBI, AZW3, CBZ and DjVu supported.</p>
     </div>
   );
 }
@@ -61,18 +61,18 @@ export function Overview() {
             {current.coverPath && covers.data?.get(current.coverPath) ? (
               <img src={covers.data.get(current.coverPath)} alt="" className="h-[230px] w-full rounded-4 object-cover" />
             ) : (
-              <div className="flex h-[230px] flex-col justify-between rounded-4 bg-green-bg p-3">
-                <p className="text-small text-muted">TEXTUS / LIBRARY</p>
-                <p className="text-label text-fg">{current.title}</p>
-                <p className="text-small text-fg">{current.byline}</p>
+              <div className="flex h-[230px] flex-col justify-between gap-2 overflow-hidden rounded-4 bg-green-bg p-3">
+                <p className="text-small shrink-0 text-muted">TEXTUS / LIBRARY</p>
+                <p className="text-label min-h-0 line-clamp-5 break-words text-fg">{current.title}</p>
+                <p className="text-small shrink-0 line-clamp-2 break-words text-fg">{current.byline}</p>
               </div>
             )}
           </div>
-          <div className="flex min-w-[240px] flex-1 flex-col justify-center gap-3">
+          <div className="flex min-w-0 flex-1 basis-[240px] flex-col justify-center gap-3">
             <p className="text-small text-green">PICK UP WHERE YOU LEFT OFF</p>
             <p className="font-serif text-title text-fg">{current.title}</p>
             {current.byline && <p className="text-body text-fg">{current.byline}</p>}
-            <div className="flex items-center justify-between text-body text-fg">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-body text-fg">
               <span>{Math.round(reading.data.progress)}% complete</span>
               {reading.data.lastReadAt && <span className="text-muted">Last read {relativeTime(reading.data.lastReadAt)}</span>}
             </div>
@@ -85,10 +85,10 @@ export function Overview() {
       )}
 
       <section className="flex flex-col gap-3">
-        <p className="text-heading text-fg">Recently added</p>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-heading text-fg">Recently added</h2><Link to="/library?sort=added" className="text-small text-green underline">View library</Link></div>
         <div className="flex flex-wrap gap-6">
           {recent.map((w) => (
-            <RecordCard key={w.workId} workId={w.workId} title={w.title} byline={w.byline} meta={w.meta} detail={w.detail} coverUrl={w.coverPath ? covers.data?.get(w.coverPath) : undefined} />
+            <RecordCard key={w.workId} workId={w.workId} workType={w.workType} readerPath={w.readerPath} title={w.title} byline={w.byline} meta={w.meta} detail={w.detail} userRating={w.userRating} coverUrl={w.coverPath ? covers.data?.get(w.coverPath) : undefined} />
           ))}
         </div>
       </section>

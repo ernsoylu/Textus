@@ -17,9 +17,12 @@ export function Collections() {
 
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
-      <p className="text-heading text-fg">Collections</p>
-      <form onSubmit={handleSubmit} className="flex items-start gap-2">
-        <Input placeholder="New collection" value={name} onChange={(e) => setName(e.target.value)} error={create.error?.message} />
+      <div className="flex flex-col gap-1">
+        <h1 className="font-serif text-title text-fg">Collections</h1>
+        <p className="text-body text-muted">Arrange books and papers into shelves for projects, subjects, or your next read.</p>
+      </div>
+      <form onSubmit={handleSubmit} className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start">
+        <label className="min-w-0 flex-1"><span className="sr-only">New collection name</span><Input id="collection-name" placeholder="New collection" value={name} onChange={(e) => setName(e.target.value)} error={create.error?.message} /></label>
         <Button type="submit" isLoading={create.isPending} disabled={!name.trim()}>Create</Button>
       </form>
       {isLoading && <p className="text-body text-muted">Loading…</p>}

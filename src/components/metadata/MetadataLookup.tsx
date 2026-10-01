@@ -1,23 +1,31 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
+import { useEffect, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import type { ImportedCandidate } from 'shared/names';
 import { metadataLookup, type MetadataResponse } from '@/lib/functions';
 import { applyMetadata, defaultSelection, isInvalidPerson, isWorkField, loadCandidates, locks, meta, suggestContributor, RECORD_FIELDS, WORK_FIELDS, type Field, type Person } from '@/lib/metadataApply';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { addIdentifier } from '@/hooks/useCatalogMutations';
 import { MetadataProgress } from './MetadataProgress';
 
 type Work = { id: string; title: string; subtitle: string | null; abstract: string | null; language: string | null; work_type: string; metadata: unknown };
-type RecordValue = { id: string; title: string | null; publication_date: string | null; publication_date_precision: string | null; publisher: string | null; volume: string | null; issue_number: string | null; pages: string | null; metadata: unknown; record_contributors: { contributor_id: string; role: string; position: number; credited_as: string | null }[]; record_assets: { assets: { metadata: unknown } | null }[] };
-const SCHEMES: IdentifierScheme[] = ['isbn', 'doi', 'arxiv', 'pmid', 'issn'];
+type RecordValue = { id: string; title: string | null; publication_date: string | null; publication_date_precision: string | null; publisher: string | null; edition?: string | null; volume: string | null; issue_number: string | null; pages: string | null; metadata: unknown; identifiers?: { scheme: string; normalized_value: string }[]; record_contributors: { contributor_id: string; role: string; position: number; credited_as: string | null }[]; record_assets: { assets: { metadata: unknown } | null }[] };
 const displayValue = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '—');
 
-export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: RecordValue }>) {
+export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonly<{ work: Work; record: RecordValue; defaultScheme?: IdentifierScheme }>) {
   const query = useQueryClient();
-  const [scheme, setScheme] = useState<IdentifierScheme>('isbn');
-  const [value, setValue] = useState('');
+  const [scheme, setScheme] = useState<IdentifierScheme>(defaultScheme);
+  useEffect(() => setScheme(defaultScheme), [defaultScheme]);
+  const [value, setValue] = useState(() => record.identifiers?.find((id) => id.scheme === defaultScheme)?.normalized_value ?? '');
+  const saveIdentifier = useMutation({
+    mutationFn: () => addIdentifier(record.id, scheme, value),
+    onSuccess: ({ duplicateCount }) => {
+      setDone(duplicateCount ? 'Identifier saved. Another record in your library has this identifier.' : 'Identifier saved.');
+      query.invalidateQueries({ queryKey: ['works'] });
+    },
+  });
   const [response, setResponse] = useState<MetadataResponse | null>(null);
   const [selected, setSelected] = useState<Field[]>([]);
   const [selectedCredits, setSelectedCredits] = useState<number[]>([]);
@@ -35,7 +43,7 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
   async function lookup() {
     setError(''); setDone(''); setResponse(null);
     const parsed = parseIdentifier(scheme, value);
-    if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : `Invalid ${scheme.toUpperCase()} format.`); return; }
+    if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : (STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Enter the standard reference with its edition year, such as ISO/PAS 20065:2016(E).' : `Invalid ${scheme.toUpperCase()} format.`); return; }
     setPending(true);
     setProgressMessage(`Searching ${scheme.toUpperCase()} ${parsed.normalized}…`);
     try {
@@ -78,11 +86,12 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
   }
 
   return <section className="flex flex-col gap-2 rounded-8 border border-border p-3" aria-label="Metadata lookup">
-    <p className="text-label text-fg">Look up metadata</p>
+    <p className="text-label text-fg">Identifiers & metadata</p>
     <div className="flex flex-wrap gap-2">
-      <select value={scheme} onChange={(e) => setScheme(e.target.value as IdentifierScheme)} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
-      <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Identifier" className="w-auto min-w-[190px] flex-1" />
-      <Button onClick={lookup} isLoading={pending} disabled={!value.trim()}>Look up</Button>
+      <select value={scheme} onChange={(e) => { setScheme(e.target.value as IdentifierScheme); setValue(record.identifiers?.find((id) => id.scheme === e.target.value)?.normalized_value ?? ''); saveIdentifier.reset(); setDone(''); }} aria-label="Identifier scheme" className="rounded-8 border border-muted bg-dim p-2 text-fg">{IDENTIFIER_SCHEMES.map((s) => <option key={s} value={s}>{s.toUpperCase()}</option>)}</select>
+      <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label="Lookup reference" placeholder={(STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Reference number, including year' : 'Identifier'} className="w-auto min-w-[190px] flex-1" />
+      <Button variant="secondary" onClick={() => { setDone(''); saveIdentifier.mutate(); }} isLoading={saveIdentifier.isPending} disabled={!value.trim() || pending}>Save identifier</Button>
+      <Button onClick={lookup} isLoading={pending} disabled={!value.trim() || saveIdentifier.isPending}>Look up</Button>
     </div>
     <MetadataProgress message={pending ? progressMessage : undefined} />
     {response?.status === 'not_found' && <p className="text-small text-yellow">No metadata found in {response.searchedProviders.join(', ')}.</p>}
@@ -93,18 +102,20 @@ export function MetadataLookup({ work, record }: Readonly<{ work: Work; record: 
     {record.record_assets.flatMap(({ assets }) => { const author = meta(assets?.metadata).author_suggestion; return typeof author === 'string' && author.trim() ? [author] : []; }).map((author) => <p key={author} className="text-small text-muted">File author suggestion: {author}</p>)}
     {data && <div className="flex flex-col gap-2">
       <p className="text-small text-muted">From {data.source_provider}{response?.status === 'success' && response.fromCache ? ' · cached' : ''}. Choose fields to apply.</p>
+      {data.source_url?.startsWith('https://') && <a href={data.source_url} target="_blank" rel="noreferrer" className="text-small text-green underline">Open source catalogue</a>}
       {data.role_warning && <p className="text-small text-yellow">{data.role_warning}</p>}
       {[...WORK_FIELDS, ...RECORD_FIELDS].filter((field) => data[field]).map((field) => {
         const isWork = isWorkField(field);
         const locked = (isWork ? workLocks : recordLocks).includes(field);
-        const current = isWork ? work[field as keyof Work] : record[field as keyof RecordValue];
-        return <div key={field} className="flex items-start gap-2 text-small text-fg"><label><input type="checkbox" checked={selected.includes(field)} disabled={locked} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, field] : prev.filter((f) => f !== field))} /> {field.replaceAll('_', ' ')}: {displayValue(current)} → {data[field]}{locked ? ' (locked)' : ''}</label>{locked && <button type="button" className="text-green underline" onClick={() => unlock(field, isWork)}>Unlock</button>}</div>;
+        const current = field === 'container_title' || field === 'standard_status' ? meta(record.metadata)[field] : field === 'standard_reference' ? record.identifiers?.find((identifier) => identifier.scheme === data.standard_scheme)?.normalized_value : isWork ? work[field as keyof Work] : record[field as keyof RecordValue];
+        return <div key={field} className="flex items-start gap-2 text-small text-fg"><label><input type="checkbox" checked={selected.includes(field)} disabled={locked} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, field] : prev.filter((f) => f !== field))} /> {field === 'container_title' ? 'Journal / container title' : field.replaceAll('_', ' ')}: {displayValue(current)} → {data[field]}{locked ? ' (locked)' : ''}</label>{locked && <button type="button" className="text-green underline" onClick={() => unlock(field, isWork)}>Unlock</button>}</div>;
       })}
       {recordLocks.includes('contributors') && <button type="button" className="text-left text-small text-green underline" onClick={() => unlock('contributors', false)}>Contributor credits locked by manual edit. Unlock credits</button>}
       {(data.contributors ?? []).map((person, index) => { const match = suggestion(person); const invalid = isInvalidPerson(person); return <div key={`${person.name}:${index}`} className="flex items-center gap-2 text-small text-fg"><input type="checkbox" aria-label={`Include ${person.name}`} checked={selectedCredits.includes(index)} disabled={recordLocks.includes('contributors') || invalid} onChange={(e) => setSelectedCredits((prev) => e.target.checked ? [...prev, index] : prev.filter((n) => n !== index))} /><span>{person.role}: {person.name}{invalid ? ' (invalid name)' : ''}</span><select aria-label={`Match for ${person.name}`} className="rounded-8 border border-muted bg-dim p-1 text-fg" value={overrides[index] ?? (match.id ?? 'new')} onChange={(e) => setOverrides((prev) => ({ ...prev, [index]: e.target.value }))}><option value="new">{'provisional' in match && match.provisional ? 'Possibly existing — review' : 'New contributor'}</option>{candidates.map((candidate) => <option key={candidate.contributor_id} value={candidate.contributor_id}>{candidate.display_name ?? candidate.contributor_id}</option>)}</select></div>; })}
       {data.cover_url && <label className="text-small text-fg"><input type="checkbox" checked={includeCover} onChange={(e) => setIncludeCover(e.target.checked)} /> Retrieve cover</label>}
       <Button onClick={apply} isLoading={pending} disabled={!selected.length && !selectedCredits.length && !includeCover}>Apply selected metadata</Button>
     </div>}
+    {saveIdentifier.error && <p className="text-small text-red" role="alert">{saveIdentifier.error.message}</p>}
     {error && <p className="text-small text-red" role="alert">{error}</p>}
     {done && <output className="text-small text-green">{done}</output>}
   </section>;

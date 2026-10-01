@@ -6,6 +6,9 @@ import { z } from 'zod';
 const prefsSchema = z.object({
   fontSize: z.number().min(60).max(220).default(100),
   theme: z.enum(['light', 'sepia', 'dark']).default('light'),
+  lineHeight: z.number().min(1).max(2.4).default(1.5),
+  flow: z.enum(['paginated', 'scrolled']).default('paginated'),
+  twoPage: z.boolean().default(false),
 });
 export type ReaderPrefs = z.infer<typeof prefsSchema>;
 const KEY = 'textus.reader';

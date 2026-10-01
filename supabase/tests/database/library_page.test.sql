@@ -2,7 +2,7 @@
 -- FR-SRCH-1, NFR-PERF-1) and isolation between users. Runs in a transaction and rolls back.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(23);
+SELECT plan(43);
 
 INSERT INTO auth.users (id, email) VALUES
     ('aaaaaaaa-1111-0000-0000-000000000000', 'la@test.local'),
@@ -48,6 +48,19 @@ SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claims = '{"sub": "aaaaaaaa-1111-0000-0000-000000000000", "role": "authenticated"}';
 
 SELECT is(ARRAY(SELECT title FROM library_page()), ARRAY['Gamma Garden', 'Beta Machine', 'Alpha Garden'], 'default sort is newest first');
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Alpha Garden'), NULL::numeric, 'books start unrated');
+UPDATE works SET user_rating = 4 WHERE id = 'a1000000-1111-0000-0000-000000000001';
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Alpha Garden'), 4::numeric, 'owner rating appears in the library');
+SELECT throws_ok($$UPDATE works SET user_rating = 6 WHERE id = 'a1000000-1111-0000-0000-000000000001'$$, '23514', NULL, 'ratings above five are rejected');
+UPDATE works SET user_rating = 3.5 WHERE id = 'a1000000-1111-0000-0000-000000000001';
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Alpha Garden'), 3.5::numeric, 'half-star ratings persist');
+SELECT throws_ok($$UPDATE works SET user_rating = 3.2 WHERE id = 'a1000000-1111-0000-0000-000000000001'$$, '23514', NULL, 'non-half-star ratings are rejected');
+SELECT throws_ok($$UPDATE works SET user_rating = 0 WHERE id = 'a1000000-1111-0000-0000-000000000001'$$, '23514', NULL, 'zero ratings are rejected; null clears a rating');
+SELECT is((SELECT read_record_id FROM library_page() WHERE title = 'Alpha Garden'), 'a2000000-1111-0000-0000-000000000001'::uuid, 'read action targets the linked record');
+SELECT is((SELECT read_asset_id FROM library_page() WHERE title = 'Alpha Garden'), 'a6000000-1111-0000-0000-000000000001'::uuid, 'read action targets the linked PDF');
+SELECT is((SELECT read_asset_id FROM library_page() WHERE title = 'Gamma Garden'), NULL::uuid, 'read action unavailable without a readable file');
+UPDATE works SET user_rating = 1 WHERE id = 'b1000000-1111-0000-0000-000000000001';
+
 SELECT is((SELECT max(total) FROM library_page(p_limit => 1)), 3::bigint, 'total counts every match, not just the page');
 SELECT is(ARRAY(SELECT title FROM library_page(p_sort => 'title')), ARRAY['Alpha Garden', 'Beta Machine', 'Gamma Garden'], 'sort by title');
 SELECT is(ARRAY(SELECT title FROM library_page(p_sort => 'author')), ARRAY['Gamma Garden', 'Alpha Garden', 'Beta Machine'], 'sort by author sort name, unattributed last');
@@ -70,9 +83,34 @@ SELECT is((SELECT count(*)::int FROM search_library('secrets')), 0, 'B''s file t
 SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Author')), ARRAY['Gamma Garden', 'Alpha Garden'], 'search matches contributor names');
 SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'garden', p_work_type => 'article')), ARRAY[]::text[], 'search and filters combine');
 
+-- Partial and multilingual metadata matches, without losing intact titles.
+RESET ROLE;
+WITH added AS (
+    INSERT INTO works (user_id, work_type, title, abstract) VALUES
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'The Economist style guide', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Electric Vehicle Design', 'Economics textbook'),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Türkiye Üzerine Tezler', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'Преступление и наказание', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', '中国文学', NULL),
+        ('aaaaaaaa-1111-0000-0000-000000000000', 'book', 'الأدب العربي', NULL)
+    RETURNING id
+) INSERT INTO records (work_id, record_type) SELECT id, 'edition' FROM added;
+SET LOCAL ROLE authenticated;
+SELECT is((SELECT title FROM library_page(p_q => 'Eco', p_sort => 'relevance') LIMIT 1), 'The Economist style guide', 'partial title matches rank above abstract matches');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Türk')), ARRAY['Türkiye Üzerine Tezler'], 'Turkish partial title search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'turkiye')), ARRAY['Türkiye Üzerine Tezler'], 'accent-insensitive Turkish search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => U&'Tu\0308rkiye')), ARRAY['Türkiye Üzerine Tezler'], 'decomposed Unicode search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'преступ')), ARRAY['Преступление и наказание'], 'Cyrillic partial search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '文学')), ARRAY['中国文学'], 'Chinese substring search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'العربي')), ARRAY['الأدب العربي'], 'Arabic substring search');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '%')), ARRAY[]::text[], 'percent search stays literal');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => '_')), ARRAY[]::text[], 'underscore search stays literal');
+SELECT is(ARRAY(SELECT title FROM library_page(p_q => 'Zed')), ARRAY['Alpha Garden'], 'partial author search');
+
 -- ---------- As user B ----------
 SET LOCAL request.jwt.claims = '{"sub": "bbbbbbbb-1111-0000-0000-000000000000", "role": "authenticated"}';
 SELECT is(ARRAY(SELECT title FROM library_page()), ARRAY['Garden of B'], 'B sees only B''s library');
+SELECT is((SELECT user_rating FROM library_page() WHERE title = 'Garden of B'), NULL::numeric, 'A cannot change B''s rating');
 SELECT is((SELECT count(*)::int FROM search_library('Alpha')), 0, 'B cannot search A''s titles');
 
 -- ---------- Signed-out callers cannot use the definer-rights search ----------

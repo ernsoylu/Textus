@@ -9,12 +9,15 @@ import type { LibraryFilters } from '@/lib/libraryFilters';
 // happen in Postgres, so the browser never holds more than the pages it has shown.
 export interface WorkListItem {
   workId: string;
+  workType: string;
+  readerPath: string | null;
   title: string;
   byline: string;
   meta: string; // "edition · 2019"
   detail: string; // "EPUB · 42% read"
   coverPath: string | null; // in the private covers bucket
   recordIds: string[];
+  userRating?: number | null;
 }
 
 export const PAGE_SIZE = 48;
@@ -35,12 +38,15 @@ function toItem(row: Row): WorkListItem {
   const year = row.publication_date ? new Date(row.publication_date).getFullYear() : null;
   return {
     workId: row.work_id,
+    workType: row.work_type,
+    readerPath: row.read_record_id && row.read_asset_id ? `/library/${row.work_id}/records/${row.read_record_id}/assets/${row.read_asset_id}/read` : null,
     title: row.title,
     byline: formatByline(credits),
     meta: row.record_type ? [row.record_type, year].filter(Boolean).join(' · ') : row.work_type,
     detail: detailLine(row),
     coverPath: row.cover_path,
     recordIds: row.record_ids ?? [],
+    userRating: row.work_type === 'book' ? row.user_rating : null,
   };
 }
 
@@ -85,11 +91,11 @@ export function useLibrary(filters: LibraryFilters) {
 }
 
 // A small fixed slice (Overview: the newest four, or one specific work).
-export function useLibraryItems(opts: { limit: number; ids?: string[]; enabled?: boolean }) {
+export function useLibraryItems(opts: { limit: number; ids?: string[]; enabled?: boolean; filters?: Partial<LibraryFilters> }) {
   return useQuery({
-    queryKey: ['works', 'library', 'items', opts.limit, opts.ids],
+    queryKey: ['works', 'library', 'items', opts.limit, opts.ids, opts.filters],
     enabled: opts.enabled ?? true,
-    queryFn: async () => (await fetchPage({ ids: opts.ids, limit: opts.limit, offset: 0 })).items,
+    queryFn: async () => (await fetchPage({ ids: opts.ids, filters: opts.filters, limit: opts.limit, offset: 0 })).items,
   });
 }
 

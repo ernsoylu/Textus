@@ -33,6 +33,7 @@ export async function importMetadata(work: { id: string; title: string; metadata
           fetchedAt = typeof suggestion.fetched_at === 'string' ? suggestion.fetched_at : new Date().toISOString();
           const match = /^(isbn|doi):(.+)$/.exec(key);
           if (match) identifier = { scheme: match[1] as 'isbn' | 'doi', value: match[2] };
+          if (identifier && ['crossref', 'crossref_journal', 'semantic_scholar'].includes(candidate.source_provider) && !Object.hasOwn(candidate, 'container_title')) metadata = undefined;
           break;
         }
       }

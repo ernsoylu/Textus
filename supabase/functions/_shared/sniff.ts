@@ -41,6 +41,8 @@ export function sniffHead(head: Uint8Array): Sniffed | null {
   if (startsWith(head, [0xff, 0xd8, 0xff])) return { mimeType: 'image/jpeg' };
   if (startsWith(head, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { mimeType: 'image/png' };
   if (head.length >= 12 && latin1(head, 0, 4) === 'RIFF' && latin1(head, 8, 12) === 'WEBP') return { mimeType: 'image/webp' };
+  // DjVu: "AT&TFORM", a length, then DJVU (one page) or DJVM (a bundled multi-page document).
+  if (head.length >= 16 && latin1(head, 0, 8) === 'AT&TFORM' && ['DJVU', 'DJVM'].includes(latin1(head, 12, 16))) return { mimeType: 'image/vnd.djvu' };
   if (startsWith(head, [0x50, 0x4b])) {
     const zip = zipMime(head);
     return zip ? { mimeType: zip } : null;

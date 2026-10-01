@@ -8,7 +8,7 @@ export const MAX_UPLOAD_BYTES = 524_288_000;
 const REJECTION_MESSAGES: Record<string, string> = {
   missing: 'The upload did not arrive. Try again.',
   size_mismatch: 'The file was empty or too large (limit 500 MB).',
-  unsupported_type: 'That file type isn’t supported. Textus accepts PDF, EPUB, MOBI, AZW3 and CBZ (covers: JPEG, PNG, WebP).',
+  unsupported_type: 'That file type isn’t supported. Textus accepts PDF, EPUB, MOBI, AZW3, CBZ and DjVu (covers: JPEG, PNG, WebP).',
 };
 
 // PUT to the signed staging URL with XHR, because fetch cannot report upload progress.

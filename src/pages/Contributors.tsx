@@ -24,7 +24,7 @@ export function Contributors() {
 
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
-      <p className="text-heading text-fg">Contributors</p>
+      <div className="flex flex-col gap-1"><h1 className="font-serif text-title text-fg">Contributors</h1><p className="text-body text-muted">Explore authors and their books, and review imported identities.</p></div>
       {isLoading && <p className="text-body text-muted">Loading…</p>}
       {error && <p className="text-body text-red">Could not load contributors: {error.message}</p>}
       {actionError && <p className="text-small text-red">{actionError.message}</p>}
@@ -34,7 +34,7 @@ export function Contributors() {
           <p className="text-label text-fg">Review queue · {provisional.length}</p>
           <p className="text-small text-muted">Imported names that matched an existing contributor only loosely.</p>
           {provisional.map((c) => (
-            <div key={c.id} className="flex items-center gap-2">
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
               {link(c)}
               <Button variant="secondary" onClick={() => confirm.mutate(c.id)}>Confirm</Button>
             </div>
@@ -58,8 +58,8 @@ export function Contributors() {
         </section>
       )}
 
-      <Input placeholder="Filter contributors…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      {shown?.length === 0 && <p className="text-body text-muted">No contributors yet.</p>}
+      <Input aria-label="Filter contributors" placeholder="Filter contributors…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      {shown?.length === 0 && <p role="status" className="text-body text-muted">{filter.trim() ? 'No contributors match your search.' : 'No contributors yet.'}</p>}
       <ul className="flex flex-col gap-1">
         {shown?.map((c) => (
           <li key={c.id}>{link(c)}{c.status === 'provisional' && <span className="text-small text-yellow"> · provisional</span>}</li>

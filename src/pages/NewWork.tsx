@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { FIRST_RECORD_TYPE, WORK_TYPES, type WorkType } from '@/lib/recordTypes';
+import { FIRST_RECORD_TYPE, WORK_TYPES, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
 import { MAX_UPLOAD_BYTES, uploadFile } from '@/hooks/useUploadAsset';
 import { importMetadata } from '@/lib/autoMetadataImport';
 
@@ -148,9 +148,9 @@ export function NewWork() {
       {mode === 'upload' ? <>
         <p className="text-heading text-fg">Add to your library</p>
         <p className="text-body text-muted">Upload a book or paper. Textus will look for an ISBN or DOI, fetch matching details and a cover, and add what it finds.</p>
-        <input ref={fileRef} type="file" multiple accept=".pdf,.epub,.mobi,.azw3,.cbz" hidden disabled={busy} onChange={(e) => setUploads(Array.from(e.target.files ?? []).map((file) => ({ file, status: 'queued', progress: 0 })))} />
+        <input ref={fileRef} type="file" multiple accept=".pdf,.epub,.mobi,.azw3,.cbz,.djvu,.djv" hidden disabled={busy} onChange={(e) => setUploads(Array.from(e.target.files ?? []).map((file) => ({ file, status: 'queued', progress: 0 })))} />
         <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-8 border border-dashed border-muted bg-dim p-6 text-fg">
-          <span className="text-label">Choose files</span><span className="text-small text-muted">PDF, EPUB, MOBI, AZW3 or CBZ</span>
+          <span className="text-label">Choose files</span><span className="text-small text-muted">PDF, EPUB, MOBI, AZW3, CBZ or DjVu</span>
         </button>
         {uploads.length > 0 && <ul className="flex flex-col gap-4">
           {uploads.map((item, index) => <li key={`${item.file.name}:${index}`} className="flex flex-col gap-1 text-small text-fg">
@@ -159,7 +159,7 @@ export function NewWork() {
             <p className="text-muted">{Math.round(item.progress * 100)}% · {(item.file.size * item.progress / 1_048_576).toFixed(1)} / {(item.file.size / 1_048_576).toFixed(1)} MB</p>
             {item.message && <p role="status" className="text-muted">{item.message}</p>}
             {item.error && <p role="alert" className="text-red">{item.error}</p>}
-            {item.workId && <Link to={`/library/${item.workId}`} className={`text-green underline ${busy ? 'pointer-events-none' : ''}`} aria-disabled={busy}>Open this work</Link>}
+            {item.workId && <Link to={`/library/${item.workId}`} className={`text-green underline ${busy ? 'pointer-events-none' : ''}`} aria-disabled={busy}>View details</Link>}
           </li>)}
         </ul>}
         {uploads.length > 1 && <div className="flex flex-col gap-1 text-small text-muted">
@@ -170,13 +170,15 @@ export function NewWork() {
         <button type="button" className="self-start text-small text-green underline" disabled={busy} onClick={() => setMode('manual')}>Add manually</button>
       </> : <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-heading text-fg">Add a work manually</p>
-        <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label className="flex flex-col gap-2 text-small text-fg">Type
         <select className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={workType} onChange={(e) => setWorkType(e.target.value as (typeof WORK_TYPES)[number])}>
-          {WORK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          {WORK_TYPES.map((t) => <option key={t} value={t}>{WORK_TYPE_LABELS[t]}</option>)}
         </select>
-        {workType !== 'serial' && <Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} />}
+        </label>
+        <label className="flex flex-col gap-2 text-small text-fg">Title<Input required placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+        {workType !== 'serial' && <label className="flex flex-col gap-2 text-small text-fg">Author (optional)<Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} /></label>}
         {mutation.isError && <p className="text-small text-red">{mutation.error.message}</p>}
-        <Button type="submit" isLoading={mutation.isPending} disabled={!title.trim()}>{mutation.isPending ? 'Saving…' : 'Save'}</Button>
+        <Button type="submit" isLoading={mutation.isPending} disabled={!title.trim()}>{mutation.isPending ? 'Adding…' : 'Add to library'}</Button>
         <button type="button" className="self-start text-small text-green underline" onClick={() => setMode('upload')}>Upload files instead</button>
       </form>}
     </div>

@@ -17,6 +17,7 @@ import { ForgotPassword } from '@/pages/ForgotPassword';
 import { ResetPassword } from '@/pages/ResetPassword';
 import { NotFound } from '@/pages/NotFound';
 import { Tags } from '@/pages/Tags';
+import { TagDetail } from '@/pages/TagDetail';
 import { CollectionDetail } from '@/pages/CollectionDetail';
 import { SerialDetail } from '@/pages/SerialDetail';
 import { Settings } from '@/pages/Settings';
@@ -38,6 +39,7 @@ const router = createBrowserRouter(
         <Route path="library" element={<Library />} />
         <Route path="library/new" element={<NewWork />} />
         <Route path="library/:workId" element={<WorkDetail />} />
+        <Route path="library/:workId/edit" element={<WorkDetail />} />
         <Route
           path="library/:workId/records/:recordId/assets/:assetId/read"
           element={
@@ -49,6 +51,7 @@ const router = createBrowserRouter(
         <Route path="collections" element={<Collections />} />
         <Route path="collections/:collectionId" element={<CollectionDetail />} />
         <Route path="tags" element={<Tags />} />
+        <Route path="tags/:tagId" element={<TagDetail />} />
         <Route path="contributors" element={<Contributors />} />
         <Route path="contributors/:contributorId" element={<ContributorDetail />} />
         <Route path="serials" element={<Serials />} />

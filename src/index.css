@@ -6,6 +6,20 @@
   body {
     @apply bg-bg text-fg font-sans text-body antialiased;
   }
+  select:not([multiple]):not([size]) {
+    appearance: none;
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23d3c6aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+  @media (forced-colors: active) {
+    select:not([multiple]):not([size]) {
+      appearance: auto;
+      background-image: none;
+    }
+  }
   /* NFR-A11Y-1: keyboard-visible focus ring everywhere, matching Figma's "Button / Focus" spec. */
   :focus-visible {
     outline: 2px solid theme('colors.green.DEFAULT');
@@ -13,12 +27,20 @@
   }
 }
 
+/* pdf.js sizes a page's layers for a content-box page with a border; Tailwind's global border-box would shrink
+   the canvas but not the text layer, so selections and highlights drift further off the lower they are. */
+.pdfViewer .page {
+  box-sizing: content-box;
+}
+
 /* Appearance settings (src/lib/appearance.ts). */
 :root {
   --cover-h: 260px;
+  --cover-title-lines: 5;
 }
 :root[data-density='compact'] {
   --cover-h: 170px;
+  --cover-title-lines: 2;
 }
 :root[data-motion='reduce'] *,
 :root[data-motion='reduce'] *::before,

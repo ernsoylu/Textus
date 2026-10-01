@@ -28,7 +28,7 @@ Textus is a self-hosted, web-based library manager for books, research papers, a
 
 **Target users:** researchers, students, and readers managing mixed collections on their own infrastructure.
 
-**In scope:** single-user libraries (each account owns an isolated library), multiple accounts per instance, PDF/EPUB reading in the browser, metadata from public providers.
+**In scope:** single-user libraries (each account owns an isolated library), multiple accounts per instance, PDF/EPUB/MOBI/AZW3/CBZ/DjVu reading in the browser, metadata from public providers.
 
 **Out of scope (for now):** public/shared collections, multi-user shared libraries, storage backends other than Supabase Storage (no Google Drive, NAS adapters), native mobile apps, DRM-protected files, format conversion.
 
@@ -52,6 +52,7 @@ IDs are stable; reference them in issues and commits. Milestones are defined in 
 | FR-CAT-3 | Records carry ordered contributor credits with roles — see [Contributors](#contributors). |
 | FR-CAT-4 | Identifiers are validated and normalized on entry (see [§6.2](#62-identifier-rules)); invalid identifiers are rejected with a reason. |
 | FR-CAT-5 | Adding a record whose identifier already exists in the user's library warns about the duplicate. |
+| FR-CAT-6 | Books have an optional personal rating from 0.5 to 5 stars in half-star steps, persisted on the work, editable from library covers and work editing, and clearable in the work editor. |
 
 ### Contributors
 Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
@@ -72,7 +73,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 ### Files (M1)
 | ID | Requirement |
 |----|-------------|
-| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ files and attach them to a record. |
+| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu files and attach them to a record. |
 | FR-FILE-2 | The server verifies size, detects the real MIME type from file bytes, and computes SHA-256. |
 | FR-FILE-3 | Uploading bytes already in the user's library reuses the existing asset (deduplication by checksum). |
 | FR-FILE-4 | A record can have several assets with roles: primary, supplement, cover, converted, thumbnail. |
@@ -82,17 +83,17 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 ### Search and organization (M1, M3)
 | ID | Requirement | Milestone |
 |----|-------------|-----------|
-| FR-SRCH-1 | Full-text search over title, subtitle, abstract, and contributor names, with fuzzy matching on titles and names. | M1 |
-| FR-ORG-1 | Colored tags; many tags per record. | M3 |
+| FR-SRCH-1 | Partial, accent-insensitive Unicode search over titles, subtitles, abstracts, record metadata, identifiers and contributor names/variants/printed credits; full-text search over metadata and extracted PDF/EPUB text; fuzzy matching on contributor names. | M1 |
+| FR-ORG-1 | Tags get an automatic palette color on creation and retain it when renamed; many tags per record, collection and note (annotation). A tag's page lists everything it labels. | M3 |
 | FR-ORG-2 | Collections (shelves) with manual ordering. | M3 |
-| FR-ORG-3 | Filter by work type, tag, collection, reading status, file format, language; sort by title, author, date added, date published, recently read. | M3 |
+| FR-ORG-3 | Filter by work type, tag, collection, reading status, file format, language; sort by relevance, title, author, date added, date published, recently read. | M3 |
 | FR-ORG-4 | Bulk tag / move / delete. | M3 |
 | FR-ORG-5 | Saved searches (virtual libraries). | M3 |
 
 ### Metadata (M2)
 | ID | Requirement |
 |----|-------------|
-| FR-META-1 | Look up metadata by ISBN, DOI, arXiv ID, PMID, ISSN. |
+| FR-META-1 | Look up metadata by ISBN, DOI, arXiv ID, PMID, ISSN and edition-specific ISO/IEC/ASTM/ASME/BS references. A single input supports saving a validated identifier or looking it up; lookup progress and failures are visible. |
 | FR-META-2 | Show fetched metadata as a preview; the user confirms before it is applied. |
 | FR-META-3 | Fields edited manually by the user are locked and never overwritten by a lookup. |
 | FR-META-4 | Every applied lookup records its source provider and fetch time. |
@@ -104,12 +105,12 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 ### Reading (M1, M4)
 | ID | Requirement | Milestone |
 |----|-------------|-----------|
-| FR-READ-1 | In-browser PDF viewer with page navigation and zoom. | M1 |
-| FR-READ-2 | In-browser EPUB viewer. | M4 |
+| FR-READ-1 | In-browser PDF viewer: continuous scrolling, page navigation and labels, fit width / fit page / zoom, two-page spreads, outline, text search, fullscreen. | M1 |
+| FR-READ-2 | In-browser EPUB viewer: paginated or scrolling layout, one or two columns, contents, progress slider, full-text search, text size / line spacing / theme, fullscreen. Reader preferences persist in this browser; progress/status sync through the server. | M4 |
 | FR-READ-3 | Reading progress (percentage, page, position) and status (unread, reading, finished, abandoned) sync across devices. | M4 |
-| FR-READ-4 | Highlights and notes with colors, anchored to a specific asset. | M4 |
+| FR-READ-4 | Highlights and notes with colors, anchored to a specific asset. Text is highlighted from a right-click menu on the selection; a highlight with a comment shows a marker in the text, and clicking it opens the comment in place (Word-style). The Notes page lists every note by book, searchable and filterable by tag, color and comment, and opens a note in its book. | M4 |
 | FR-READ-5 | Export annotations as Markdown and JSON. | M4 |
-| FR-READ-6 | MOBI/AZW3/CBZ assets are downloadable; in-browser reading for them is not required. | M4 |
+| FR-READ-6 | MOBI, AZW3 (KF8) and CBZ are read in the browser with the EPUB viewer, DjVu with a page viewer that uses the file's hidden OCR text for selection and highlights; other formats (and DRM-protected Kindle files) are downloadable. | M4 |
 
 ### Research and serials (M5)
 | ID | Requirement |
@@ -160,7 +161,9 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | Scheduling | `pg_cron` + `pg_net` | Supabase-bundled |
 | Validation | Zod | 3+ |
 | Testing | Vitest + Testing Library | latest |
-| Readers | pdf.js, epub.js | latest |
+| Readers | pdf.js (`pdfjs-dist` viewer components), foliate-js (EPUB, MOBI, AZW3, FB2, CBZ; pinned GitHub tarball, not on npm), DjVu.js (vendored in `src/vendor/djvu`, GPL-2.0-or-later) | pinned |
+
+Build prerequisite: Node.js 22.13+ for the pinned pdfjs-dist version; CI and Docker use Node.js 24.
 
 **Constraints (fixed decisions):**
 - No other React framework (Next.js, Remix, …). The app is a Vite SPA.
@@ -211,9 +214,11 @@ Work (intellectual content)        "Dune" · a paper · "Nature" (serial)
        └── contained records       chapters of an edited volume · articles of an issue
 ```
 
-- **Work** — the intellectual content. Types: `book`, `article`, `chapter`, `serial`, `thesis`, `report`, `other`.
-- **Record** — a specific manifestation. Types: `edition`, `article_version`, `chapter`, `issue`, `report`, `thesis`, `other`. A record's `title` may differ from the work's (an article title inside an issue, an issue theme). A record may sit inside another record through `container_record_id` (a chapter in an edited volume, an article in an issue) — see [§6.3](#63-contributors-authors-editors-and-other-roles).
+- **Work** — the intellectual content. Types: `book`, `article`, `chapter`, `serial`, `thesis`, `report`, `standard`, `other`.
+- **Record** — a specific manifestation. Types: `edition`, `article_version`, `chapter`, `issue`, `report`, `thesis`, `standard`, `other`. A record's `title` may differ from the work's (an article title inside an issue, an issue theme). A record may sit inside another record through `container_record_id` (a chapter in an edited volume, an article in an issue) — see [§6.3](#63-contributors-authors-editors-and-other-roles).
 - **Asset** — immutable bytes with a SHA-256 checksum. Linked to records M:N through `record_assets` with a role. A changed file is a new asset, never an update.
+
+The edit page uses work and record types independently. Article records expose journal, version, volume, issue and pages/article number; book editions expose publisher, edition, volume and pages; reports expose issuing institution, edition and pages; theses expose university, degree and pages; standards expose standards body, revision and pages. Hidden fields are preserved. The library Type filter includes every supported work type. Books have an optional owner rating of 0.5–5 stars in half-star steps, editable on the work and library cover controls and displayed on library cards. Cover controls expose Read and View details on hover, keyboard focus and touch; Read opens the preferred readable asset, or is disabled when no readable file exists.
 
 Never conflate levels: a PDF is not a book. It is an asset linked to a record, which is an edition of a work.
 
@@ -228,6 +233,8 @@ Never conflate levels: a PDF is not a book. It is an asset linked to a record, w
 
 ### 6.2 Identifier rules
 
+Standards use `iso`, `iec`, `astm`, `asme` or `bs` schemes. References require an edition year; normalization removes whitespace and a trailing language marker such as `(E)` and preserves parts, amendments and reapproval years. A request such as `ISO/PAS20065:2016(E)` matches `ISO/PAS 20065:2016`. Catalogue lookup never substitutes a different edition. Apply stores the reference in `identifiers`, native record fields such as revision in `records`, and status/source URL in `records.metadata`, while preserving manual locks. Applying work type Standard changes an unlocked record type to Standard.
+
 Stored in the `identifiers` table — never in JSONB. `original_value` keeps what the user typed; `normalized_value` is used for matching and deduplication.
 
 | Scheme | Accepted input | Validation | Normalized form |
@@ -237,6 +244,7 @@ Stored in the `identifiers` table — never in JSONB. `original_value` keeps wha
 | `issn` | `12345678` or `1234-5678` | Mod-11 check digit (may be `X`) | `1234-567X` uppercase with hyphen |
 | `arxiv` | `2301.12345`, `2301.12345v2`, `arXiv:` prefix, `arxiv.org/abs/…` URL | `^\d{4}\.\d{4,5}(v\d+)?$` | ID without version; version stored in `records.metadata.arxiv_version` |
 | `pmid` | Digits, optional `PMID:` prefix | `^\d{1,9}$` | Digits without leading zeros |
+| `iso`, `iec`, `astm`, `asme`, `bs` | Authority reference with edition year, optional whitespace/language suffix | Matching authority prefix and edition year; preserve parts/amendments/reapproval years | Uppercase, whitespace removed, trailing language marker removed |
 
 Validation lives in one shared module used by both the SPA and Edge Functions (see [§12](#12-project-structure)). It must have unit tests covering valid/invalid check digits and each accepted input form.
 
@@ -464,7 +472,7 @@ Crossref returned structured `given`/`family`, ORCIDs, and author `sequence` for
 
 ## 7. Database schema
 
-19 tables: 18 domain tables plus `jobs` (`saved_searches`, FR-ORG-5, was added in a later migration). The SQL below is the target state of the initial migrations and must be implemented as written; changes go through new migrations and an update to this section.
+22 tables: 21 domain tables plus `jobs`. Later migrations added `saved_searches` (FR-ORG-5), `asset_texts` (FR-SRCH-1), and `collection_tags` / `annotation_tags` (FR-ORG-1). The SQL below documents the consolidated schema; apply the ordered files in `supabase/migrations/` to build or upgrade a database. Applied migrations are immutable; changes require a new migration and an update to this section.
 
 ### 7.1 Tables
 
@@ -474,6 +482,7 @@ Crossref returned structured `given`/`family`, ORCIDs, and author `sequence` for
 -- ==========================================
 -- gen_random_uuid() is built into PostgreSQL 13+; no uuid-ossp/pgcrypto needed.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 
@@ -487,11 +496,12 @@ GRANT USAGE ON SCHEMA private TO authenticated;
 CREATE TABLE works (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    work_type TEXT NOT NULL CHECK (work_type IN ('book', 'article', 'chapter', 'serial', 'thesis', 'report', 'other')),
+    work_type TEXT NOT NULL CHECK (work_type IN ('book', 'article', 'chapter', 'serial', 'thesis', 'report', 'standard', 'other')),
     title TEXT NOT NULL,
     subtitle TEXT,
     abstract TEXT,
     language TEXT DEFAULT 'en',
+    user_rating NUMERIC CHECK (user_rating BETWEEN 0.5 AND 5 AND mod(user_rating, 0.5) = 0), -- Optional half-star rating
     metadata JSONB NOT NULL DEFAULT '{}', -- locked_fields for manually edited work fields (added in migration 00007)
     search_vector tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
@@ -524,6 +534,7 @@ CREATE TABLE records (
         'issue',            -- Magazine/journal issue
         'report',           -- Standalone report
         'thesis',           -- Thesis/dissertation
+        'standard',         -- Technical standard / revision
         'other'
     )),
     title TEXT, -- May differ from work title (e.g., article title, issue theme)
@@ -534,7 +545,7 @@ CREATE TABLE records (
     volume TEXT,
     issue_number TEXT,
     pages TEXT, -- e.g., "123-145" or "e01234"
-    metadata JSONB DEFAULT '{}', -- Type-specific extras: container_title, locked_fields (FR-META-3), contributors_incomplete
+    metadata JSONB DEFAULT '{}', -- Type-specific extras: container_title, version, degree, locked_fields (FR-META-3), contributors_incomplete
     metadata_source TEXT,
     metadata_fetched_at TIMESTAMPTZ,
     search_vector tsvector GENERATED ALWAYS AS (
@@ -557,7 +568,7 @@ CREATE INDEX idx_records_metadata ON records USING GIN(metadata);
 CREATE TABLE identifiers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     record_id UUID NOT NULL REFERENCES records(id) ON DELETE CASCADE,
-    scheme TEXT NOT NULL CHECK (scheme IN ('isbn', 'doi', 'issn', 'arxiv', 'pmid')),
+    scheme TEXT NOT NULL CHECK (scheme IN ('isbn', 'doi', 'issn', 'arxiv', 'pmid', 'iso', 'iec', 'astm', 'asme', 'bs')),
     normalized_value TEXT NOT NULL,
     original_value TEXT,
     is_primary BOOLEAN DEFAULT FALSE,
@@ -663,7 +674,7 @@ CREATE TABLE assets (
     file_size BIGINT NOT NULL,
     checksum_sha256 TEXT NOT NULL,
     mime_type TEXT NOT NULL, -- detected server-side from bytes
-    file_format TEXT NOT NULL CHECK (file_format IN ('pdf', 'epub', 'mobi', 'azw3', 'cbz', 'html', 'txt', 'image')),
+    file_format TEXT NOT NULL CHECK (file_format IN ('pdf', 'epub', 'mobi', 'azw3', 'cbz', 'djvu', 'html', 'txt', 'image')),
     processing_state TEXT NOT NULL DEFAULT 'pending' CHECK (processing_state IN ('pending', 'processing', 'ready', 'failed')),
     processing_error TEXT,
     metadata JSONB DEFAULT '{}', -- page count, dimensions, extracted-text info, etc.
@@ -768,6 +779,8 @@ CREATE TABLE annotations (
     record_id UUID NOT NULL REFERENCES records(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE, -- anchored to specific bytes
     anchor_type TEXT NOT NULL CHECK (anchor_type IN ('pdf_page', 'epub_cfi', 'text_quote')),
+    -- 'pdf_page' anchors any fixed page (PDF and DjVu): {page, rects:[{x1,y1,x2,y2}]} in page fractions, rects
+    -- omitted for a page note. 'epub_cfi' anchors every foliate-js format (EPUB, MOBI, AZW3): {cfi}.
     anchor_data JSONB NOT NULL, -- {page, rects:[{x1,y1,x2,y2}]} | {cfi} | {quote, context}
     highlighted_text TEXT,
     note TEXT,
@@ -779,6 +792,21 @@ CREATE TABLE annotations (
 CREATE INDEX idx_annotations_user ON annotations(user_id);
 CREATE INDEX idx_annotations_record ON annotations(record_id);
 CREATE INDEX idx_annotations_asset ON annotations(asset_id);
+
+-- The same tags label collections and notes (FR-ORG-1).
+CREATE TABLE collection_tags (
+    collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (collection_id, tag_id)
+);
+CREATE INDEX idx_collection_tags_tag ON collection_tags(tag_id);
+
+CREATE TABLE annotation_tags (
+    annotation_id UUID NOT NULL REFERENCES annotations(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (annotation_id, tag_id)
+);
+CREATE INDEX idx_annotation_tags_tag ON annotation_tags(tag_id);
 
 -- ==========================================
 -- 14. METADATA_CACHE (shared across users; public data only)
@@ -805,6 +833,29 @@ CREATE TABLE saved_searches (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, name)
 );
+
+-- ==========================================
+-- 14c. ASSET_TEXTS (FR-SRCH-1, migration 20260929000003)
+-- ==========================================
+-- Extracted file text feeds search (FR-SRCH-1, README "feeds search"). The job worker reads PDF/EPUB text and
+-- stores a capped copy here, in its own table so `assets` rows (and every query that embeds them) stay small.
+CREATE TABLE asset_texts (
+    asset_id UUID PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    -- tsvector values are limited to 1 MB, so index only the first 100,000 characters.
+    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', left(content, 100000))) STORED,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_asset_texts_search ON asset_texts USING GIN (search_vector);
+CREATE INDEX idx_asset_texts_user ON asset_texts (user_id);
+
+-- RLS (invariant 4): owners may read; there is deliberately no INSERT/UPDATE/DELETE policy, so only the
+-- job worker (service role) writes, and rows disappear with their asset or user (ON DELETE CASCADE).
+ALTER TABLE asset_texts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "asset_texts_select_own" ON asset_texts FOR SELECT TO authenticated USING ((SELECT auth.uid()) = user_id);
+
 
 -- ==========================================
 -- 15. JOBS (background processing queue)
@@ -908,6 +959,11 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.claim_jobs(INT, INTERVAL) FROM PUBLIC, anon, authenticated;
 ```
+
+Library query functions are defined by the ordered migrations:
+
+- `search_library(p_query, p_limit)` combines owner-scoped metadata FTS, contributor trigram matching, extracted file-text FTS and NFC/unaccent substring matching. Literal `%`, `_` and backslashes in the query are escaped for `ILIKE`. It is `SECURITY DEFINER` with an empty search path and explicit ownership filters; execution is revoked from `PUBLIC`/`anon` and granted to `authenticated`/`service_role`.
+- `library_page(...)` is `SECURITY INVOKER` and applies filters, sorting and pagination in SQL. It returns one row per work, including total count, cover/progress/formats, numeric `user_rating` and `read_record_id` / `read_asset_id`. Reader targets consider PDF/EPUB/MOBI/AZW3/CBZ/DjVu document assets, prefer the primary role, then order by record creation time and record/asset IDs. The SPA uses these IDs for the cover's Read action.
 
 Contributor functions (§6.3). All are `SECURITY INVOKER`: RLS applies, so a caller can only touch their own rows.
 
@@ -1059,14 +1115,14 @@ CREATE POLICY "collections_delete_own" ON collections FOR DELETE TO authenticate
 
 ALTER TABLE reading_states ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "reading_states_select_own" ON reading_states FOR SELECT TO authenticated USING ((SELECT auth.uid()) = user_id);
-CREATE POLICY "reading_states_insert_own" ON reading_states FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id);
-CREATE POLICY "reading_states_update_own" ON reading_states FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY "reading_states_insert_own" ON reading_states FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id AND private.is_record_owner(record_id) AND (asset_id IS NULL OR EXISTS (SELECT 1 FROM assets a WHERE a.id = asset_id AND a.user_id = (SELECT auth.uid()))));
+CREATE POLICY "reading_states_update_own" ON reading_states FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id AND private.is_record_owner(record_id) AND (asset_id IS NULL OR EXISTS (SELECT 1 FROM assets a WHERE a.id = asset_id AND a.user_id = (SELECT auth.uid()))));
 CREATE POLICY "reading_states_delete_own" ON reading_states FOR DELETE TO authenticated USING ((SELECT auth.uid()) = user_id);
 
 ALTER TABLE annotations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "annotations_select_own" ON annotations FOR SELECT TO authenticated USING ((SELECT auth.uid()) = user_id);
-CREATE POLICY "annotations_insert_own" ON annotations FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id);
-CREATE POLICY "annotations_update_own" ON annotations FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY "annotations_insert_own" ON annotations FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id AND private.is_record_owner(record_id) AND EXISTS (SELECT 1 FROM assets a WHERE a.id = asset_id AND a.user_id = (SELECT auth.uid())));
+CREATE POLICY "annotations_update_own" ON annotations FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id AND private.is_record_owner(record_id) AND EXISTS (SELECT 1 FROM assets a WHERE a.id = asset_id AND a.user_id = (SELECT auth.uid())));
 CREATE POLICY "annotations_delete_own" ON annotations FOR DELETE TO authenticated USING ((SELECT auth.uid()) = user_id);
 
 -- ---------- RECORDS (ownership via work) ----------
@@ -1170,6 +1226,19 @@ CREATE POLICY "record_tags_insert" ON record_tags FOR INSERT TO authenticated WI
 );
 CREATE POLICY "record_tags_delete" ON record_tags FOR DELETE TO authenticated USING (private.is_record_owner(record_id));
 
+-- ---------- COLLECTION_TAGS / ANNOTATION_TAGS (migration 20260930000005) ----------
+-- Visible and removable when the labelled item is the caller's; INSERT also requires the tag to be theirs.
+-- No UPDATE policy: a junction row is replaced, never edited.
+ALTER TABLE collection_tags ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "collection_tags_select" ON collection_tags FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid())));
+CREATE POLICY "collection_tags_insert" ON collection_tags FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid()))
+    AND EXISTS (SELECT 1 FROM tags t WHERE t.id = tag_id AND t.user_id = (SELECT auth.uid())));
+CREATE POLICY "collection_tags_delete" ON collection_tags FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_id AND c.user_id = (SELECT auth.uid())));
+-- annotation_tags: the same three policies against annotations.user_id.
+
 -- ---------- COLLECTION_RECORDS ----------
 ALTER TABLE collection_records ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "collection_records_select" ON collection_records FOR SELECT TO authenticated USING (
@@ -1212,7 +1281,7 @@ CREATE POLICY "jobs_select_own" ON jobs FOR SELECT TO authenticated USING ((SELE
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
     ('documents', 'documents', FALSE, 524288000, ARRAY[
         'application/pdf', 'application/epub+zip', 'application/x-mobipocket-ebook',
-        'application/vnd.amazon.ebook', 'application/vnd.comicbook+zip', 'text/html', 'text/plain']),
+        'application/vnd.amazon.ebook', 'application/vnd.comicbook+zip', 'image/vnd.djvu', 'text/html', 'text/plain']),
     ('covers', 'covers', FALSE, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp']),
     ('staging', 'staging', FALSE, 524288000, NULL) -- type is detected server-side after upload
 ON CONFLICT (id) DO NOTHING;
@@ -1271,7 +1340,7 @@ Fetches and normalizes metadata for one identifier.
 
 ```typescript
 interface MetadataRequest {
-    identifier: { scheme: 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid'; value: string };
+    identifier: { scheme: IdentifierScheme; value: string };
     bypassCache?: boolean;
 }
 
@@ -1287,7 +1356,7 @@ Steps:
 1. Validate and normalize the identifier ([§6.2](#62-identifier-rules)). Invalid → `invalid_identifier` without any network call.
 2. Check `metadata_cache` (unless `bypassCache`).
 3. Try providers in the order given for the scheme in [§10](#10-external-metadata-providers). Move to the next provider on `not_found` or `provider_error`; stop on `success`.
-4. Parse the real response into `NormalizedMetadata`. **Never return placeholder or mock data.** If a response cannot be parsed, that is `provider_error`.
+4. Parse the real response into `NormalizedMetadata`, including Crossref `container-title` and Semantic Scholar `journal.name`. Store the chosen journal/container title in `records.metadata.container_title`, preserving other metadata and manual locks. Cached results predating container-title parsing are refreshed. **Never return placeholder or mock data.** If a response cannot be parsed, that is `provider_error`.
 5. Cache successes (default TTL 30 days).
 6. On HTTP 429, honor `Retry-After`; return `rate_limited` if no other provider remains.
 
@@ -1329,7 +1398,7 @@ Invoked by `pg_cron` ([§7.5](#75-worker-schedule-environment-specific-not-in-mi
 | Job type | Does |
 |----------|------|
 | `extract_text` | Extracts text from PDF/EPUB, stores stats in `assets.metadata`, and feeds search. Scans the first 8 pages for ISBN/DOI and the file's own metadata (PDF Info, EPUB OPF) for credit suggestions (§6.3), then queues `fetch_metadata` when an identifier is found |
-| `generate_thumbnail` | Renders a thumbnail (PDF first page / EPUB cover) as a new `covers` asset with role `thumbnail` |
+| `generate_thumbnail` | Worker records a client-rendering deferral. On first PDF/DjVu page render without an existing cover, the reader uploads a PNG through the normal upload flow with role `cover`. |
 | `fetch_metadata` | Runs a lookup for a record's primary identifier and stores the result as a suggestion |
 | `process_cover` | Downloads a provider cover URL (allowlisted host), stores it as a `cover` asset |
 | `export_data` | Produces a bulk export file |
@@ -1388,15 +1457,15 @@ Properties:
 
 ### 9.3 Reading
 
-1. SPA picks the asset (the one in `reading_states.asset_id`, else the primary), requests a 5-minute signed URL, and loads it into pdf.js / epub.js.
+1. SPA picks the asset (the one in `reading_states.asset_id`, else the primary), requests a 5-minute signed URL, and loads it into pdf.js (PDF), foliate-js (EPUB, MOBI, AZW3, CBZ) or DjVu.js (DjVu). Books render in iframes whose own scripts never run: the page CSP (`deploy/security-headers.conf`) blocks them, and every book page also gets a `script-src 'none'` meta policy (`src/lib/inertBookHtml.ts`) for servers that send no CSP.
 2. Progress is saved (debounced, ~5 s) with an upsert on `reading_states (user_id, record_id)`.
-3. Annotations are stored against the exact `asset_id` they were made on.
+3. Annotations are stored against the exact `asset_id` they were made on. `/…/read?annotation=<id>` opens the book at a note with its comment showing.
 
 ---
 
 ## 10. External metadata providers
 
-Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`, `archive.org`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
+Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.openlibrary.org`, `api.crossref.org`, `export.arxiv.org`, `api.semanticscholar.org`, `www.googleapis.com`, `archive.org`, `api.firecrawl.dev`; catalogue results are restricted to official HTTPS product pages at `www.iso.org`, `webstore.iec.ch`, `store.astm.org`, `www.asme.org` and `knowledge.bsigroup.com`; Open Library cover redirects are additionally restricted to `archive.org` and `*.us.archive.org`.
 
 | Scheme | Provider order |
 |--------|---------------|
@@ -1405,6 +1474,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | `arxiv` | arXiv API → Semantic Scholar (`ARXIV:{id}`) |
 | `pmid` | Semantic Scholar (`PMID:{id}`) |
 | `issn` | Crossref journals (`/journals/{issn}`) |
+| `iso`, `iec`, `astm`, `asme`, `bs` | Official ISO, IEC Webstore, ASTM Store, ASME or BSI Knowledge catalogue, discovered and read through Firecrawl |
 
 | Provider | Endpoint | Auth | Etiquette / limits (verify before release) |
 |----------|----------|------|-------------------------------------------|
@@ -1414,6 +1484,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 | Semantic Scholar | `https://api.semanticscholar.org/graph/v1/paper/{id}` | Optional `x-api-key` | Unauthenticated calls share a global pool and may be throttled |
 | Google Books | `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}` | API key (effectively required) | The unauthenticated shared quota was exhausted when checked; skip this provider when no key is configured |
 | Internet Archive | `https://archive.org/advancedsearch.php?q=isbn:{isbn} AND mediatype:texts&output=json` | None | Exact ISBN search, one result; search dates retain year precision because the index expands year-only dates |
+| Official standards catalogues through Firecrawl | `https://api.firecrawl.dev/v2/search`, `/scrape` | Server-only `FIRECRAWL_API_KEY` | Search one authority, inspect at most three official product pages, validate exact reference/year before accepting metadata; typed failures and 30-day success cache |
 
 **Contributor data per provider** (checked against live responses):
 
@@ -1428,7 +1499,7 @@ Called only from Edge Functions. Allowlisted hosts: `openlibrary.org`, `covers.o
 
 When sources disagree on roles, Crossref wins. A provider listing people as authors on a record whose title or `by_statement` says "edited" is shown as a role warning in the preview.
 
-Provider parsers live together in `supabase/functions/metadata-lookup/index.ts`; mocked-response tests cover each provider. Shared identifier validation lives in `supabase/functions/_shared/identifier.ts` and is re-exported to the SPA from `shared/identifier.ts`.
+Bibliographic provider parsers live in `supabase/functions/metadata-lookup/index.ts`, with official standards catalogue lookup in `standards.ts`; mocked-response tests cover each provider. Shared identifier validation lives in `supabase/functions/_shared/identifier.ts` and is re-exported to the SPA from `shared/identifier.ts`.
 
 ---
 
@@ -1455,9 +1526,9 @@ export type AssetRow = Tables<'assets'>;
 export type ReadingStateRow = Tables<'reading_states'>;
 export type AnnotationRow = Tables<'annotations'>;
 
-export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid';
-export type WorkType = 'book' | 'article' | 'serial' | 'thesis' | 'report' | 'other';
-export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'html' | 'txt' | 'image';
+export type IdentifierScheme = 'isbn' | 'doi' | 'issn' | 'arxiv' | 'pmid' | 'iso' | 'iec' | 'astm' | 'asme' | 'bs';
+export type WorkType = 'book' | 'article' | 'chapter' | 'serial' | 'thesis' | 'report' | 'standard' | 'other';
+export type FileFormat = 'pdf' | 'epub' | 'mobi' | 'azw3' | 'cbz' | 'djvu' | 'html' | 'txt' | 'image';
 export type ReadingStatus = 'unread' | 'reading' | 'finished' | 'abandoned';
 export type ContributorRole = CreditRow['role'];
 ```
@@ -1483,6 +1554,11 @@ export interface NormalizedMetadata {
     publication_date?: string;             // ISO 8601, truncated to precision
     publication_date_precision?: 'year' | 'month' | 'day';
     publisher?: string;
+    container_title?: string | null;        // journal / proceedings, null when checked but unavailable
+    edition?: string;
+    standard_scheme?: 'iso' | 'iec' | 'astm' | 'asme' | 'bs';
+    standard_reference?: string;            // transient response; saved in identifiers
+    standard_status?: string;
     language?: string;                     // BCP 47
     abstract?: string;
     identifiers: Array<{ scheme: IdentifierScheme; value: string }>;
@@ -1494,16 +1570,16 @@ export interface NormalizedMetadata {
     metadata?: Record<string, unknown>;    // volume, issue, pages, container title, …
 }
 
+// Actual schema and derived LibraryFilters type live in src/lib/libraryFilters.ts.
 export interface LibraryFilters {
-    search: string;
-    work_type: WorkType | null;
-    tags: string[];
-    collection_id: string | null;
-    reading_status: ReadingStatus | null;
-    format: FileFormat | null;
-    language: string | null;
-    sort_by: 'title' | 'author' | 'date_added' | 'date_published' | 'recently_read';
-    sort_order: 'asc' | 'desc';
+    q: string;
+    workType: string;
+    tagId: string;
+    collectionId: string;
+    status: string;
+    format: string;
+    language: string;
+    sort: 'relevance' | 'added' | 'title' | 'author' | 'published' | 'recent';
 }
 ```
 
@@ -1514,43 +1590,27 @@ Each hand-written type that crosses a boundary has a matching Zod schema; derive
 ## 12. Project structure
 
 ```
-textus/
+Textus/
 ├── src/
-│   ├── components/
-│   │   ├── ui/               # shadcn/ui generated components
-│   │   ├── library/          # DocumentGrid, RecordCard, FilterBar
-│   │   ├── metadata/         # IdentifierInput, MetadataPreview, ContributorEditor
-│   │   ├── contributors/     # ContributorPage, ContributorReviewQueue, MergeDialog
-│   │   ├── reader/           # PdfViewer, EpubViewer, AnnotationPanel
-│   │   └── layout/           # Header, Sidebar, TagBrowser
-│   ├── hooks/                # useRecords, useMetadataLookup, useReadingState, useCollections
-│   ├── lib/
-│   │   ├── supabase.ts       # client (anon key only)
-│   │   ├── functions.ts      # typed Edge Function invocations
-│   │   └── export.ts         # annotation export (Markdown/JSON)
-│   ├── pages/                # Dashboard, Library, RecordDetail, Contributors, Collections, Settings
-│   ├── stores/               # Zustand stores (UI state only)
-│   ├── types/
-│   │   ├── database.ts       # GENERATED — do not edit
-│   │   └── index.ts
+│   ├── components/            # ui, library, metadata, reader, layout, account
+│   ├── hooks/                 # Query/mutation hooks, auth, progress, reader preferences
+│   ├── lib/                   # Supabase client, filters, metadata apply, exports, utilities
+│   ├── pages/                 # Overview, Library, WorkDetail, Reader, Notes, Tags, Settings, …
+│   ├── test/setup.ts          # Vitest DOM setup and test-only API credentials
+│   ├── types/                 # Generated database.ts, row aliases, foliate-js declarations
+│   ├── vendor/djvu/           # Unmodified DjVu.js, upstream license and provenance
 │   ├── App.tsx
 │   └── main.tsx
-├── shared/
-│   ├── identifier.ts         # identifier validation/normalization (SPA + Edge Functions)
-│   └── names.ts              # splitNames, parseName, fold, compareGiven, scoring, formatByline (§6.3)
+├── shared/                    # Edge-safe re-exports, contributor-name parsing, unit tests
 ├── supabase/
 │   ├── config.toml
-│   ├── functions/
-│   │   ├── _shared/          # cors, auth, zod schemas, providers/
-│   │   ├── metadata-lookup/
-│   │   ├── upload/
-│   │   ├── job-worker/
-│   │   └── export/
-│   └── migrations/
-├── tests/
-│   ├── integration/          # Edge Functions against local Supabase, providers mocked
-│   ├── e2e/                  # upload, lookup, read
-│   └── fixtures/
+│   ├── functions/             # _shared, metadata-lookup, upload, job-worker, export, opds, delete-account
+│   ├── migrations/            # Ordered immutable SQL migrations
+│   └── tests/                 # database/ pgTAP and functions/ HTTP integration tests
+├── e2e/flows.spec.ts          # Playwright browser flows and axe scans
+├── deploy/                   # nginx routing and security headers
+├── .github/workflows/ci.yml   # Frontend, database, Edge Functions and Snyk checks
+├── .sonarcloud.properties     # Automatic analysis scope and migration duplication exclusions
 └── public/
 ```
 
@@ -1561,7 +1621,8 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 ## 13. Milestones
 
 ### M1 — Foundation
-- [ ] Auth (email, magic link, OAuth) — FR-AUTH-1/2
+- [x] Auth (email/password, magic link, recovery and account deletion) — FR-AUTH-1/2
+- [ ] OAuth — deferred until release planning
 - [x] Schema, RLS, storage migrations (§7)
 - [x] Work / record / identifier CRUD — FR-CAT-1..5
 - [x] Contributors: structured names, paste parsing, ordered credits with roles, editor fallback in bylines — FR-CONTRIB-1..4
@@ -1571,7 +1632,7 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Search on title and contributor — FR-SRCH-1
 
 ### M2 — Metadata
-- [x] ISBN (Open Library, Google Books), DOI (Crossref), arXiv, PMID, ISSN lookups — FR-META-1/6
+- [x] ISBN (Open Library → Google Books → Internet Archive), DOI (Crossref → Semantic Scholar), arXiv, PMID, ISSN and official standards catalogue lookups — FR-META-1/6
 - [x] Preview and per-field apply with locking — FR-META-2/3/4
 - [x] Cache — FR-META-5
 - [x] Cover retrieval (`process_cover`)
@@ -1579,23 +1640,23 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] ISBN/DOI extraction from PDF/EPUB text and file names, with background metadata suggestions
 
 ### M3 — Organization
-- [x] Tags and collections — FR-ORG-1/2
+- [x] Tags on records, collections and notes, automatic colors and tag detail pages; ordered collections — FR-ORG-1/2
 - [x] Filtering and sorting — FR-ORG-3
 - [x] Bulk operations — FR-ORG-4
 - [x] Saved searches — FR-ORG-5
 - [x] Contributor merge/split, review queue, duplicate finder, contributor page — FR-CONTRIB-7..9
 
 ### M4 — Reading
-- [x] EPUB viewer — FR-READ-2
+- [x] EPUB viewer with contents, search, layout and typography controls; fullscreen — FR-READ-2
 - [x] Progress sync — FR-READ-3
-- [x] Highlights and annotations, export — FR-READ-4/5 (EPUB: text highlights by CFI; PDF: page-anchored notes, since the canvas viewer has no text layer)
-- [x] Download for non-viewable formats — FR-READ-6
+- [x] Highlights and annotations, export — FR-READ-4/5 (text highlights by CFI in foliate-js formats and by page rectangles in PDF and DjVu; page notes; tags on notes; right-click menu and in-text comment markers)
+- [x] MOBI / AZW3 / CBZ / DjVu reading, download for the rest — FR-READ-6
 
 ### M5 — Export and serials
 - [x] BibTeX / RIS / CSL-JSON — FR-RES-1
 - [x] Preprint ↔ published linking — FR-RES-2 (two `article_version` records under one work, labelled by `records.metadata.version`)
 - [x] CSV / DOI-list import — FR-RES-3
-- [x] Serial issue tracking and completeness — FR-SER-1/2 (issues are expected to run 1..max within a volume; no per-serial expected counts)
+- [x] Serial issue tracking and completeness — FR-SER-1/2 (explicit expected ranges per volume in works.metadata.expected_issues; defaults to 1..max)
 - [x] Chapters / articles inside container records — FR-CONTRIB-10
 - [x] OPDS feed — FR-SER-3
 
@@ -1629,6 +1690,9 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 | 20 | Contributor model redesigned (§6.3): removed `UNIQUE(user_id, name_normalized)`; added structured names, `contributor_names`, `contributor_identifiers`, `contributor_distinctions`; credits get `position`, `credited_as`, `affiliation`, `resolved_by`; roles extended | The unique name forced different people with the same name into one contributor (Calibre's flaw). There was no way to represent variants, pseudonyms, or editor-only books properly. |
 | 21 | `records.container_record_id`; `chapter` work and record types | "Article-level records within issues" and chapters of edited volumes were required but could not be modeled. |
 | 22 | ORCID moved from a `contributors` column to `contributor_identifiers` | One mechanism for all authority IDs, with uniqueness per library. |
+| 23 | epub.js replaced by foliate-js | epub.js reads EPUB only and is unmaintained; foliate-js (MIT, used by the Foliate app) reads EPUB, MOBI, AZW3/KF8, FB2 and CBZ through one API with CFI annotations and search, so FR-READ-6 formats became readable. It is not on npm and is pinned to a commit tarball. Existing EPUB CFIs carry over (both follow the EPUB CFI spec). |
+| 24 | DjVu added (`file_format 'djvu'`, `image/vnd.djvu`, sniffed from `AT&TFORM…DJVU/DJVM`) | Scanned books are common in DjVu; DjVu.js (GPL-2.0-or-later, compatible with AGPL-3.0) renders it in a worker. |
+| 25 | `collection_tags` and `annotation_tags` | FR-ORG-1 tags now label collections and notes as well as records. |
 
 ---
 
@@ -1636,14 +1700,14 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 
 | # | Topic | Detail | Proposed default |
 |---|-------|--------|------------------|
-| 1 | **Large files in Edge Functions** | The Edge runtime has memory and wall-clock limits. Hashing and parsing a 500 MB PDF in memory will fail. | Stream the SHA-256 (`@std/crypto` accepts async iterables). Lower the bucket limit to what the self-hosted runtime handles in testing. Revisit if large scans are common. |
-| 2 | PDF text/thumbnail in Deno | `pdf-parse` is Node-oriented; rendering a page to an image in Deno is not trivial. | Evaluate `pdfjs-dist` in Deno for text; for thumbnails consider rendering in the browser on first open and uploading via the normal flow. |
+| 1 | **Large files in Edge Functions** | Upload verification and copying stream bytes; buckets retain the 500 MB limit. Background PDF/EPUB extraction still loads the file into memory and can exceed runtime limits on large scans. | Measure large-file extraction separately; bound or stream parsing if it exceeds the self-hosted runtime budget. |
+| 2 | PDF text/thumbnail | PDF text extraction uses pdfjs-dist in Deno; PDF and DjVu covers can be captured client-side from the first rendered page when no cover exists. | Implemented; large-file extraction remains subject to #1. |
 | 3 | ~~Annotation / reading-state cross-ownership~~ | Resolved in migration `20260929000002`: INSERT and UPDATE policies on `reading_states` and `annotations` now require `private.is_record_owner(record_id)` and an owned `asset_id`. | Done. |
 | 4 | Old-style arXiv IDs | `hep-th/9901001` format is not accepted. | Add when a user needs it. |
 | 5 | Denormalized `records.user_id` | Every record-scoped check joins `works`. | Add only if RLS shows up in query plans at NFR-PERF-1 scale. |
-| 6 | Search across contributors | FR-SRCH-1 needs names; `works.search_vector` does not include them. | A SQL function combining FTS on works/records with trigram on `contributors.display_name`, `contributor_names.name`, and `record_contributors.credited_as`. "Sort by author" uses primary creators (§6.3) computed in the same query; move to a trigger-maintained column only if it misses NFR-PERF-1. |
-| 7 | Metadata locking model | `locked_fields` in `records.metadata` is the simplest option; works fields have no equivalent. | Store `locked_fields` for both levels in their `metadata` (add `metadata` to `works` if needed). |
-| 8 | OPDS authentication | OPDS clients typically use HTTP Basic, not Supabase JWTs. | Decide in M5. |
+| 6 | Unicode and contributor search performance | `search_library()` combines FTS, contributor trigrams and folded substring metadata matching; `library_page()` filters/pages on the server. The earlier 10,000-record benchmark predates the Unicode substring scan. | Repeat the benchmark after migration `20260930000004`; add folded indexes only if NFR-PERF-1 is missed. |
+| 7 | Metadata locking model | Both `works.metadata` and `records.metadata` store `locked_fields`; unchanged form values do not gain new locks. | Implemented; preserve locks on lookup/apply and preserve hidden fields when changing record type. |
+| 8 | OPDS authentication | HTTP Basic exchanges account email/password for a request-scoped session; queries use RLS (§8.5). Magic-link-only accounts need a password. | Implemented; serve over HTTPS before exposing publicly. |
 | 9 | ~~Account deletion~~ | `ON DELETE CASCADE` removes rows but not storage objects. | Resolved: `delete-account` (§8.6) sweeps the user's storage immediately, and the `cleanup` job sweeps folders whose user no longer exists. |
 | 10 | Contributor matching calibration | The score constants were validated on one 282-file collection. | Keep them in one constant block; revisit with review-queue accept/reject rates. |
 | 11 | Large-collaboration papers | Papers with thousands of authors make `contributor_candidates()` arrays large and the credit list long. | Store all credits; the byline truncates. Cap evidence arrays if matching gets slow. |

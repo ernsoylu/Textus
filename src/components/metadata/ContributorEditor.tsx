@@ -103,7 +103,7 @@ export function ContributorEditor({ workId, recordId, existingCredits }: Readonl
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
           placeholder='Paste names, e.g. "Tolkien, J. R. R. & Christopher Tolkien"'
-          className="w-auto min-w-[320px] flex-1"
+          className="w-auto min-w-0 flex-1"
         />
         <Button variant="secondary" onClick={handleParse} disabled={!pasteText.trim()}>
           Parse

@@ -4,7 +4,11 @@ Textus is a self-hosted library manager for books, research papers, and magazine
 
 **Source of truth:** [ARCHITECTURE_AND_REQUIREMENTS.md](ARCHITECTURE_AND_REQUIREMENTS.md) — requirements (FR/NFR IDs), full schema and RLS, Edge Function contracts, flows, milestones. Read the relevant section before changing the schema, RLS, storage, or a function contract, and update it in the same change when you alter any of them.
 
-**Status:** M1 (§13) is complete except OAuth, intentionally deferred while Textus is in-house; use Supabase email/password + magic-link auth until release planning. Do not build OAuth UI or uncomment `GOTRUE_EXTERNAL_*` unless the user raises it. M2 metadata is implemented: provider lookup/cache, preview/apply with locks, contributor matching and authority IDs, PDF/EPUB identifier extraction, background suggestions, and private cover retrieval. `upload`, `metadata-lookup`, and `job-worker` Edge Functions are deployed and live-tested; `job-worker` runs from pg_cron every minute (§7.5). Semantic Scholar unauthenticated PMID calls may rate-limit without its optional API key. `generate_thumbnail` remains client-side on first PDF read (`src/components/reader/PdfViewer.tsx`) per §15 question 2. M3 (organization) is implemented: tags, collections, filtering/sorting, bulk actions, saved searches, and the contributor review queue, duplicate finder, merge/split and contributor page. M4 reading is implemented (EPUB viewer via epub.js, progress sync, annotations, downloads for MOBI/AZW3/CBZ), and so is M5: the `export` and `opds` Edge Functions, CSV/DOI import, preprint/published versions, serial issues and completeness, and container records. `opds` uses HTTP Basic auth by design (§8.5) and needs `--no-verify-jwt` when deployed. The `export` and `opds` functions have been run against the local stack but not deployed.
+**Status:** M1 (§13) is complete except OAuth, intentionally deferred while Textus is in-house; use Supabase email/password + magic-link auth until release planning. Do not build OAuth UI or uncomment `GOTRUE_EXTERNAL_*` unless the user raises it. M2 metadata is implemented: provider lookup/cache, preview/apply with locks, contributor matching and authority IDs, PDF/EPUB identifier extraction, background suggestions, and private cover retrieval. `upload`, `metadata-lookup`, and `job-worker` Edge Functions are deployed and live-tested; `job-worker` runs from pg_cron every minute (§7.5). Semantic Scholar unauthenticated PMID calls may rate-limit without its optional API key. `generate_thumbnail` remains client-side on first PDF/DjVu page render (`src/pages/Reader.tsx`) per §15 question 2. M3 (organization) is implemented: tags, collections, filtering/sorting, bulk actions, saved searches, and the contributor review queue, duplicate finder, merge/split and contributor page. M4 reading is implemented (pdf.js viewer with continuous scroll, fit modes, outline and search; foliate-js for EPUB/MOBI/AZW3/CBZ, which replaced epub.js per §14 #23; DjVu.js for DjVu; fullscreen, progress sync, right-click highlighting with in-text comment markers, tags on notes and collections), and so is M5: the `export` and `opds` Edge Functions, CSV/DOI import, preprint/published versions, serial issues and completeness, and container records. `opds` uses HTTP Basic auth by design (§8.5) and needs `--no-verify-jwt` when deployed. The `export` and `opds` functions have been run against the local stack but not deployed.
+
+Recent library changes: personal book ratings use 0.5–5 stars in half-star steps; cover controls open the reader/details and save ratings. Search folds Unicode and accents for partial metadata matches while keeping indexed file-text FTS. Tags get automatic colors and retain them when renamed. Catalog editors preserve hidden fields and unchanged metadata locks; standards use edition-specific ISO/IEC/ASTM/ASME/BS identifiers and official catalogue lookup through server-side Firecrawl. Mobile More opens all secondary pages.
+
+Build prerequisite: Node.js 22.13+; CI and Docker use Node.js 24 to satisfy pdfjs-dist's engine requirement.
 
 ## Commands
 
@@ -26,7 +30,7 @@ npm run gen:types            # regenerate src/types/database.ts after any migrat
 
 ## Fixed stack — do not propose alternatives
 
-React 18 + Vite SPA · TypeScript strict · Tailwind + shadcn/ui · TanStack Query v5 (server state) · Zustand (UI state only) · Supabase (Postgres 15+, Auth, Storage, Edge Functions on Deno) · Zod · Vitest + Testing Library · pdf.js · epub.js.
+React 18 + Vite SPA · TypeScript strict · Tailwind + shadcn/ui · TanStack Query v5 (server state) · Zustand (UI state only) · Supabase (Postgres 15+, Auth, Storage, Edge Functions on Deno) · Zod · Vitest + Testing Library · pdf.js (`pdfjs-dist` viewer components) · foliate-js (EPUB, MOBI, AZW3, FB2, CBZ; pinned GitHub tarball) · DjVu.js (vendored in `src/vendor/djvu`).
 
 Not allowed: Next.js/Remix, any separate backend service or language, direct S3 SDKs, Redis/RabbitMQ/external queues (the `jobs` table is the queue), ORMs (Prisma, Drizzle, …).
 
@@ -47,14 +51,19 @@ Not allowed: Next.js/Remix, any separate backend service or language, direct S3 
 - TypeScript strict, no `any` (use `unknown` and narrow). Validate every trust boundary with Zod; derive types with `z.infer`.
 - DB row types are generated into `src/types/database.ts` — never edit it or hand-write row interfaces. Aliases (`WorkRow`, `RecordRow`, …) live in `src/types/index.ts`.
 - Naming: tables snake_case plural; types/components PascalCase; functions camelCase; constants SCREAMING_SNAKE_CASE.
-- One component per file. Tests co-located (`Foo.test.tsx`); integration/E2E in `tests/`; fixtures in `tests/fixtures/`.
+- One component per file. Tests co-located (`Foo.test.tsx`); database/HTTP integration in `supabase/tests/`; browser flows in `e2e/flows.spec.ts`.
 - SQL: explicit column lists (no `SELECT *`); functions get `SET search_path = ''`; never edit an applied migration — add a new one.
 - Edge Functions: CORS headers on every response (including errors and `OPTIONS`), `URL`/`URLSearchParams` for URLs, `AbortSignal.timeout` on every fetch, response size caps, host allowlist. Shared code in `supabase/functions/_shared/`.
 - Errors: user-friendly messages in the UI; technical detail logged server-side only.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 
+## Review checks
+
+CI runs frontend checks/Playwright, database migrations/pgTAP/HTTP integration, Edge Function check/lint and Snyk (high severity threshold). SonarCloud runs automatic PR analysis. `.sonarcloud.properties` excludes generated database types and unmodified DjVu source; applied migrations retain issue analysis but are excluded from duplication detection. Do not edit applied migrations or generated code to silence review findings.
+
 ## Testing expectations
 
+- Vitest setup supplies test-only Supabase credentials and Node-native abort signals for React Router's Request; unit/component tests must mock API access and must not depend on `.env.local`.
 - Unit tests for utilities — especially identifier validation (valid/invalid check digits, every accepted input form) and `shared/names.ts` (the golden cases in §6.3 must all pass).
 - Integration tests for Edge Functions against the local stack with providers mocked from recorded fixtures.
 - RLS tests: for each new table/policy, prove a second user can neither read nor write the first user's rows.

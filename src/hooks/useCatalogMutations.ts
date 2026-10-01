@@ -1,3 +1,4 @@
+import { parseIdentifier, type IdentifierScheme } from 'shared/identifier';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -7,16 +8,16 @@ import type { WorkRow, RecordRow } from '@/types';
 // RLS already scopes every one of these to the caller (§7.3 works_update_own/delete_own,
 // records_update/delete) — no extra ownership check needed here.
 
-type WorkUpdate = Partial<Pick<WorkRow, 'title' | 'subtitle' | 'abstract' | 'language' | 'work_type'>>;
+type WorkUpdate = Partial<Pick<WorkRow, 'title' | 'subtitle' | 'abstract' | 'language' | 'work_type' | 'user_rating'>>;
 type RecordUpdate = Partial<
-  Pick<RecordRow, 'title' | 'publisher' | 'edition' | 'volume' | 'issue_number' | 'pages' | 'publication_date' | 'publication_date_precision'>
+  Pick<RecordRow, 'record_type' | 'title' | 'publisher' | 'edition' | 'volume' | 'issue_number' | 'pages' | 'publication_date' | 'publication_date_precision'>
 >;
 
 export function useUpdateWork(workId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (patch: WorkUpdate) => {
-      const { data: current, error: readError } = await supabase.from('works').select('title,subtitle,abstract,language,work_type,metadata').eq('id', workId).single();
+      const { data: current, error: readError } = await supabase.from('works').select('title,subtitle,abstract,language,work_type,user_rating,metadata').eq('id', workId).single();
       if (readError) throw readError;
       const previous = (current?.metadata ?? {}) as Record<string, unknown>;
       const locked = new Set(Array.isArray(previous.locked_fields) ? previous.locked_fields as string[] : []);
@@ -48,13 +49,14 @@ export function useDeleteWork() {
 export function useUpdateRecord(workId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ recordId, patch }: { recordId: string; patch: RecordUpdate }) => {
-      const { data: current, error: readError } = await supabase.from('records').select('title,publisher,edition,volume,issue_number,pages,publication_date,publication_date_precision,metadata').eq('id', recordId).single();
+    mutationFn: async ({ recordId, patch, metadataPatch = {} }: { recordId: string; patch: RecordUpdate; metadataPatch?: Record<string, string | null> }) => {
+      const { data: current, error: readError } = await supabase.from('records').select('record_type,title,publisher,edition,volume,issue_number,pages,publication_date,publication_date_precision,metadata').eq('id', recordId).single();
       if (readError) throw readError;
       const previous = (current.metadata ?? {}) as Record<string, unknown>;
       const locked = new Set(Array.isArray(previous.locked_fields) ? previous.locked_fields as string[] : []);
       for (const [field, value] of Object.entries(patch)) if (value !== current[field as keyof typeof current]) locked.add(field);
-      const { error } = await supabase.from('records').update({ ...patch, metadata: { ...previous, locked_fields: [...locked] } }).eq('id', recordId);
+      for (const [field, value] of Object.entries(metadataPatch)) if (value !== (previous[field] ?? null)) locked.add(field);
+      const { error } = await supabase.from('records').update({ ...patch, metadata: { ...previous, ...metadataPatch, locked_fields: [...locked] } }).eq('id', recordId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -188,4 +190,38 @@ export function useLinkVersion(workId: string) {
     },
     onSuccess: () => queryClient.invalidateQueries(),
   });
+}
+
+// FR-CAT-4: validate and normalize before writing (shared/identifier.ts, never JSONB).
+// FR-CAT-5: warn — not block — when the normalized value is already in the user's library.
+export async function addIdentifier(recordId: string, scheme: IdentifierScheme, raw: string) {
+  const parsed = parseIdentifier(scheme, raw);
+  if (!parsed.ok) {
+    throw new Error(parsed.reason === 'invalid_check_digit' ? 'That check digit is not valid.' : 'That does not look like a valid ' + scheme.toUpperCase() + '.');
+  }
+
+  const { error: insertError } = await supabase
+    .from('identifiers')
+    .insert({ record_id: recordId, scheme, normalized_value: parsed.normalized, original_value: parsed.original });
+  if (insertError) {
+    if (insertError.code === '23505') throw new Error('This record already has that identifier.');
+    throw insertError;
+  }
+
+  if (parsed.scheme === 'arxiv' && parsed.arxivVersion !== undefined) {
+    const { data: record } = await supabase.from('records').select('metadata').eq('id', recordId).single();
+    await supabase
+      .from('records')
+      .update({ metadata: { ...(record?.metadata as object), arxiv_version: parsed.arxivVersion } })
+      .eq('id', recordId);
+  }
+
+  const { data: existingElsewhere } = await supabase
+    .from('identifiers')
+    .select('record_id')
+    .eq('scheme', scheme)
+    .eq('normalized_value', parsed.normalized)
+    .neq('record_id', recordId);
+
+  return { duplicateCount: existingElsewhere?.length ?? 0 };
 }

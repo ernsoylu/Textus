@@ -1,19 +1,20 @@
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
-import { parseIdentifier } from '../_shared/identifier.ts';
+import { readCapped } from '../_shared/http.ts';
+import { standardProvider } from './standards.ts';
+import { IDENTIFIER_SCHEMES, STANDARD_SCHEMES, type IdentifierScheme, type StandardScheme, parseIdentifier } from '../_shared/identifier.ts';
 import { stripTags, xmlElementText } from '../_shared/text.ts';
 
 const RequestSchema = z.object({
-  identifier: z.object({ scheme: z.enum(['isbn', 'doi', 'issn', 'arxiv', 'pmid']), value: z.string().min(1).max(300) }),
+  identifier: z.object({ scheme: z.enum(IDENTIFIER_SCHEMES), value: z.string().min(1).max(300) }),
   bypassCache: z.boolean().optional(),
 });
 const CoverSchema = z.object({ action: z.literal('queue-cover'), recordId: z.string().uuid(), url: z.string().url().max(1000) });
-type Metadata = { title?: string; subtitle?: string; abstract?: string; language?: string; publication_date?: string; publication_date_precision?: 'year' | 'month' | 'day'; publisher?: string; volume?: string; issue_number?: string; pages?: string; contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[]; cover_url?: string; role_warning?: string; source_provider: string; source_url?: string; work_type: string };
-type Lookup = { kind: 'success'; data: Metadata } | { kind: 'not_found' } | { kind: 'rate_limited'; retryAfterMs: number } | { kind: 'provider_error'; message: string };
+export type Metadata = { title?: string; subtitle?: string; abstract?: string; language?: string; publication_date?: string; publication_date_precision?: 'year' | 'month' | 'day'; publisher?: string; edition?: string; standard_scheme?: StandardScheme; standard_reference?: string; standard_status?: string; container_title?: string | null; volume?: string; issue_number?: string; pages?: string; contributors?: { name: string; given?: string; family?: string; role: 'author' | 'editor'; identifiers?: Record<string, string>; affiliation?: string }[]; cover_url?: string; role_warning?: string; source_provider: string; source_url?: string; work_type: string };
+export type Lookup = { kind: 'success'; data: Metadata } | { kind: 'not_found' } | { kind: 'rate_limited'; retryAfterMs: number } | { kind: 'provider_error'; message: string };
 
 const HOSTS = new Set(['openlibrary.org', 'api.crossref.org', 'export.arxiv.org', 'api.semanticscholar.org', 'www.googleapis.com', 'archive.org']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const MAX_RESPONSE_BYTES = 5_000_000;
 
 async function fetchFollowingRedirects(start: URL, headers: Record<string, string>): Promise<Response> {
   if (!HOSTS.has(start.hostname) || start.protocol !== 'https:') throw new Error('provider host is not allowed');
@@ -28,25 +29,6 @@ async function fetchFollowingRedirects(start: URL, headers: Record<string, strin
     if (next.protocol !== 'https:' || next.hostname !== url.hostname || !HOSTS.has(next.hostname)) throw new Error('provider redirect host is not allowed');
     url = next;
   }
-}
-
-async function readCapped(response: Response): Promise<string> {
-  if (Number(response.headers.get('content-length') ?? 0) > MAX_RESPONSE_BYTES) throw new Error('provider response too large');
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('provider returned no body');
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > MAX_RESPONSE_BYTES) { await reader.cancel(); throw new Error('provider response too large'); }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  return new TextDecoder().decode(bytes);
 }
 
 async function get(url: URL, headers: Record<string, string> = {}): Promise<{ response: Response; body: string }> {
@@ -225,6 +207,8 @@ function crossrefWorkType(name: string, item: Record<string, unknown>): string {
   if (name === 'crossref_journal') return 'serial';
   const type = str(item.type);
   if (type === 'book-chapter') return 'chapter';
+  if (type === 'standard' || type === 'report') return type;
+  if (type === 'dissertation') return 'thesis';
   return type?.startsWith('book') ? 'book' : 'article';
 }
 
@@ -241,6 +225,7 @@ function parseCrossref(root: Record<string, unknown>, name: string): Metadata {
     publication_date: parts[0] ? `${parts[0]}-${String(parts[1] ?? 1).padStart(2, '0')}-${String(parts[2] ?? 1).padStart(2, '0')}` : undefined,
     publication_date_precision: parts[0] ? precisionForParts(parts.length) : undefined,
     publisher: str(item.publisher),
+    container_title: first(item['container-title']) ?? null,
     volume: str(item.volume),
     issue_number: str(item.issue),
     pages: str(item.page),
@@ -262,7 +247,7 @@ function parseSemanticScholar(root: Record<string, unknown>, name: string): Pars
   const contributors = Array.isArray(root.authors)
     ? root.authors.map((raw) => { const a = object(raw); const authorId = str(a.authorId); return { name: str(a.name) ?? '', role: 'author' as const, identifiers: authorId ? { semantic_scholar: authorId } : undefined }; }).filter((a) => a.name)
     : [];
-  return { title, abstract: str(root.abstract), publication_date: published ?? yearOnly, publication_date_precision: precision, contributors, source_provider: name, source_url: str(root.url), work_type: 'article' };
+  return { title, abstract: str(root.abstract), container_title: str(object(root.journal).name) ?? null, publication_date: published ?? yearOnly, publication_date_precision: precision, contributors, source_provider: name, source_url: str(root.url), work_type: 'article' };
 }
 
 async function parseBody(name: string, id: string, body: string): Promise<Parsed> {
@@ -282,6 +267,7 @@ function retryAfterMs(response: Response): number {
 
 export async function provider(name: string, id: string): Promise<Lookup> {
   try {
+    if ((STANDARD_SCHEMES as readonly string[]).includes(name)) return await standardProvider(name as StandardScheme, id);
     const { url, headers } = providerRequest(name, id);
     const { response, body } = await get(url, headers);
     if (response.status === 404) return { kind: 'not_found' };
@@ -293,6 +279,12 @@ export async function provider(name: string, id: string): Promise<Lookup> {
 }
 
 const CACHE_TTL_MS = 30 * 86_400_000;
+
+export function needsJournalRefresh(value: unknown): boolean {
+  const data = object(value);
+  // null means the provider supplied no journal; an absent key predates journal parsing.
+  return ['crossref', 'crossref_journal', 'semantic_scholar'].includes(String(data.source_provider)) && !Object.hasOwn(data, 'container_title');
+}
 
 async function queueCover(ctx: SupabaseContext, cover: z.infer<typeof CoverSchema>): Promise<Response> {
   const target = new URL(cover.url);
@@ -307,26 +299,28 @@ async function queueCover(ctx: SupabaseContext, cover: z.infer<typeof CoverSchem
 }
 
 async function cachedLookup(ctx: SupabaseContext, scheme: string, id: string): Promise<Response | null> {
-  const { data: cached } = await ctx.supabase.from('metadata_cache').select('response_data,fetched_at').eq('identifier_scheme', scheme).eq('identifier_value', id).gt('expires_at', new Date().toISOString()).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
+  const { data: cached } = await ctx.supabase.from('metadata_cache').select('response_data,fetched_at').eq('identifier_scheme', scheme).eq('identifier_value', id).gt('expires_at', new Date().toISOString()).order(scheme === 'doi' ? 'provider' : 'fetched_at', { ascending: scheme === 'doi' }).order('fetched_at', { ascending: false }).limit(1).maybeSingle();
   if (!cached) return null;
   const data = object(cached.response_data);
+  if (needsJournalRefresh(data)) return null;
   // An entry with a date but no precision predates precision tracking; refetch instead of serving it.
   if (data.publication_date && !data.publication_date_precision) return null;
   return Response.json({ status: 'success', data: cached.response_data, fromCache: true, fetchedAt: cached.fetched_at ?? new Date().toISOString() });
 }
 
-export function providersFor(scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn'): string[] {
+export function providersFor(scheme: IdentifierScheme): string[] {
   switch (scheme) {
     case 'isbn': return ['openlibrary', ...(Deno.env.get('GOOGLE_BOOKS_API_KEY') ? ['google_books'] : []), 'internet_archive'];
     case 'doi': return ['crossref', 'semantic_scholar'];
     case 'arxiv': return ['arxiv', 'semantic_scholar'];
     case 'pmid': return ['semantic_scholar'];
     case 'issn': return ['crossref_journal'];
+    case 'iso': case 'iec': case 'astm': case 'asme': case 'bs': return [scheme];
     default: { const exhaustive: never = scheme; throw new Error(`Unhandled scheme ${exhaustive}`); }
   }
 }
 
-export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: 'isbn' | 'doi' | 'arxiv' | 'pmid' | 'issn', id: string): Promise<Response> {
+export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: IdentifierScheme, id: string): Promise<Response> {
   const providers = providersFor(scheme);
   let failure: { provider: string; result: Lookup } | undefined;
   let data: Metadata | undefined;

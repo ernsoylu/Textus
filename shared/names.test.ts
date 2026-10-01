@@ -228,3 +228,10 @@ describe('splitNames() — golden cases (§6.3)', () => {
     }
   });
 });
+
+it('keeps non-Latin names distinct when folding Unicode names', () => {
+  expect(fold('李白')).toBe('李白');
+  expect(fold('Достоевский')).toBe('достоевскии');
+  expect(fold('نجيب محفوظ')).toBe('نجيبمحفوظ');
+  expect(fold('Yalçın Küçük')).toBe(fold('Yalçın Küçük'));
+});

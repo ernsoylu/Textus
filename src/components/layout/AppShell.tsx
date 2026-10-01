@@ -9,6 +9,7 @@ export function AppShell() {
   const online = useOnline();
   return (
     <UnsavedChangesProvider>
+      <a href="#main-content" className="sr-only fixed left-4 top-4 z-50 rounded-8 bg-green p-3 text-dim focus:not-sr-only">Skip to content</a>
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -18,7 +19,7 @@ export function AppShell() {
               You’re offline. Your library is shown as last loaded; changes can’t be saved until the connection returns.
             </p>
           )}
-          <main className="flex-1 p-6 pb-24 md:pb-6">
+          <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-4 pb-28 sm:p-6 sm:pb-28 md:pb-6">
             <Outlet />
           </main>
         </div>
