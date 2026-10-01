@@ -3,13 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewWork } from './NewWork';
-import { uploadFile } from '@/hooks/useUploadAsset';
+import { uploadFile, uploadUrl } from '@/hooks/useUploadAsset';
 import { importMetadata } from '@/lib/autoMetadataImport';
 
 const { navigate, inserted } = vi.hoisted(() => ({ navigate: vi.fn(), inserted: [] as { table: string; data: Record<string, unknown> }[] }));
 vi.mock('react-router-dom', async (original) => ({ ...await original<typeof import('react-router-dom')>(), useNavigate: () => navigate }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ session: { user: { id: 'user' } } }) }));
-vi.mock('@/hooks/useUploadAsset', () => ({ uploadFile: vi.fn(), MAX_UPLOAD_BYTES: 524_288_000 }));
+vi.mock('@/hooks/useUploadAsset', () => ({ uploadFile: vi.fn(), uploadUrl: vi.fn(), MAX_UPLOAD_BYTES: 524_288_000 }));
 vi.mock('@/lib/autoMetadataImport', () => ({ importMetadata: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { from: (table: string) => {
   let data: Record<string, unknown> | undefined;
@@ -68,5 +68,20 @@ describe('batch uploads', () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/library?sort=added'));
     expect(inserted.filter((row) => row.table === 'works')).toHaveLength(2);
     expect(uploadFile).toHaveBeenCalledTimes(3);
+  });
+
+  it('adds a work from a link alongside files', async () => {
+    vi.mocked(uploadFile).mockResolvedValue({ status: 'created', asset: {} as never });
+    vi.mocked(uploadUrl).mockResolvedValue({ status: 'created', asset: {} as never });
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><NewWork /></QueryClientProvider></MemoryRouter>);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Link to a file' }), { target: { value: 'https://arxiv.org/pdf/attention%20paper.pdf' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [new File(['a'], 'first.pdf')] } });
+    expect(screen.getByText('attention paper.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Upload and add to library' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/library?sort=added'));
+    expect(uploadUrl).toHaveBeenCalledWith('records-1', 'primary', 'https://arxiv.org/pdf/attention%20paper.pdf');
+    expect(uploadFile).toHaveBeenCalledWith('records-2', 'primary', expect.any(File), expect.any(Function));
+    expect(inserted.filter((row) => row.table === 'works').map((row) => row.data.title)).toEqual(['attention paper', 'first']);
   });
 });

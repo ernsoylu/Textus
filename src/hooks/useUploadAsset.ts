@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
-import { uploadIntent, uploadComplete } from '@/lib/functions';
+import { uploadIntent, uploadComplete, uploadFromUrl } from '@/lib/functions';
 
 export type UploadRole = 'primary' | 'supplement' | 'cover';
 export const MAX_UPLOAD_BYTES = 524_288_000;
@@ -8,6 +8,7 @@ export const MAX_UPLOAD_BYTES = 524_288_000;
 const REJECTION_MESSAGES: Record<string, string> = {
   missing: 'The upload did not arrive. Try again.',
   size_mismatch: 'The file was empty or too large (limit 500 MB).',
+  unreachable: 'Textus couldn’t download that link. Check that it points directly to a public file.',
   unsupported_type: 'That file type isn’t supported. Textus accepts PDF, EPUB, MOBI, AZW3, CBZ and DjVu (covers: JPEG, PNG, WebP).',
 };
 
@@ -35,6 +36,14 @@ export async function uploadFile(recordId: string, role: UploadRole, file: File,
   const intent = await uploadIntent({ uploadId, recordId, filename: file.name, size: file.size });
   await putWithProgress(intent.path, intent.token, file, onProgress);
   const result = await uploadComplete({ uploadId, recordId, role, filename: file.name });
+  if (result.status === 'rejected') throw new Error(REJECTION_MESSAGES[result.reason] ?? 'Upload was rejected.');
+  return result;
+}
+
+export async function uploadUrl(recordId: string, role: UploadRole, url: string) {
+  const result = await uploadFromUrl({ uploadId: crypto.randomUUID(), recordId, role, url }).catch((cause: unknown) => {
+    throw cause instanceof Error && cause.message === 'invalid_url' ? new Error('Enter a public http or https link.') : cause;
+  });
   if (result.status === 'rejected') throw new Error(REJECTION_MESSAGES[result.reason] ?? 'Upload was rejected.');
   return result;
 }

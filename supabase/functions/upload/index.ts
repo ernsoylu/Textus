@@ -1,5 +1,5 @@
-// Edge Function: upload (§8.2, §9.1). Two actions on one function, routed by the URL's
-// last path segment: POST .../upload/intent and POST .../upload/complete.
+// Edge Function: upload (§8.2, §9.1). Three actions on one function, routed by the URL's
+// last path segment: POST .../upload/intent, .../upload/complete and .../upload/from-url.
 //
 // Auth: 'user' mode (@supabase/server) — a valid caller JWT is required before this code
 // runs, and CORS is added automatically (both defaults). ctx.supabase is RLS-scoped to the
@@ -9,6 +9,7 @@ import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { SNIFF_HEAD_BYTES, sniff, TextProbe } from '../_shared/sniff.ts';
+import { isIpLiteral, isPublicIp, parsePublicUrl } from '../_shared/publicUrl.ts';
 
 const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
@@ -44,6 +45,13 @@ const CompleteSchema = z.object({
   recordId: z.string().uuid(),
   role: z.enum(['primary', 'supplement', 'cover']),
   filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\')).optional(),
+});
+
+const FromUrlSchema = z.object({
+  uploadId: z.string().uuid(),
+  recordId: z.string().uuid(),
+  role: z.enum(['primary', 'supplement', 'cover']),
+  url: z.string().max(2048),
 });
 
 async function assertRecordOwner(ctx: SupabaseContext, recordId: string): Promise<boolean> {
@@ -177,11 +185,13 @@ async function findOrCreateAsset(ctx: SupabaseContext, a: NewAsset) {
 async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Response> {
   const parsed = CompleteSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
-  const { uploadId, recordId, role } = parsed.data;
+  if (!(await assertRecordOwner(ctx, parsed.data.recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
+  return completeStaged(ctx, parsed.data);
+}
+
+// Everything after the bytes are in staging (§9.1): verify, publish, asset, link, jobs. Shared by complete and from-url.
+async function completeStaged(ctx: SupabaseContext, { uploadId, recordId, role, filename }: z.infer<typeof CompleteSchema>): Promise<Response> {
   const userId = ctx.userClaims!.id;
-
-  if (!(await assertRecordOwner(ctx, recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
-
   const folder = `${userId}/${uploadId}`;
   const { data: listing, error: listError } = await ctx.supabaseAdmin.storage.from('staging').list(folder);
   if (listError) return Response.json({ error: 'storage_error', message: listError.message }, { status: 500 });
@@ -242,7 +252,7 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
     await ctx.supabaseAdmin
       .from('jobs')
       .upsert(
-        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset.id, filename: parsed.data.filename ?? '' }, idempotency_key: `extract_text:${asset.id}` },
+        { user_id: userId, job_type: 'extract_text', payload: { asset_id: asset.id, filename: filename ?? '' }, idempotency_key: `extract_text:${asset.id}` },
         { onConflict: 'idempotency_key', ignoreDuplicates: true },
       );
   }
@@ -252,16 +262,93 @@ async function handleComplete(req: Request, ctx: SupabaseContext): Promise<Respo
   return Response.json({ status: deduplicated ? 'deduplicated' : 'created', asset });
 }
 
+// Follows redirects by hand so every hop's host and DNS answers are checked (SSRF guard, _shared/publicUrl.ts).
+// ponytail: DNS is resolved again by fetch, so a rebinding resolver could still swap in a private address between
+// check and connect; pin the checked address (Deno.HttpClient with a custom resolver) if that becomes a concern.
+async function fetchPublic(raw: string, signal: AbortSignal): Promise<Response | null> {
+  let target = raw;
+  for (let hop = 0; hop <= 5; hop++) {
+    const url = parsePublicUrl(target);
+    if (!url) return null;
+    if (!isIpLiteral(url.hostname)) {
+      const answers = (await Promise.all((['A', 'AAAA'] as const).map((type) => Deno.resolveDns(url.hostname, type).catch(() => [] as string[])))).flat();
+      if (!answers.length || !answers.every(isPublicIp)) return null;
+    }
+    const res = await fetch(url, { redirect: 'manual', signal, headers: { Accept: 'application/pdf, application/epub+zip, */*;q=0.5' } });
+    const location = res.headers.get('location');
+    if (res.status < 300 || res.status >= 400 || !location) return res;
+    await res.body?.cancel();
+    target = new URL(location, url).href;
+  }
+  return null;
+}
+
+// Name for identifier suggestions only (as complete's `filename`); never used in a storage path.
+function filenameFromUrl(url: string): string | undefined {
+  const last = new URL(url).pathname.split('/').filter(Boolean).at(-1);
+  try {
+    const name = last && decodeURIComponent(last).replace(/[/\\]/g, ' ').slice(0, 255);
+    return name && name !== '.' && name !== '..' ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// "Add via link": the server downloads the file into the same staging path an intent would have issued, then finishes
+// exactly like complete. Size is enforced by the staging bucket's 500 MB limit while streaming (§7.4), plus an early
+// Content-Length check.
+async function handleFromUrl(req: Request, ctx: SupabaseContext): Promise<Response> {
+  const parsed = FromUrlSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
+  const { uploadId, recordId, role, url } = parsed.data;
+  if (!parsePublicUrl(url)) return Response.json({ error: 'invalid_url' }, { status: 400 });
+  if (!(await assertRecordOwner(ctx, recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
+
+  const signal = AbortSignal.timeout(300_000);
+  const path = `${ctx.userClaims!.id}/${uploadId}/upload`;
+  try {
+    const res = await fetchPublic(url, signal);
+    if (!res?.ok || !res.body) {
+      await res?.body?.cancel();
+      return Response.json({ status: 'rejected', reason: 'unreachable' });
+    }
+    const length = res.headers.get('content-length');
+    if (Number(length ?? 0) > MAX_UPLOAD_SIZE) {
+      await res.body.cancel();
+      return Response.json({ status: 'rejected', reason: 'size_mismatch' });
+    }
+    const { data: target, error } = await ctx.supabaseAdmin.storage.from('staging').createSignedUploadUrl(path, { upsert: true });
+    if (error || !target) return Response.json({ error: 'storage_error' }, { status: 500 });
+    const put = await fetch(target.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream', 'x-upsert': 'true', ...(length ? { 'Content-Length': length } : {}) },
+      body: res.body,
+      // @ts-expect-error `duplex` is required to stream a request body but is missing from the DOM typings
+      duplex: 'half',
+      signal,
+    });
+    if (!put.ok) {
+      console.error('upload: could not stage the linked file', put.status, await put.text());
+      return Response.json({ status: 'rejected', reason: put.status === 413 ? 'size_mismatch' : 'unreachable' });
+    }
+  } catch (e) {
+    console.error('upload: could not download the linked file', e);
+    return Response.json({ status: 'rejected', reason: 'unreachable' });
+  }
+  return completeStaged(ctx, { uploadId, recordId, role, filename: filenameFromUrl(url) });
+}
+
 export default {
   // async is required by withSupabase's handler type (Promise<Response>, not Response |
   // Promise<Response>) — this function has no internal await since it just dispatches to
-  // handleIntent/handleComplete, which are themselves async.
+  // the handle* functions above, which are themselves async.
   // deno-lint-ignore require-await
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
     if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
     const { pathname } = new URL(req.url);
     if (pathname.endsWith('/intent')) return handleIntent(req, ctx);
     if (pathname.endsWith('/complete')) return handleComplete(req, ctx);
+    if (pathname.endsWith('/from-url')) return handleFromUrl(req, ctx);
     return new Response('Not found', { status: 404 });
   }),
 };
