@@ -6,6 +6,7 @@ import { StarRating } from '@/components/library/StarRating';
 import { Button } from '@/components/ui/button';
 import { UploadForm } from '@/components/library/UploadForm';
 import { DuplicateNotice } from '@/components/library/DuplicateNotice';
+import { DeleteWorkButton } from '@/components/library/DeleteWorkButton';
 import { EditWorkForm } from '@/components/library/EditWorkForm';
 import { EditRecordForm } from '@/components/library/EditRecordForm';
 import { ContributorEditor } from '@/components/metadata/ContributorEditor';
@@ -81,6 +82,7 @@ export function WorkDetail() {
             {readerPath ? <Link to={readerPath} className="rounded-8 bg-green px-4 py-3 text-label text-dim">Read</Link> : <Button disabled>Read</Button>}
             <Link to={`/library/${data.id}/edit`} className="rounded-8 bg-raised px-4 py-3 text-label text-fg">Edit</Link>
             <Button variant="secondary" aria-expanded={gathering} aria-controls="book-metadata" onClick={() => setGathering(!gathering)}>Gather metadata</Button>
+            <DeleteWorkButton workId={data.id} title={data.title} kind={kind} />
           </div>
           {!readerPath && <p className="text-small text-muted">Add a PDF, EPUB, MOBI, AZW3, CBZ or DjVu file in Edit to read here.</p>}
           <dl className="grid grid-cols-2 gap-4 text-small"><div><dt className="text-muted">Language</dt><dd className="text-fg">{data.language || 'Not specified'}</dd></div><div><dt className="text-muted">Your rating</dt><dd className="text-yellow"><StarRating value={data.user_rating} /></dd></div></dl>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useUpdateWork, useDeleteWork } from '@/hooks/useCatalogMutations';
+import { useUpdateWork } from '@/hooks/useCatalogMutations';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DeleteWorkButton } from '@/components/library/DeleteWorkButton';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 
 import { WORK_TYPES, WORK_TYPE_LABELS, type WorkType } from '@/lib/recordTypes';
@@ -33,8 +33,6 @@ export function EditWorkForm({
   const [workType, setWorkType] = useState(initialWorkType);
   const [userRating, setUserRating] = useState(initialUserRating);
   const update = useUpdateWork(workId);
-  const remove = useDeleteWork();
-  const [confirming, setConfirming] = useState(false);
   const previous = useRef({ title: initialTitle, subtitle: initialSubtitle ?? '', abstract: initialAbstract ?? '', language: initialLanguage ?? '', workType: initialWorkType, userRating: initialUserRating });
   const patch = { title: title.trim(), subtitle: subtitle.trim() || null, abstract: abstract.trim() || null, language: language.trim() || null, work_type: workType, ...(workType === 'book' ? { user_rating: userRating } : {}) };
   const dirty = patch.title !== initialTitle || patch.subtitle !== (initialSubtitle?.trim() || null) || patch.abstract !== (initialAbstract?.trim() || null) || patch.language !== (initialLanguage?.trim() || null) || workType !== initialWorkType || (workType === 'book' && userRating !== initialUserRating);
@@ -88,24 +86,9 @@ export function EditWorkForm({
         >
           Save
         </Button>
-        <Button
-          variant="danger"
-          onClick={() => setConfirming(true)}
-        >
-          Delete work
-        </Button>
+        <DeleteWorkButton workId={workId} title={initialTitle} />
       </div>
       <UnsavedChangesGuard dirty={dirty && !!title.trim()} subject="work" onSave={() => update.mutateAsync(patch)} />
-      <ConfirmDialog
-        open={confirming}
-        title={`Delete "${initialTitle}"?`}
-        description="This removes the work with all its records, identifiers, credits, notes and reading progress. Its files are deleted from storage within a day. This cannot be undone."
-        confirmLabel="Delete work"
-        busy={remove.isPending}
-        error={remove.error?.message}
-        onConfirm={() => remove.mutate(workId, { onSettled: () => setConfirming(false) })}
-        onClose={() => setConfirming(false)}
-      />
       {update.isError && <p className="text-small text-red">{update.error.message}</p>}
     </div>
   );
