@@ -174,3 +174,16 @@ export function parseAuthorityIdentifier(scheme: AuthorityScheme, raw: string): 
     case 'semantic_scholar': return /^\d+$/.test(value) ? value : null;
   }
 }
+
+const AUTHORITY_SCHEMES = new Set<string>(['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar']);
+
+// Keeps only authority identifiers that validate (§6.2); anything else from a provider is dropped.
+export function validAuthorityIds(value: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value ?? {}).flatMap(([scheme, raw]) => {
+      if (!AUTHORITY_SCHEMES.has(scheme)) return [];
+      const normalized = parseAuthorityIdentifier(scheme as AuthorityScheme, raw);
+      return normalized ? [[scheme, normalized]] : [];
+    }),
+  );
+}

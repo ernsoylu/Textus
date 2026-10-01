@@ -1,4 +1,4 @@
-import { parseAuthorityIdentifier, parseStandardReference, type AuthorityScheme } from 'shared/identifier';
+import { validAuthorityIds as validIds, parseStandardReference } from 'shared/identifier';
 import { chooseImportedContributor, fold, isJunk, parseName, type ImportedCandidate } from 'shared/names';
 import { queueCover, type NormalizedMetadata } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
@@ -23,18 +23,7 @@ export function locks(value: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
 }
 
-const AUTHORITY_SCHEMES = new Set<string>(['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar']);
-
-// Keeps only authority identifiers that validate (§6.2); anything else from a provider is dropped.
-export function validIds(value: Record<string, string> | undefined): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(value ?? {}).flatMap(([scheme, raw]) => {
-      if (!AUTHORITY_SCHEMES.has(scheme)) return [];
-      const normalized = parseAuthorityIdentifier(scheme as AuthorityScheme, raw);
-      return normalized ? [[scheme, normalized]] : [];
-    }),
-  );
-}
+export { validIds };
 
 function personParts(person: Person) {
   const parts = parseName(person.name).parts;

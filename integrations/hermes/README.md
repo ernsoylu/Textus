@@ -15,3 +15,5 @@ mcp_servers:
 ```
 
 Install `textus/SKILL.md` as `~/.hermes/skills/textus/SKILL.md`. Restart/reload Hermes, list Textus tools, and search your library. Revoke the token in Textus to stop access immediately. Expired, revoked or disabled-owner tokens never authenticate from a cache. Internal owner JWTs expire after five minutes and are never sent to the agent. Per-token/owner rates, Origin validation, bounded bodies/results and owner RLS apply to every tool request.
+
+Write tools are separately disabled unless the administrator sets `MCP_WRITES_ENABLED=true`. Keep Hermes on a read token by default. A deliberately issued write token can propose identifier creation, public URL imports, tags and collection membership; the owner must approve each exact action in Settings → Agents, then the client repeats the same requestId/arguments. Approval expires after 30 minutes, can be withdrawn, and cannot be supplied by the agent. Revocation is checked again at final database mutation.

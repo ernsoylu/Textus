@@ -5,7 +5,26 @@ export type Database = {
 
   "public": {
           Tables: {
-            "agent_tokens": {
+            "agent_actions": {
+                  Row: {
+                    "arguments": NonNullable<Json>,"created_at": string,"expires_at": string,"id": string,"preview": Json | null,"request_id": string,"result": Json | null,"status": string,"token_id": string | null,"tool": string,"user_id": string
+                  }
+                  Insert: {
+                    "arguments": NonNullable<Json>,"created_at"?: string,"expires_at"?: string,"id"?: string,"preview"?: Json | null,"request_id": string,"result"?: Json | null,"status"?: string,"token_id"?: string | null,"tool": string,"user_id": string
+                  }
+                  Update: {
+                    "arguments"?: NonNullable<Json>,"created_at"?: string,"expires_at"?: string,"id"?: string,"preview"?: Json | null,"request_id"?: string,"result"?: Json | null,"status"?: string,"token_id"?: string | null,"tool"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "agent_actions_token_id_fkey"
+      columns: ["token_id"]
+isOneToOne: false
+      referencedRelation: "agent_tokens"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"agent_tokens": {
                   Row: {
                     "created_at": string,"expires_at": string | null,"id": string,"last_used_at": string | null,"name": string,"scope": string,"token_hash": string,"token_prefix": string,"user_id": string
                   }
@@ -604,6 +623,9 @@ isOneToOne: false
 "commit_passage_batch":
 { Args: { "p_done": number,"p_generation": number,"p_job": string,"p_passages": Json,"p_reason"?: string,"p_status"?: string,"p_total": number }; Returns: boolean
                            },
+"complete_agent_upload":
+{ Args: { "p_action": string,"p_asset": Json,"p_request": Json,"p_token": string }; Returns: Json
+                           },
 "complete_upload":
 { Args: { "p_asset": Json,"p_id": string,"p_request": Json,"p_user": string }; Returns: Json
                            },
@@ -620,6 +642,9 @@ isOneToOne: false
                            },
 "defer_ai_job":
 { Args: { "p_generation": number,"p_id": string,"p_reason": string }; Returns: boolean
+                           },
+"execute_agent_action":
+{ Args: { "p_action": string,"p_token": string }; Returns: Json
                            },
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -679,8 +704,14 @@ isOneToOne: false
 "release_ai_lease":
 { Args: { "p_holder": string }; Returns: undefined
                            },
+"request_agent_action":
+{ Args: { "p_arguments": Json,"p_preview"?: Json,"p_request": string,"p_token": string,"p_tool": string }; Returns: Json
+                           },
 "retry_storage_deletion":
 { Args: { "p_bucket": string,"p_path": string }; Returns: undefined
+                           },
+"review_agent_action":
+{ Args: { "p_action": string,"p_approve": boolean }; Returns: undefined
                            },
 "search_library":
 { Args: { "p_limit"?: number,"p_query": string }; Returns: {

@@ -9,6 +9,7 @@ import { HttpError } from '../_shared/http.ts';
 import { rateLimit } from '../_shared/limits.ts';
 import { readerLink } from '../_shared/sourceLinks.ts';
 import { findSources, SourceRequest } from '../_shared/sources.ts';
+import { agentWrite, CreateFromIdentifier, AddFileFromUrl, TagWork, AddToCollection } from '../_shared/agentWrites.ts';
 import { lookupAcrossProviders } from '../metadata-lookup/index.ts';
 import { IDENTIFIER_SCHEMES, parseIdentifier } from '../_shared/identifier.ts';
 
@@ -69,6 +70,13 @@ export function createAgentServer(principal: AgentPrincipal, client: SupabaseCli
     const response = await lookupAcrossProviders({ supabase: client, supabaseAdmin: admin }, input.scheme, identifier.normalized);
     return toolResult(await response.json());
   });
+  if (Deno.env.get('MCP_WRITES_ENABLED') === 'true' && principal.scope === 'read_write') {
+    const writeAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+    server.registerTool('create_work_from_identifier', { description: 'Propose catalog creation from a public identifier. Requires owner approval in Textus; retry with identical requestId/arguments after approval.', inputSchema: CreateFromIdentifier, annotations: writeAnnotations }, async (input: z.infer<typeof CreateFromIdentifier>) => toolResult(await agentWrite(principal, client, admin, 'create_work_from_identifier', input)));
+    server.registerTool('add_file_from_url', { description: 'Propose downloading a public URL into an owned record. Requires exact owner approval; retry with the same requestId/arguments.', inputSchema: AddFileFromUrl, annotations: writeAnnotations }, async (input: z.infer<typeof AddFileFromUrl>) => toolResult(await agentWrite(principal, client, admin, 'add_file_from_url', input)));
+    server.registerTool('tag_work', { description: 'Propose applying an owned tag to all records of an owned work (at most 100). Requires owner approval.', inputSchema: TagWork, annotations: { ...writeAnnotations, openWorldHint: false } }, async (input: z.infer<typeof TagWork>) => toolResult(await agentWrite(principal, client, admin, 'tag_work', input)));
+    server.registerTool('add_to_collection', { description: 'Propose adding all records of an owned work to an owned collection (at most 100). Requires owner approval.', inputSchema: AddToCollection, annotations: { ...writeAnnotations, openWorldHint: false } }, async (input: z.infer<typeof AddToCollection>) => toolResult(await agentWrite(principal, client, admin, 'add_to_collection', input)));
+  }
   return server;
 }
 const serve = withSupabase({ auth: 'none' }, async (req: Request, ctx: SupabaseContext) => {

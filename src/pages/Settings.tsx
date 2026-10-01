@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { deleteAccount } from '@/lib/functions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useSearchParams } from 'react-router-dom';
 
 // Figma "settings", "appearance" and "opds": Account, Appearance and OPDS tabs.
 const TABS = [
@@ -138,7 +139,8 @@ function OpdsTab({ onSetPassword }: Readonly<{ onSetPassword: () => void }>) {
 }
 
 export function Settings() {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('account');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>(() => TABS.find((t) => t.id === params.get('tab'))?.id ?? 'account');
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
       <div className="flex flex-col gap-1">

@@ -7,6 +7,8 @@
 // bypasses RLS (used for the privileged writes only the server may do — CLAUDE.md invariants 3/6).
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { z } from 'zod';
+import type { SupabaseClient } from '@supabase/supabase-js';
+type UploadContext = { supabase: SupabaseClient; supabaseAdmin: SupabaseClient; userId: string; agentAction?: { id: string; tokenId: string } };
 import { createHash } from 'node:crypto';
 import { SNIFF_HEAD_BYTES, sniff, TextProbe } from '../_shared/sniff.ts';
 import { parsePublicUrl } from '../_shared/publicUrl.ts';
@@ -57,7 +59,7 @@ const FromUrlSchema = z.object({
   url: z.string().max(2048),
 });
 
-async function assertRecordOwner(ctx: SupabaseContext, recordId: string): Promise<boolean> {
+async function assertRecordOwner(ctx: UploadContext, recordId: string): Promise<boolean> {
   // RLS-scoped client: a row comes back only if this record belongs to the caller.
   const { data, error } = await ctx.supabase.from('records').select('id').eq('id', recordId).maybeSingle();
   if (error) throw error;
@@ -71,7 +73,7 @@ type Staged = { kind: 'ok'; size: number; checksum: string; mimeType: string | n
 // One streaming pass over a staged object: SHA-256, size, and the type from its bytes (invariant 6). Memory stays
 // constant however large the file is (§15 #1): chunks flow through the hash and are only glanced at, never kept
 // beyond the first SNIFF_HEAD_BYTES.
-async function inspectStaged(ctx: SupabaseContext, stagingPath: string, signal: AbortSignal): Promise<Staged> {
+async function inspectStaged(ctx: UploadContext, stagingPath: string, signal: AbortSignal): Promise<Staged> {
   const { data: signed } = await ctx.supabaseAdmin.storage.from('staging').createSignedUrl(stagingPath, 300);
   if (!signed) return { kind: 'missing' };
   const res = await fetch(signed.signedUrl, { signal: signal });
@@ -108,7 +110,7 @@ async function inspectStaged(ctx: SupabaseContext, stagingPath: string, signal: 
 // Copies staging -> final path as a stream, stamping the *sniffed* content type on the stored object (a server-side
 // storage copy would keep the client's declared type). The path is content-addressed, so an existing object already
 // holds these exact bytes and is left alone; a signed upload URL avoids handling the service key here.
-async function publishStaged(ctx: SupabaseContext, stagingPath: string, bucket: string, destPath: string, mimeType: string, size: number, signal: AbortSignal): Promise<string | null> {
+async function publishStaged(ctx: UploadContext, stagingPath: string, bucket: string, destPath: string, mimeType: string, size: number, signal: AbortSignal): Promise<string | null> {
   const { data: exists } = await ctx.supabaseAdmin.storage.from(bucket).exists(destPath);
   if (exists) return null;
   const { data: source } = await ctx.supabaseAdmin.storage.from('staging').createSignedUrl(stagingPath, 300);
@@ -130,7 +132,7 @@ async function publishStaged(ctx: SupabaseContext, stagingPath: string, bucket: 
   return raced ? null : `storage returned ${put.status}`;
 }
 
-async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Response> {
+async function handleIntent(req: Request, ctx: UploadContext): Promise<Response> {
   const parsed = IntentSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   const { uploadId, recordId, size, filename } = parsed.data;
@@ -138,21 +140,21 @@ async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Respons
   if (!(await assertRecordOwner(ctx, recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
   if (size > MAX_UPLOAD_SIZE) return Response.json({ error: 'file_too_large', limit: MAX_UPLOAD_SIZE }, { status: 400 });
 
-  await checked(ctx.supabaseAdmin.rpc('begin_upload', { p_user: ctx.userClaims!.id, p_id: uploadId, p_record: recordId, p_intent: { filename, size, source: 'file' } }));
+  await checked(ctx.supabaseAdmin.rpc('begin_upload', { p_user: ctx.userId, p_id: uploadId, p_record: recordId, p_intent: { filename, size, source: 'file' } }));
 
   // uploadId (a validated UUID) already makes this path unique per upload attempt; the
   // client's filename plays no role in it (see the schema comment above) — nothing downstream
   // reads the staging object's name back (handleComplete lists the folder and uses whatever
   // name storage reports), and the final destination's extension comes from magic-byte
   // sniffing, not from this filename.
-  const path = `${ctx.userClaims!.id}/${uploadId}/upload`;
+  const path = `${ctx.userId}/${uploadId}/upload`;
   const { data, error } = await ctx.supabaseAdmin.storage.from('staging').createSignedUploadUrl(path);
   if (error) return Response.json({ error: 'storage_error', message: error.message }, { status: 500 });
 
   return Response.json({ path: data.path, token: data.token });
 }
 
-async function handleComplete(req: Request, ctx: SupabaseContext, signal: AbortSignal): Promise<Response> {
+async function handleComplete(req: Request, ctx: UploadContext, signal: AbortSignal): Promise<Response> {
   const parsed = CompleteSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   if (!(await assertRecordOwner(ctx, parsed.data.recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
@@ -160,8 +162,8 @@ async function handleComplete(req: Request, ctx: SupabaseContext, signal: AbortS
 }
 
 // Everything after the bytes are in staging (§9.1): verify, publish, asset, link, jobs. Shared by complete and from-url.
-export async function completeStaged(ctx: SupabaseContext, { uploadId, recordId, role, filename }: z.infer<typeof CompleteSchema>, signal: AbortSignal): Promise<Response> {
-  const userId = ctx.userClaims!.id;
+export async function completeStaged(ctx: UploadContext, { uploadId, recordId, role, filename }: z.infer<typeof CompleteSchema>, signal: AbortSignal): Promise<Response> {
+  const userId = ctx.userId;
   const request = { role, filename: filename ?? '' };
   const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
   if (!attempt || attempt.record_id !== recordId) return Response.json({ error: 'upload_intent_missing' }, { status: 409 });
@@ -195,8 +197,8 @@ export async function completeStaged(ctx: SupabaseContext, { uploadId, recordId,
   const destPath = `${userId}/${staged.checksum}.${ext}`;
   const publishError = await publishStaged(ctx, stagingPath, bucket, destPath, staged.mimeType, staged.size, signal);
   if (publishError) return Response.json({ error: 'storage_error' }, { status: 500 });
-  const result = await checked(ctx.supabaseAdmin.rpc('complete_upload', {
-    p_user: userId, p_id: uploadId, p_request: request,
+  const result = await checked(ctx.supabaseAdmin.rpc(ctx.agentAction ? 'complete_agent_upload' : 'complete_upload', {
+    ...(ctx.agentAction ? { p_action: ctx.agentAction.id, p_token: ctx.agentAction.tokenId } : { p_user: userId, p_id: uploadId }), p_request: request,
     p_asset: { bucket, storage_path: destPath, file_size: staged.size, checksum_sha256: staged.checksum,
       mime_type: staged.mimeType, file_format: isCover ? 'image' : ext, processing_state: isCover ? 'ready' : 'pending' },
   }));
@@ -219,18 +221,18 @@ function filenameFromUrl(url: string): string | undefined {
 // "Add via link": the server downloads the file into the same staging path an intent would have issued, then finishes
 // exactly like complete. Size is enforced by the staging bucket's 500 MB limit while streaming (§7.4), plus an early
 // Content-Length check.
-async function handleFromUrl(req: Request, ctx: SupabaseContext, signal: AbortSignal): Promise<Response> {
+export async function handleFromUrl(req: Request, ctx: UploadContext, signal: AbortSignal): Promise<Response> {
   const parsed = FromUrlSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   const { uploadId, recordId, role, url } = parsed.data;
   if (!parsePublicUrl(url)) return Response.json({ error: 'invalid_url' }, { status: 400 });
   if (!(await assertRecordOwner(ctx, recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
 
-  const replay = await checked(ctx.supabaseAdmin.rpc('begin_upload', { p_user: ctx.userClaims!.id, p_id: uploadId, p_record: recordId, p_intent: { url, role, source: 'url' } }));
+  const replay = await checked(ctx.supabaseAdmin.rpc('begin_upload', { p_user: ctx.userId, p_id: uploadId, p_record: recordId, p_intent: { url, role, source: 'url' } }));
   if (replay) return Response.json(replay);
-  const { data: frozen } = await ctx.supabaseAdmin.storage.from('staging').exists(`${ctx.userClaims!.id}/${uploadId}/frozen`);
+  const { data: frozen } = await ctx.supabaseAdmin.storage.from('staging').exists(`${ctx.userId}/${uploadId}/frozen`);
   if (frozen) return completeStaged(ctx, { uploadId, recordId, role, filename: filenameFromUrl(url) }, signal);
-  const path = `${ctx.userClaims!.id}/${uploadId}/upload`;
+  const path = `${ctx.userId}/${uploadId}/upload`;
   try {
     const res = await fetchPublic(url, signal);
     if (!res?.ok || !res.body) {
@@ -257,7 +259,7 @@ async function handleFromUrl(req: Request, ctx: SupabaseContext, signal: AbortSi
       return Response.json({ status: 'rejected', reason: put.status === 413 ? 'size_mismatch' : 'unreachable' });
     }
   } catch (e) {
-    console.error('upload: could not download the linked file', e);
+    console.error('upload: public download failed', e instanceof Error ? e.name : 'Error');
     return Response.json({ status: 'rejected', reason: 'unreachable' });
   }
   return completeStaged(ctx, { uploadId, recordId, role, filename: filenameFromUrl(url) }, signal);
@@ -267,9 +269,10 @@ export default {
   // async is required by withSupabase's handler type (Promise<Response>, not Response |
   // Promise<Response>) — this function has no internal await since it just dispatches to
   // the handle* functions above, which are themselves async.
-  fetch: withSupabase({ auth: 'user' }, withBudget(async (req: Request, ctx: SupabaseContext) => {
+  fetch: withSupabase({ auth: 'user' }, withBudget(async (req: Request, serverContext: SupabaseContext) => {
+    const ctx: UploadContext = { ...serverContext, userId: serverContext.userClaims!.id };
     if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-    await rateLimit(ctx.supabaseAdmin, `upload:${ctx.userClaims!.id}`, 20);
+    await rateLimit(ctx.supabaseAdmin, `upload:${ctx.userId}`, 20);
     const signal = deadline();
     const { pathname } = new URL(req.url);
     if (pathname.endsWith('/intent')) return handleIntent(req, ctx);

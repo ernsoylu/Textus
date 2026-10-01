@@ -7,7 +7,7 @@ const { insert } = vi.hoisted(() => ({ insert: vi.fn().mockResolvedValue({ error
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ session: { user: { id: 'owner' } } }) }));
 vi.mock('@/lib/functions', () => ({ aiStatus: vi.fn().mockResolvedValue({ agentsEnabled: true }) }));
 vi.mock('@/lib/supabase', () => ({ supabaseUrl: 'https://api.example', supabase: { from: () => {
-  const chain = { select: () => chain, order: () => chain, limit: () => Promise.resolve({ data: [], error: null }), insert };
+  const chain = { select: () => chain, in: () => chain, order: () => chain, limit: () => Promise.resolve({ data: [], error: null }), insert };
   return chain;
 } } }));
 afterEach(() => vi.unstubAllGlobals());
