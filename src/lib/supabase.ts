@@ -4,10 +4,13 @@ import type { Database } from '@/types/database';
 // Anon key only — see CLAUDE.md invariant 9. Service role and provider keys
 // exist only in Edge Functions, never here.
 //
-// Production sets VITE_SUPABASE_URL to the HTTPS API gateway. If unset,
-// the same-origin nginx API proxy remains available (deploy/nginx.conf).
+// VITE_SUPABASE_URL is optional: unset, the SPA talks to its own origin, where the production
+// image's nginx proxies /auth, /rest, /storage and /functions to Supabase over the internal
+// Docker network (deploy/nginx.conf).
 export const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || globalThis.location.origin;
 export const supabaseAnonKey: string = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Public Turnstile site key; when set, Supabase Auth requires its CAPTCHA token (components/account/Turnstile.tsx).
+export const turnstileSiteKey: string = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '';
 const anonKey = supabaseAnonKey;
 
 if (!anonKey) {

@@ -103,7 +103,7 @@ function AccountTab() {
   );
 }
 
-function OpdsTab({ onSetPassword }: Readonly<{ onSetPassword: () => void }>) {
+function OpdsTab({ onCreateToken }: Readonly<{ onCreateToken: () => void }>) {
   const catalogUrl = `${supabaseUrl}/functions/v1/opds`;
   const [copied, setCopied] = useState(false);
 
@@ -127,12 +127,12 @@ function OpdsTab({ onSetPassword }: Readonly<{ onSetPassword: () => void }>) {
         <ol className="list-decimal pl-5 text-body text-muted">
           <li>Add an OPDS catalog in your reader.</li>
           <li>Paste the catalog URL above.</li>
-          <li>Sign in with your account email and password.</li>
+          <li>Sign in with any username and a read-only agent token as the password.</li>
         </ol>
       </div>
       <p className="text-small text-muted">
-        Readers sign in with HTTP Basic, so an account that only uses magic links needs a password first.{' '}
-        <button type="button" className="text-green underline" onClick={onSetPassword}>Set a password</button>
+        Your account password is not accepted here. Revoke the token to disconnect the reader.{' '}
+        <button type="button" className="text-green underline" onClick={onCreateToken}>Create a token</button>
       </p>
     </div>
   );
@@ -166,7 +166,7 @@ export function Settings() {
       {tab === 'ai' && <AiTab />}
       {tab === 'agents' && <AgentTab />}
       {tab === 'appearance' && <AppearanceTab />}
-      {tab === 'opds' && <OpdsTab onSetPassword={() => setTab('account')} />}
+      {tab === 'opds' && <OpdsTab onCreateToken={() => setTab('agents')} />}
     </div>
   );
 }

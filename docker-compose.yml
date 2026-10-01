@@ -8,8 +8,9 @@ services:
     build:
       context: .
       args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://base.textus.bff.bz}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?set VITE_SUPABASE_ANON_KEY in .env}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
     image: textus-web:latest
     container_name: textus-web
     restart: unless-stopped

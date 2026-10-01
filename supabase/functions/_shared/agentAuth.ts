@@ -17,8 +17,10 @@ export async function hashAgentToken(token: string) {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 export async function authenticateAgent(admin: SupabaseClient, req: Request): Promise<AgentPrincipal> {
-  const token = /^Bearer (tx_[0-9a-f]{64})$/i.exec(req.headers.get('Authorization') ?? '')?.[1];
-  if (!token) throw new HttpError('invalid_agent_token', 401);
+  return await agentPrincipal(admin, /^Bearer (tx_[0-9a-f]{64})$/i.exec(req.headers.get('Authorization') ?? '')?.[1]);
+}
+export async function agentPrincipal(admin: SupabaseClient, token: string | undefined): Promise<AgentPrincipal> {
+  if (!token || !/^tx_[0-9a-f]{64}$/i.test(token)) throw new HttpError('invalid_agent_token', 401);
   const data = await checked(admin.rpc('use_agent_token', { p_hash: await hashAgentToken(token) }));
   const principal = data?.[0];
   if (!principal || !['read', 'read_write'].includes(principal.scope)) throw new HttpError('invalid_agent_token', 401);

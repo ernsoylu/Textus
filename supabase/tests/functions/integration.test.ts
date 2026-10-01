@@ -81,8 +81,16 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
     const exportBody = await exported.json();
     if (!exported.ok || exportBody.count !== 1 || !exportBody.content.includes(`Phase 7 ${suffix}`)) throw new Error(`citation export failed (${exported.status})`);
 
+    const passwordFeed = await fetch(`${api}/functions/v1/opds`, { headers: { Authorization: `Basic ${btoa(`${email}:${password}`)}`, apikey: anon } });
+    await passwordFeed.body?.cancel();
+    if (passwordFeed.status !== 401) throw new Error(`OPDS accepted an account password (${passwordFeed.status})`);
+    const opdsToken = `tx_${Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+    const tokenHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(opdsToken))), (b) => b.toString(16).padStart(2, '0')).join('');
+    const minted = await fetch(`${api}/rest/v1/agent_tokens`, { method: 'POST', headers: headers(service, service), body: JSON.stringify({ user_id: userId, name: 'OPDS fixture', token_hash: tokenHash, token_prefix: opdsToken.slice(0, 9), scope: 'read' }) });
+    await minted.body?.cancel();
+    if (!minted.ok) throw new Error(`OPDS token fixture failed (${minted.status})`);
     const opds = await fetch(`${api}/functions/v1/opds`, {
-      headers: { Authorization: `Basic ${btoa(`${email}:${password}`)}`, apikey: anon },
+      headers: { Authorization: `Basic ${btoa(`reader:${opdsToken}`)}`, apikey: anon },
     });
     const feed = await opds.text();
     if (!opds.ok || !feed.includes('All titles') || !feed.includes('Collections')) throw new Error(`OPDS start feed failed (${opds.status})`);

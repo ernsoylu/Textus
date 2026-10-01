@@ -1,10 +1,10 @@
 // Edge Function: opds (§8.5, FR-SER-3). An OPDS 1.2 catalog for e-reader apps.
 //
 // E-readers cannot send a Supabase JWT, so this function does its own auth (`auth: 'none'`; the
-// platform JWT check is off in config.toml): HTTP Basic with the account's email + password,
-// exchanged for a session on the request-scoped anon client. Every query afterwards runs as that
-// user under RLS, and no service-role client is used. Accounts that only use magic-link sign-in
-// have no password and cannot use this feed.
+// platform JWT check is off in config.toml): HTTP Basic whose password is an agent token (Settings →
+// Agents; the username is ignored). Account passwords are not accepted: sign-in requires a CAPTCHA,
+// and a 256-bit revocable token cannot be guessed. The service role only resolves the token hash;
+// every query afterwards runs as the owner under RLS with a short-lived agent JWT.
 //
 // Files stay private (invariant 7): entries link to /opds/download/{assetId} and /opds/cover/{assetId},
 // which re-authenticate and redirect to a fresh 300 s signed URL.
@@ -12,6 +12,7 @@
 // Routes (all under /functions/v1/opds): "" (start, navigation), all, new, collections, collection/{id},
 // search?q=, opensearch.xml, download/{assetId}, cover/{assetId}.
 import { withSupabase, type SupabaseContext } from '@supabase/server';
+import { agentClient, agentPrincipal } from '../_shared/agentAuth.ts';
 import { ACQUISITION_TYPE, buildFeed, buildNavigationFeed, buildOpenSearch, NAVIGATION_TYPE, type OpdsEntry } from '../_shared/opds.ts';
 
 const PAGE_SIZE = 100;
@@ -40,15 +41,15 @@ function unauthorized(): Response {
   return new Response('Authentication required', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="Textus", charset="UTF-8"' } });
 }
 
-function basicCredentials(req: Request): { email: string; password: string } | null {
+function basicPassword(req: Request): string | undefined {
   const header = req.headers.get('authorization') ?? '';
-  if (!header.startsWith('Basic ')) return null;
+  if (!header.startsWith('Basic ')) return undefined;
   try {
     const decoded = new TextDecoder().decode(Uint8Array.from(atob(header.slice(6)), (c) => c.codePointAt(0)!));
     const at = decoded.indexOf(':');
-    return at > 0 ? { email: decoded.slice(0, at), password: decoded.slice(at + 1) } : null;
+    return at >= 0 ? decoded.slice(at + 1) : undefined;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -171,14 +172,13 @@ async function route(r: Route, path: string): Promise<Response> {
 
 export default {
   fetch: withSupabase({ auth: 'none' }, async (req, ctx) => {
-    const creds = basicCredentials(req);
-    if (!creds) return unauthorized();
-    const { error: signInError } = await ctx.supabase.auth.signInWithPassword(creds);
-    if (signInError) return unauthorized();
+    const principal = await agentPrincipal(ctx.supabaseAdmin, basicPassword(req)).catch(() => null);
+    if (!principal) return unauthorized();
+    const client = await agentClient(principal);
 
     const url = new URL(req.url);
     const root = `${Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL') ?? url.origin}/functions/v1/opds`;
     const path = (url.pathname.split('/opds').pop() ?? '').split('/').filter(Boolean).join('/');
-    return await route({ ctx, root, url, updated: new Date().toISOString() }, path);
+    return await route({ ctx: { ...ctx, supabase: client }, root, url, updated: new Date().toISOString() }, path);
   }),
 };

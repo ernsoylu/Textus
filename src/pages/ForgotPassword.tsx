@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { supabase, turnstileSiteKey } from '@/lib/supabase';
 import { AuthLayout } from '@/components/account/AuthLayout';
+import { Turnstile } from '@/components/account/Turnstile';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -12,15 +13,20 @@ export function ForgotPassword() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const parsed = z.string().email('Enter a valid email address.').safeParse(email);
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Enter a valid email address.');
+    if (turnstileSiteKey && !captchaToken) return setError('Complete the security check.');
     setLoading(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${globalThis.location.origin}/reset` });
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${globalThis.location.origin}/reset`, ...(captchaToken ? { captchaToken } : {}) });
     setLoading(false);
+    setCaptchaToken(null);
+    setCaptchaReset((n) => n + 1);
     if (resetError) return setError(resetError.message);
     setSent(true);
   }
@@ -32,6 +38,7 @@ export function ForgotPassword() {
           Email address
           <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} error={error ?? undefined} />
         </label>
+        {turnstileSiteKey && <Turnstile onToken={setCaptchaToken} resetKey={captchaReset} />}
         {sent && <output className="text-small text-green">If that address has an account, a recovery link is on its way.</output>}
         <Button type="submit" isLoading={loading}>Send recovery link</Button>
       </form>

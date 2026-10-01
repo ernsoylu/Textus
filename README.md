@@ -276,13 +276,26 @@ Provider configuration (`CROSSREF_MAILTO`, `SEMANTIC_SCHOLAR_API_KEY`, `GOOGLE_B
 Vite inlines `VITE_*` variables at **build time**, so they are build arguments, not runtime environment. The provided image serves the SPA with nginx and **proxies `/auth`, `/rest`, `/storage` and `/functions` to the Supabase gateway over Docker's internal network**, so the browser only talks to one origin and API calls skip the public gateway. Run it on the same host as Supabase and join Supabase's compose network:
 
 ```bash
-echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # HTTPS API URL defaults to https://base.textus.bff.bz
+echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL is not needed; add VITE_TURNSTILE_SITE_KEY for CAPTCHA
 docker compose up -d --build                                  # serves on :8080 (TEXTUS_PORT to change)
 ```
 
-`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). The production build calls `https://base.textus.bff.bz` directly by default. Override `VITE_SUPABASE_URL` for another gateway; both URL and anon key are build arguments. The nginx API proxy remains available for same-origin deployments.
+`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). The SPA calls its own origin, so the CSP's `connect-src 'self'` holds and the proxy forces document downloads to attach. If Supabase runs elsewhere, build with `VITE_SUPABASE_URL` and add that origin to `connect-src`/`img-src` in `deploy/security-headers.conf`.
 
 Point Supabase Auth at the app so magic links and recovery links land on it: set `SITE_URL` (and `ADDITIONAL_REDIRECT_URLS`) to the app's URL in the Supabase `.env`, then `docker compose up -d auth`. Auth emails also need a working SMTP server (`SMTP_*` in the same `.env`); without one, generate links with the admin API (`/auth/v1/admin/generate_link`).
+
+Textus is invite-only and its sign-in is CAPTCHA-protected. Create a Cloudflare Turnstile widget for the app's hostname, build the SPA with `VITE_TURNSTILE_SITE_KEY`, put the secret in the Supabase `.env` as `TURNSTILE_SECRET_KEY`, then extend the `auth` service (app102 keeps this in `docker-compose.textus.yml`) and run `docker compose up -d --no-deps auth`:
+
+```yaml
+  auth:
+    environment:
+      GOTRUE_DISABLE_SIGNUP: "true"          # the owner creates accounts with the Auth admin API
+      GOTRUE_SECURITY_CAPTCHA_ENABLED: "true"
+      GOTRUE_SECURITY_CAPTCHA_PROVIDER: turnstile
+      GOTRUE_SECURITY_CAPTCHA_SECRET: ${TURNSTILE_SECRET_KEY:?set TURNSTILE_SECRET_KEY in .env}
+```
+
+Deploy the frontend with the widget before enabling the CAPTCHA, or sign-in stops working. OPDS readers authenticate with an agent token as the Basic-auth password, so the CAPTCHA does not affect them.
 
 The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it must be reachable without a JWT: `verify_jwt = false` locally (already in `supabase/config.toml`) and `--no-verify-jwt` on hosted projects; the self-hosted `main` router does not verify JWTs unless `VERIFY_JWT=true`.
 
@@ -290,7 +303,8 @@ The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it mu
 
 | Variable | Where | Required |
 |----------|-------|----------|
-| `VITE_SUPABASE_URL` | Frontend (build time) | Production defaults to https://base.textus.bff.bz; an empty value uses the app proxy |
+| `VITE_SUPABASE_URL` | Frontend (build time) | Optional; defaults to the app origin and nginx proxy |
+| `VITE_TURNSTILE_SITE_KEY` | Frontend (build time) | Production; must match Supabase Auth's CAPTCHA secret |
 | `VITE_SUPABASE_ANON_KEY` | Frontend (build time) | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions only | Yes |
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
