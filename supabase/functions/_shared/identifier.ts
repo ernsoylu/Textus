@@ -33,6 +33,9 @@ export interface IdentifierError {
 
 export type IdentifierResult = IdentifierOk | IdentifierError;
 
+// Hyphens, en/em dashes, minus and soft hyphens that copied ISBNs/ISSNs carry, plus any whitespace.
+const SEPARATORS = /[\p{Pd}\u2212\u00AD\s]/gu;
+
 function digitValue(ch: string): number | null {
   if (ch === 'X' || ch === 'x') return 10;
   return /^\d$/.test(ch) ? Number(ch) : null;
@@ -60,11 +63,7 @@ function isbn10ToIsbn13(isbn10: string): string {
 }
 
 function parseIsbn(raw: string): IdentifierResult {
-  const cleaned = raw
-    .trim()
-    .replace(/^isbn(-1[03])?:?\s*/i, '')
-    .replace(/[-\s]/g, '')
-    .toUpperCase();
+  const cleaned = raw.replace(SEPARATORS, '').replace(/^isbn(1[03])?:?/i, '').toUpperCase();
 
   if (cleaned.length === 10) {
     if (!/^\d{9}[\dX]$/.test(cleaned)) return { ok: false, reason: 'invalid_format' };
@@ -99,7 +98,7 @@ function issnCheckDigit(first7: string): number {
 }
 
 function parseIssn(raw: string): IdentifierResult {
-  const cleaned = raw.trim().replace(/[-\s]/g, '').toUpperCase();
+  const cleaned = raw.replace(SEPARATORS, '').toUpperCase();
   if (!/^\d{7}[\dX]$/.test(cleaned)) return { ok: false, reason: 'invalid_format' };
   const expected = issnCheckDigit(cleaned.slice(0, 7));
   const actual = digitValue(cleaned[7])!;

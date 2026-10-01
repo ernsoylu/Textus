@@ -37,6 +37,13 @@ describe('isbn (§6.2)', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('accepts Unicode dashes copied from web pages', () => {
+    for (const raw of ['978\u20111\u201178060\u2011025\u20113', '978\u20131\u201378060\u2013025\u20133', 'ISBN\u201113: 978\u22121\u00AD78060 025\u20143']) {
+      expect(parseIdentifier('isbn', raw)).toMatchObject({ ok: true, normalized: '9781780600253' });
+    }
+    expect(parseIdentifier('issn', '0317\u20138471')).toMatchObject({ ok: true, normalized: '0317-8471' });
+  });
+
   it('rejects a wrong ISBN-10 check digit', () => {
     expect(parseIdentifier('isbn', '0201616221')).toEqual({ ok: false, reason: 'invalid_check_digit' });
   });

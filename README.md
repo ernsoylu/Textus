@@ -244,10 +244,10 @@ cd supabase-project && cp .env.example .env
 docker compose pull && docker compose up -d
 ```
 
-Storage caps every upload at 50 MB by default, below the 500 MB `documents`/`staging` bucket limit. Raise it with an override file layered through `COMPOSE_FILE`:
+Storage caps every upload at 50 MB by default, below the 500 MB `documents`/`staging` bucket limit. Its file backend also re-hashes the whole file for an MD5 ETag on every request, including each pdf.js range request (about 0.6 s per request for a 300 MB PDF); documents are content-addressed and immutable, so the `mtime` ETag is safe. Set both with an override file layered through `COMPOSE_FILE`:
 
 ```bash
-printf 'services:\n  storage:\n    environment:\n      FILE_SIZE_LIMIT: 524288000\n' > docker-compose.textus.yml
+printf 'services:\n  storage:\n    environment:\n      FILE_SIZE_LIMIT: 524288000\n      STORAGE_FILE_ETAG_ALGORITHM: mtime\n' > docker-compose.textus.yml
 sh run.sh config add textus && docker compose up -d storage
 ```
 

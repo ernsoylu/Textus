@@ -125,6 +125,11 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, onS
       if (signError || !data) throw signError ?? new Error('Could not create a signed URL.');
       task = pdfjsLib.getDocument({
         url: data.signedUrl,
+        // Fetch only the byte ranges the visible pages need, in fewer round trips, instead of streaming the
+        // whole file (up to 500 MB) in the background, which starves those requests on a slow link.
+        disableStream: true,
+        disableAutoFetch: true,
+        rangeChunkSize: 512 * 1024,
         wasmUrl: `${pdfAssets}wasm/`,
         cMapUrl: `${pdfAssets}cmaps/`,
         cMapPacked: true,
