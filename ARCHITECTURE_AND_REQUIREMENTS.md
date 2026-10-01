@@ -1460,7 +1460,7 @@ CREATE TABLE asset_passages (
     section INTEGER,                         -- EPUB: spine index
     cfi TEXT,                                -- EPUB: start CFI, used by the reader deep link
     content TEXT NOT NULL CHECK (length(content) <= 8000),
-    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
     embedding extensions.vector(768),        -- dimension of OLLAMA_EMBED_MODEL (nomic-embed-text)
     embedding_model TEXT,                  -- immutable model digest/version, not only a mutable tag
     UNIQUE (asset_id, index_version, ordinal),
@@ -1890,7 +1890,7 @@ All items remain open; existing M1–M5 completion does not waive these gates.
 
 1. [x] **M6.0 — security/integrity:** isolate browser caches (SEC-01), close URL SSRF (SEC-02), patch audited dependencies (SEC-03), make uploads replayable and immutable (SYS-01), make cleanup safe/progressive (SYS-02), and fix worker deadlines/claims/states (SYS-03). Inventory deployment limits.
 2. [x] **M6.1 — optional AI foundation:** Activity count/state (FR-FILE-6), AI settings/status and approved local models (FR-AI-1/2), network restrictions, quotas and bounded concurrency (M6-SEC-03). AI failure must not break ordinary catalog work.
-3. [ ] **M6.2 — complete FTS passages:** bounded/versioned PDF/EPUB indexing, existing-library backfill, coverage, retry/cancel and reader links (FR-AI-4, M6-SYS-01). Prove two-user isolation and crash recovery before embedding.
+3. [x] **M6.2 — complete FTS passages:** bounded/versioned PDF/EPUB indexing, existing-library backfill, coverage, retry/cancel and reader links (FR-AI-4, M6-SYS-01). Prove two-user isolation and crash recovery before embedding.
 4. [ ] **M6.3 — reviewed metadata fallback:** `extract_metadata_ai` suggestions (FR-AI-3), explicit provenance/locks, exclusion from automatic apply and consent for external title/author searches (SYS-04).
 5. [ ] **M6.4 — read-only MCP/Hermes:** token settings, central scope/revocation checks, transport validation and real client compatibility (FR-AI-6/7/8, M6-SEC-01/02). Ship `integrations/hermes/textus/SKILL.md`; advertise AI tools only when available.
 6. [ ] **M6.5 — hybrid/cited sources:** embedding batches, filtered hybrid ranking, `find-sources` / `find_sources`, context budgets and measured GPU latency (FR-AI-4/5, M6-SYS-02). Keep explicit FTS fallback and coverage warnings.
@@ -1963,3 +1963,9 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 | 24 | **LLM review bypass/partial catalog creation — P1** | The current automatic importer accepts any suggestion with a title; catalog creation uses multiple independent writes. | SYS-04: exclude LLM suggestions from auto-apply, explicit review/provenance and atomic replay-safe creation. |
 | 25 | **Dependency/reader security verification — P1** | Current npm audit finds development-tool advisories; hostile-book browser isolation is not covered by existing string tests. | SEC-03/04: patched compatible tooling, CI audit/Edge tests and adversarial reader fixtures. Production-only npm audit is clean; this does not cover Deno/vendored code. |
 | 26 | **Deployment/restore evidence — P1** | Old app02 notes conflict with the new reference deployment; consistent recovery and new token/index operational controls are unverified. | OPS-01: inventory, staged enablement, redacted logs/retention, restore/rollback drill and token invalidation on restore. |
+
+### M6.2 implemented index contract
+
+`asset_passages` and the owner/asset composite foreign key are live in migrations. FTS uses `simple` to retain non-English words; embeddings follow in M6.5. `search_passages(query, limit, work_ids)` and `passage_coverage(work_ids)` are security-invoker RPCs. `control_passage_index(action, asset)` requires an owner session and supports backfill (100 files), retry from the last checkpoint, cancellation and a fresh-version reindex. The service-only `commit_passage_batch` atomically inserts deterministic ordinals, writes progress and continues/finishes the current fenced job. Automatic extraction scheduling is replay-safe; extraction metadata merges preserve newer checkpoints. Controls and checkpoints acquire owner locks before job/asset locks.
+
+PDF indexing uses signed HEAD/range requests with automatic fetching/streaming disabled: six pages, 128 passages, 24 MB fetched and a 35 s parser deadline per invocation. EPUB indexing follows the container/OPF spine, four sections per batch, actual OPF/body section-start CFIs, at most 25 MB compressed input, 2 MB per inflated entry and 10,000 markup delimiters per parsed document. Oversized/encrypted or limited input reports not-indexable/partial coverage, retaining any completed passages; no text is distinct from parsing failure. Chunks preserve word/Unicode boundaries at approximately 2,000 characters. Per-owner quota: 50,000 passages and 500 active jobs. Section CFIs locate the section start; they do not pretend to identify an exact quoted character. Activity shows coverage, progress, reasons and controls, with FTS results linked to the actual `/library/:workId/records/:recordId/assets/:assetId/read` route.

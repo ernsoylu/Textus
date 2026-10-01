@@ -1,3 +1,4 @@
+import { PassageIndex } from '@/components/account/PassageIndex';
 import { useJobs } from '@/hooks/useJobs';
 import { jobLabel, statusText } from '@/lib/jobLabels';
 
@@ -14,6 +15,7 @@ export function Activity() {
         <p className="font-serif text-title text-fg">Quietly at work.</p>
         <p className="text-body text-muted">Files being read and metadata being looked up in the background.</p>
       </div>
+      <PassageIndex />
       {isLoading && <p className="text-body text-muted">Loading…</p>}
       {error && <p className="text-body text-red">Could not load activity: {error.message}</p>}
       {data?.length === 0 && <p className="text-body text-muted">Nothing has run yet. Upload a file and its processing will show up here.</p>}

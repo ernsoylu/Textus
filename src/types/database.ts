@@ -68,6 +68,25 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"asset_passages": {
+                  Row: {
+                    "asset_id": string,"cfi": string | null,"content": string,"id": number,"index_version": string,"ordinal": number,"page": number | null,"page_label": string | null,"search_vector": unknown,"section": number | null,"user_id": string
+                  }
+                  Insert: {
+                    "asset_id": string,"cfi"?: string | null,"content": string,"id"?: never,"index_version": string,"ordinal": number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id": string
+                  }
+                  Update: {
+                    "asset_id"?: string,"cfi"?: string | null,"content"?: string,"id"?: never,"index_version"?: string,"ordinal"?: number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "asset_passages_asset_id_user_id_fkey"
+      columns: ["asset_id","user_id"]
+isOneToOne: false
+      referencedRelation: "assets"
+      referencedColumns: ["id","user_id"]
+    }
+                  ]
                 },"asset_texts": {
                   Row: {
                     "asset_id": string,"content": string,"created_at": string | null,"search_vector": unknown,"user_id": string
@@ -550,6 +569,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"commit_passage_batch":
+{ Args: { "p_done": number,"p_generation": number,"p_job": string,"p_passages": Json,"p_reason"?: string,"p_status"?: string,"p_total": number }; Returns: boolean
+                           },
 "complete_upload":
 { Args: { "p_asset": Json,"p_id": string,"p_request": Json,"p_user": string }; Returns: Json
                            },
@@ -557,6 +579,9 @@ isOneToOne: false
 { Args: { "p_match_keys": (string)[] }; Returns: {
               "affiliations": (string)[],"birth_year": number,"coauthor_keys": (string)[],"contributor_id": string,"death_year": number,"display_name": string,"given_names": string,"identifiers": Json,"kind": string,"match_key": string,"names": (string)[],"work_ids": (string)[]
             }[]
+                           },
+"control_passage_index":
+{ Args: { "p_action": string,"p_asset"?: string }; Returns: number
                            },
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -585,10 +610,19 @@ isOneToOne: false
 "merge_contributors":
 { Args: { "p_force"?: boolean,"p_keep": string,"p_merge": string }; Returns: undefined
                            },
+"merge_extraction_metadata":
+{ Args: { "p_asset": string,"p_owner": string,"p_patch": Json }; Returns: Json
+                           },
+"passage_coverage":
+{ Args: { "p_work_ids"?: (string)[] }; Returns: Json
+                           },
 "possible_duplicate_contributors":
 { Args: Record<PropertyKey, never>; Returns: {
               "contributor_a": string,"contributor_b": string
             }[]
+                           },
+"queue_passage_index":
+{ Args: { "p_asset": string,"p_owner": string }; Returns: boolean
                            },
 "reassign_credits":
 { Args: { "p_from": string,"p_record_ids": (string)[],"p_to": string }; Returns: undefined
@@ -602,6 +636,11 @@ isOneToOne: false
 "search_library":
 { Args: { "p_limit"?: number,"p_query": string }; Returns: {
               "rank": number,"record_id": string,"title": string,"work_id": string
+            }[]
+                           },
+"search_passages":
+{ Args: { "p_limit"?: number,"p_query": string,"p_work_ids"?: (string)[] }; Returns: {
+              "asset_id": string,"byline": string,"cfi": string,"content": string,"id": number,"page": number,"page_label": string,"record_id": string,"score": number,"section": number,"title": string,"work_id": string,"year": number
             }[]
                            },
 "set_record_contributors":

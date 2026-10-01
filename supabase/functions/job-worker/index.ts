@@ -3,10 +3,9 @@
 // ('secret' auth mode) — this is the one function CLAUDE.md's own convention exempts from
 // per-caller JWT auth.
 //
-// Scope of this pass: extract_text for PDF assets only (real pdfjs-dist text extraction,
-// verified against a live signed URL before this was written — see the M1 session notes).
-// EPUB/MOBI/AZW3/CBZ/DjVu/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
-// rather than failing forever on a format this will never handle.
+// Front-matter extraction supplies metadata suggestions and the legacy search preview.
+// M6 passage indexing handles full PDF/EPUB text in separate fenced, resumable batches.
+// Other file formats remain readable/downloadable and are skipped by extraction.
 //
 // generate_thumbnail has no handler here at all, deliberately: thumbnails are captured
 // client-side on first read instead (Reader.tsx's onFirstPageRendered), per §15 open
@@ -16,6 +15,7 @@ import { withSupabase, type SupabaseContext } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
+import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
 import { checked, withBudget, boundedFetch as fetch } from '../_shared/budget.ts';
 
@@ -46,6 +46,12 @@ async function queueMetadata(admin: any, asset: { id: string; user_id: string },
   }
 }
 
+// deno-lint-ignore no-explicit-any
+async function storeExtraction(admin: any, asset: { id: string; user_id: string }, patch: Record<string, unknown>) {
+  const metadata = await checked(admin.rpc('merge_extraction_metadata', { p_asset: asset.id, p_owner: asset.user_id, p_patch: patch })) as Record<string, unknown> | null;
+  if (metadata && !metadata.passage_index) await checked(admin.rpc('queue_passage_index', { p_asset: asset.id, p_owner: asset.user_id }));
+}
+
 // Extracted text feeds search (asset_texts, FR-SRCH-1): a capped copy, one row per asset, replaced on re-extraction.
 // deno-lint-ignore no-explicit-any
 async function storeText(admin: any, asset: { id: string; user_id: string }, text: string) {
@@ -73,8 +79,7 @@ async function extractText(admin: any, job: Job) {
   if (skipReason) {
     const filename = typeof job.payload.filename === 'string' ? job.payload.filename : '';
     const found = identifierSuggestions('', filename);
-    const { error: readyError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, identifier_suggestions: found }, processing_state: 'ready' }).eq('id', assetId);
-    if (readyError) throw readyError;
+    await storeExtraction(admin, asset, { filename, identifier_suggestions: found });
     await queueMetadata(admin, asset, found);
     return { skipped: true, reason: skipReason };
   }
@@ -87,8 +92,7 @@ async function extractText(admin: any, job: Job) {
     const result = extractEpub(bytes);
     const found = identifierSuggestions(result.text, filename);
     await storeText(admin, asset, result.text);
-    const { error: updateError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null }, processing_state: 'ready' }).eq('id', assetId);
-    if (updateError) throw updateError;
+    await storeExtraction(admin, asset, { filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null });
     await queueMetadata(admin, asset, found);
     return { textCharCount: result.text.length };
   }
@@ -112,17 +116,10 @@ async function extractText(admin: any, job: Job) {
     const pdfMeta = await doc.getMetadata().catch(() => null);
     const info = pdfMeta?.info as { Author?: string; Title?: string } | undefined;
 
-    // ponytail: PDF search indexes the first eight pages; scan the whole document if users need full-book search.
+    // Metadata discovery scans front matter; index_passages covers the remaining pages.
     const found = identifierSuggestions(text, filename);
     await storeText(admin, asset, text);
-    const { error: updateError } = await admin
-      .from('assets')
-      .update({
-        metadata: { ...(asset.metadata as object), filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null },
-        processing_state: 'ready',
-      })
-      .eq('id', assetId);
-    if (updateError) throw updateError;
+    await storeExtraction(admin, asset, { filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null });
     await queueMetadata(admin, asset, found);
 
     return { pageCount: doc.numPages, textCharCount: text.length };
@@ -277,6 +274,7 @@ async function processCover(admin: any, job: Job) {
 // deno-lint-ignore no-explicit-any
 const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   extract_text: extractText,
+  index_passages: indexPassages,
   process_cover: processCover,
   fetch_metadata: fetchMetadata,
   cleanup: (admin) => runCleanup(admin),
@@ -296,6 +294,11 @@ export default {
         const handler = HANDLERS[job.job_type];
         if (!handler) throw new Error('unsupported job type');
         const result = await handler(ctx.supabaseAdmin, job);
+        if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
+          const committed = result.committed || await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
+          results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });
+          continue;
+        }
         const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
         results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
       } catch {

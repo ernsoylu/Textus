@@ -1,5 +1,7 @@
+import { tenPagePdf } from '../fixtures/pdf.ts';
 const api = Deno.env.get('SUPABASE_URL') ?? 'http://127.0.0.1:54321';
 const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('ANON_KEY') ?? '';
+const workerKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SECRET_KEY') ?? '';
 const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SERVICE_ROLE_KEY') ?? '';
 
 function headers(token: string, key = anon): HeadersInit {
@@ -41,7 +43,7 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
     if (!recordResponse.ok) throw new Error(`create test record failed (${recordResponse.status})`);
     const recordId = (await recordResponse.json())[0].id as string;
 
-    const bytes = new TextEncoder().encode('%PDF-1.4\n% Textus integration fixture\n%%EOF');
+    const bytes = tenPagePdf();
     const uploadId = crypto.randomUUID();
     const intentResponse = await fetch(`${api}/functions/v1/upload/intent`, {
       method: 'POST', headers: headers(accessToken),
@@ -57,6 +59,21 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
       method: 'POST', headers: headers(accessToken), body: JSON.stringify({ uploadId, recordId, role: 'primary', filename: 'fixture.pdf' }),
     });
     if (!complete.ok || (await complete.json()).status !== 'created') throw new Error(`upload completion failed (${complete.status})`);
+
+    // Real Edge runtime: extraction queues full indexing, then resumable batches expose page nine.
+    let indexed = false;
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const worker = await fetch(`${api}/functions/v1/job-worker`, { method: 'POST', headers: headers(service, workerKey) });
+      if (!worker.ok) throw new Error(`worker invocation failed (${worker.status}): ${await worker.text()}`);
+      await worker.json();
+      const passages = await fetch(`${api}/rest/v1/rpc/search_passages`, { method: 'POST', headers: headers(accessToken), body: JSON.stringify({ p_query: 'Photovoltaic', p_work_ids: [work.id] }) });
+      if (!passages.ok) throw new Error(`passage search failed (${passages.status})`);
+      if ((await passages.json()).some((p: {page: number}) => p.page === 9)) { indexed = true; break; }
+    }
+    if (!indexed) {
+      const jobs = await fetch(`${api}/rest/v1/jobs?user_id=eq.${userId}&select=job_type,status,last_error,payload,result`, { headers: headers(service, service) });
+      throw new Error(`real Edge worker did not expose page-nine evidence: ${JSON.stringify(await jobs.json())}`);
+    }
 
     const exported = await fetch(`${api}/functions/v1/export`, {
       method: 'POST', headers: headers(accessToken), body: JSON.stringify({ recordIds: [recordId], format: 'bibtex' }),
