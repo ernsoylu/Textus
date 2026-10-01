@@ -100,3 +100,8 @@ export function exportRecords(recordIds: string[], format: 'bibtex' | 'ris' | 'c
 export function deleteAccount() {
   return callFunction<{ status: 'deleted'; objectsRemoved: number }>('delete-account', { confirm: 'DELETE' });
 }
+
+export interface AiStatus { enabled: boolean; reachable: boolean; defaultModel: string; embedModel: string; selectedModel: string }
+export interface AiModel { name: string; family?: string; parameterSize?: string; quantization?: string; sizeBytes: number }
+export const aiStatus = () => callFunction<AiStatus>('ai', { action: 'status' });
+export const aiModels = () => callFunction<{ models: AiModel[] }>('ai', { action: 'models' });

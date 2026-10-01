@@ -11,7 +11,8 @@ import { createHash } from 'node:crypto';
 import { SNIFF_HEAD_BYTES, sniff, TextProbe } from '../_shared/sniff.ts';
 import { parsePublicUrl } from '../_shared/publicUrl.ts';
 import { fetchPublic } from '../_shared/fetchPublic.ts';
-import { deadline, checked } from '../_shared/budget.ts';
+import { jsonBody, rateLimit } from '../_shared/limits.ts';
+import { deadline, checked, withBudget } from '../_shared/budget.ts';
 
 const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
@@ -130,7 +131,7 @@ async function publishStaged(ctx: SupabaseContext, stagingPath: string, bucket: 
 }
 
 async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Response> {
-  const parsed = IntentSchema.safeParse(await req.json().catch(() => null));
+  const parsed = IntentSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   const { uploadId, recordId, size, filename } = parsed.data;
 
@@ -152,7 +153,7 @@ async function handleIntent(req: Request, ctx: SupabaseContext): Promise<Respons
 }
 
 async function handleComplete(req: Request, ctx: SupabaseContext, signal: AbortSignal): Promise<Response> {
-  const parsed = CompleteSchema.safeParse(await req.json().catch(() => null));
+  const parsed = CompleteSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   if (!(await assertRecordOwner(ctx, parsed.data.recordId))) return Response.json({ error: 'not_found' }, { status: 404 });
   return completeStaged(ctx, parsed.data, signal);
@@ -219,7 +220,7 @@ function filenameFromUrl(url: string): string | undefined {
 // exactly like complete. Size is enforced by the staging bucket's 500 MB limit while streaming (§7.4), plus an early
 // Content-Length check.
 async function handleFromUrl(req: Request, ctx: SupabaseContext, signal: AbortSignal): Promise<Response> {
-  const parsed = FromUrlSchema.safeParse(await req.json().catch(() => null));
+  const parsed = FromUrlSchema.safeParse(await jsonBody(req));
   if (!parsed.success) return Response.json({ error: 'invalid_request', issues: parsed.error.issues }, { status: 400 });
   const { uploadId, recordId, role, url } = parsed.data;
   if (!parsePublicUrl(url)) return Response.json({ error: 'invalid_url' }, { status: 400 });
@@ -266,14 +267,14 @@ export default {
   // async is required by withSupabase's handler type (Promise<Response>, not Response |
   // Promise<Response>) — this function has no internal await since it just dispatches to
   // the handle* functions above, which are themselves async.
-  // deno-lint-ignore require-await
-  fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
+  fetch: withSupabase({ auth: 'user' }, withBudget(async (req: Request, ctx: SupabaseContext) => {
     if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+    await rateLimit(ctx.supabaseAdmin, `upload:${ctx.userClaims!.id}`, 20);
     const signal = deadline();
     const { pathname } = new URL(req.url);
     if (pathname.endsWith('/intent')) return handleIntent(req, ctx);
     if (pathname.endsWith('/complete')) return handleComplete(req, ctx, signal);
     if (pathname.endsWith('/from-url')) return handleFromUrl(req, ctx, signal);
     return new Response('Not found', { status: 404 });
-  }),
+  })),
 };

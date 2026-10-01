@@ -3,6 +3,7 @@ import { supabase, supabaseUrl } from '@/lib/supabase';
 import { SignOutButton } from '@/components/account/SignOutButton';
 import { useAuth } from '@/hooks/useAuth';
 import { PasswordForm } from '@/components/account/PasswordForm';
+import { AiTab } from '@/components/account/AiTab';
 import { AppearanceTab } from '@/components/account/AppearanceTab';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'account', label: 'Account' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'opds', label: 'OPDS' },
+  { id: 'ai', label: 'AI' },
 ] as const;
 
 function AccountTab() {
@@ -142,7 +144,7 @@ export function Settings() {
         <p className="font-serif text-title text-fg">Make yourself at home.</p>
         <p className="text-body text-muted">Your account and private library.</p>
       </div>
-      <div role="tablist" className="flex gap-2">
+      <div role="tablist" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -157,6 +159,7 @@ export function Settings() {
         ))}
       </div>
       {tab === 'account' && <AccountTab />}
+      {tab === 'ai' && <AiTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'opds' && <OpdsTab onSetPassword={() => setTab('account')} />}
     </div>

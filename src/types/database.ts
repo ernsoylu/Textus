@@ -2,10 +2,23 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
-  
+
   "public": {
           Tables: {
-            "annotation_tags": {
+            "ai_settings": {
+                  Row: {
+                    "generation_model": string | null,"updated_at": string,"user_id": string
+                  }
+                  Insert: {
+                    "generation_model"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "generation_model"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"annotation_tags": {
                   Row: {
                     "annotation_id": string,"tag_id": string
                   }
@@ -85,7 +98,7 @@ isOneToOne: true
                     "bucket"?: string,"checksum_sha256"?: string,"created_at"?: string | null,"deleting_at"?: string | null,"file_format"?: string,"file_size"?: number,"id"?: string,"metadata"?: Json | null,"mime_type"?: string,"processing_error"?: string | null,"processing_state"?: string,"storage_path"?: string,"updated_at"?: string | null,"user_id"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 },"collection_records": {
                   Row: {
@@ -230,7 +243,7 @@ isOneToOne: false
                     "birth_year"?: number | null,"created_at"?: string | null,"death_year"?: number | null,"display_name"?: string,"family_name"?: string | null,"given_names"?: string | null,"id"?: string,"kind"?: string,"match_key"?: string,"notes"?: string | null,"particle"?: string | null,"sort_name"?: string,"status"?: string,"suffix"?: string | null,"updated_at"?: string | null,"user_id"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 },"identifiers": {
                   Row: {
@@ -262,7 +275,7 @@ isOneToOne: false
                     "attempts"?: number | null,"available_at"?: string,"claim_generation"?: number,"completed_at"?: string | null,"created_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"job_type"?: string,"last_error"?: string | null,"lease_expires_at"?: string | null,"max_attempts"?: number | null,"payload"?: NonNullable<Json>,"result"?: Json | null,"started_at"?: string | null,"status"?: string,"user_id"?: string | null
                   }
                   Relationships: [
-                    
+
                   ]
                 },"metadata_cache": {
                   Row: {
@@ -275,7 +288,7 @@ isOneToOne: false
                     "expires_at"?: string | null,"fetched_at"?: string | null,"id"?: string,"identifier_scheme"?: string,"identifier_value"?: string,"provider"?: string,"response_data"?: NonNullable<Json>
                   }
                   Relationships: [
-                    
+
                   ]
                 },"reading_states": {
                   Row: {
@@ -413,17 +426,17 @@ isOneToOne: false
                     "created_at"?: string | null,"filters"?: NonNullable<Json>,"id"?: string,"name"?: string,"user_id"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 },"storage_deletions": {
                   Row: {
-                    "asset_id": string | null,"bucket": string,"created_at": string,"path": string
+                    "asset_id": string | null,"attempts": number,"available_at": string,"bucket": string,"created_at": string,"path": string
                   }
                   Insert: {
-                    "asset_id"?: string | null,"bucket": string,"created_at"?: string,"path": string
+                    "asset_id"?: string | null,"attempts"?: number,"available_at"?: string,"bucket": string,"created_at"?: string,"path": string
                   }
                   Update: {
-                    "asset_id"?: string | null,"bucket"?: string,"created_at"?: string,"path"?: string
+                    "asset_id"?: string | null,"attempts"?: number,"available_at"?: string,"bucket"?: string,"created_at"?: string,"path"?: string
                   }
                   Relationships: [
                     {
@@ -445,7 +458,7 @@ isOneToOne: false
                     "color"?: string | null,"created_at"?: string | null,"id"?: string,"name"?: string,"user_id"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 },"upload_attempts": {
                   Row: {
@@ -477,7 +490,7 @@ isOneToOne: false
                     "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"user_rating"?: number | null,"work_type"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 }
           }
@@ -485,8 +498,17 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "begin_upload":
+            "acquire_ai_lease":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"active_job_count":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"begin_upload":
 { Args: { "p_id": string,"p_intent": Json,"p_record": string,"p_user": string }; Returns: Json
+                           },
+"check_request_limit":
+{ Args: { "p_key": string,"p_limit"?: number,"p_period"?: number }; Returns: boolean
                            },
 "claim_jobs":
 { Args: { "p_lease"?: string,"p_limit"?: number }; Returns: {
@@ -516,6 +538,8 @@ isOneToOne: false
 "claim_storage_cleanup":
 { Args: { "p_limit"?: number }; Returns: {
               "asset_id": string | null,
+"attempts": number,
+"available_at": string,
 "bucket": string,
 "created_at": string,
 "path": string
@@ -568,6 +592,12 @@ isOneToOne: false
                            },
 "reassign_credits":
 { Args: { "p_from": string,"p_record_ids": (string)[],"p_to": string }; Returns: undefined
+                           },
+"release_ai_lease":
+{ Args: { "p_holder": string }; Returns: undefined
+                           },
+"retry_storage_deletion":
+{ Args: { "p_bucket": string,"p_path": string }; Returns: undefined
                            },
 "search_library":
 { Args: { "p_limit"?: number,"p_query": string }; Returns: {
@@ -704,7 +734,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            
+
           }
         }
 } as const

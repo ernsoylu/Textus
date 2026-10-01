@@ -18,3 +18,7 @@ export async function readCapped(response: Response): Promise<string> {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
   return new TextDecoder().decode(bytes);
 }
+
+export class HttpError extends Error {
+  constructor(public code: string, public status = 400) { super(code); }
+}
