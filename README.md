@@ -339,6 +339,16 @@ Deploy migrations, functions and frontend with `AI_ENABLED`, `MCP_ENABLED` and `
 
 Before setting `AI_ENABLED=true`, run `ssh -t monster 'sudo sh -s' < deploy/ollama-hardening.sh`. It disables Ollama cloud inference and bounds concurrency/queueing in a separate systemd drop-in; Ollama stays reachable from the LAN for other uses. Textus only selects models in `OLLAMA_ALLOWED_MODELS`, but other LAN clients can manage models and share the GPU outside Textus's lease, so busy-GPU AI jobs defer rather than fail.
 
+**Background worker limits.** pdf.js allocates a buffer the size of the whole PDF, and the Edge runtime counts it against the worker's memory limit, so the default 150 MB / 60 s cannot index large PDFs. On app102, `volumes/functions/main/index.ts` (Supabase's Edge router, not in this repo; re-apply after Supabase updates) gives `job-worker` alone more room:
+
+```ts
+const isJobWorker = service_name === 'job-worker'
+const memoryLimitMb = isJobWorker ? 1024 : 150
+const workerTimeoutMs = (isJobWorker ? 115 : 60) * 1000
+```
+
+Then set `JOB_WORKER_MEMORY_MB: "1024"` and `JOB_WORKER_BUDGET_MS: "100000"` in the `functions` environment. They must match the router: without them the worker keeps 60 s batches and reports PDFs over 90 MB as not indexable. With them set but the router unchanged, every long run is killed. Run the worker every 30 seconds with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname='job-worker'), schedule := '30 seconds');`.
+
 Rollback: `docker tag textus-web:backup-<snapshot> textus-web:latest && docker compose up -d --no-build textus`, and extract `volumes/functions` from the snapshot's `configuration.tar.gz` before restarting the `functions` service.
 
 Daily cleanup retains completed jobs for 30 days and removes rate counters after two idle days. Agent action replay results remain while their token can authenticate, then become eligible 30 days after token expiry or deletion. Library text/notes remain owner data until deletion. Operational logs contain no token values, tool arguments, questions or signed URL query strings; frontend Docker logs rotate at 10 MB × 3.

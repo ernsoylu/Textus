@@ -1,4 +1,4 @@
-import { tenPagePdf } from '../fixtures/pdf.ts';
+import { textPdf } from '../fixtures/pdf.ts';
 const api = Deno.env.get('SUPABASE_URL') ?? 'http://127.0.0.1:54321';
 const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('ANON_KEY') ?? '';
 const workerKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SECRET_KEY') ?? '';
@@ -43,7 +43,7 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
     if (!recordResponse.ok) throw new Error(`create test record failed (${recordResponse.status})`);
     const recordId = (await recordResponse.json())[0].id as string;
 
-    const bytes = tenPagePdf();
+    const bytes = textPdf();
     const uploadId = crypto.randomUUID();
     const intentResponse = await fetch(`${api}/functions/v1/upload/intent`, {
       method: 'POST', headers: headers(accessToken),
