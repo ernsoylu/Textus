@@ -8,6 +8,7 @@ import { checked, withBudget } from '../_shared/budget.ts';
 import { HttpError } from '../_shared/http.ts';
 import { rateLimit } from '../_shared/limits.ts';
 import { readerLink } from '../_shared/sourceLinks.ts';
+import { findSources, SourceRequest } from '../_shared/sources.ts';
 import { lookupAcrossProviders } from '../metadata-lookup/index.ts';
 import { IDENTIFIER_SCHEMES, parseIdentifier } from '../_shared/identifier.ts';
 
@@ -38,7 +39,6 @@ async function getWork(client: SupabaseClient, workId: string, recordOffset: num
 const SearchLibraryInput = z.object({ query: z.string().max(1000).default(''), type: z.enum(['book', 'article', 'chapter', 'serial', 'thesis', 'report', 'standard', 'other']).optional(), tagId: z.string().uuid().optional(), collectionId: z.string().uuid().optional(), format: z.string().max(20).optional(), language: z.string().max(30).optional(), status: z.enum(['unread', 'reading', 'finished', 'abandoned']).optional(), limit: z.number().int().min(1).max(20).default(20), offset: z.number().int().min(0).max(100000).default(0) }).strict();
 const GetWorkInput = z.object({ workId: z.string().uuid(), recordOffset: z.number().int().min(0).max(100000).default(0), notesOffset: z.number().int().min(0).max(100000).default(0) }).strict();
 const SearchPassagesInput = z.object({ query: z.string().min(1).max(1000), limit: z.number().int().min(1).max(20).default(20), workIds: z.array(z.string().uuid()).max(100).optional() }).strict();
-const FindSourcesInput = z.object({ question: z.string().min(3).max(1000) }).strict();
 const LookupIdentifierInput = z.object({ scheme: z.enum(IDENTIFIER_SCHEMES), value: z.string().min(1).max(1000) }).strict();
 export function createAgentServer(principal: AgentPrincipal, client: SupabaseClient, admin: SupabaseClient) {
   const server = new McpServer({ name: 'Textus', version: '1.0.0' });
@@ -59,8 +59,8 @@ export function createAgentServer(principal: AgentPrincipal, client: SupabaseCli
     const [passages, coverage] = await Promise.all([checked(client.rpc('search_passages', { p_query: input.query, p_limit: input.limit, p_work_ids: input.workIds })), checked(client.rpc('passage_coverage', { p_work_ids: input.workIds }))]);
     return toolResult({ passages: (passages ?? []).map((p: {work_id: string; record_id: string; asset_id: string; page?: number; cfi?: string}) => ({ ...p, link: readerLink(p.work_id, p.record_id, p.asset_id, p.page, p.cfi, Deno.env.get('TEXTUS_SITE_URL')) })), coverage, mode: 'fts', warning: 'Quotes are retrieved text, not model-verified answers.' });
   });
-  server.registerTool('find_sources', { description: 'Cited AI source selection is unavailable until hybrid retrieval is enabled. Use search_passages for FTS.', annotations, inputSchema: FindSourcesInput }, () => {
-    requireAgentScope(principal, 'read'); return toolResult({ available: false, warning: 'Source selection is unavailable; use search_passages.' });
+  server.registerTool('find_sources', { description: 'Find private passages supporting a question, with verified quotes and owned citations. Reports partial coverage and unverified FTS fallback during AI outages.', annotations, inputSchema: SourceRequest }, async (input: z.infer<typeof SourceRequest>) => {
+    requireAgentScope(principal, 'read'); return toolResult(await findSources(client, admin, principal.user_id, input));
   });
   server.registerTool('lookup_identifier', { description: 'Get a public provider metadata preview for an explicit identifier. Never applies changes.', annotations: { ...annotations, openWorldHint: true }, inputSchema: LookupIdentifierInput }, async (input: z.infer<typeof LookupIdentifierInput>) => {
     requireAgentScope(principal, 'read');

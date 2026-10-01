@@ -105,5 +105,7 @@ export interface AiStatus { agentsEnabled: boolean; enabled: boolean; reachable:
 export interface AiModel { name: string; family?: string; parameterSize?: string; quantization?: string; sizeBytes: number }
 export const aiStatus = () => callFunction<AiStatus>('ai', { action: 'status' });
 export const aiModels = () => callFunction<{ models: AiModel[] }>('ai', { action: 'models' });
+export interface SourceResult { sources: { workId: string; recordId: string; assetId: string; title: string; byline: string | null; year: number | null; page: number | null; pageLabel: string | null; cfi: string | null; quote: string; passage: string; link: string }[]; searched: number; mode: 'hybrid' | 'fts'; verified: boolean; coverage: { indexedAssets: number; eligibleAssets: number; partial: boolean }; warning?: string }
+export const findSources = (question: string) => callFunction<SourceResult>('ai', { action: 'find-sources', question });
 
 export const titleMetadataSearch = (recordId: string, title: string, author: string) => callFunction<{ candidates: { data: NormalizedMetadata; identifier?: { scheme: 'isbn' | 'doi'; value: string } }[] }>('metadata-lookup', { action: 'search-title', recordId, title, author, consent: true });

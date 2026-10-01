@@ -50,6 +50,23 @@ export async function selectedModel(name?: string | null) {
   if (!model) throw new HttpError('model_missing', 503);
   return model;
 }
+export async function embeddingModel(): Promise<LocalModel> {
+  const config = aiConfig();
+  const data = z.object({ models: z.array(ModelSchema).max(200) }).parse(await ollama('/api/tags', undefined, 3000));
+  const model = data.models.find((m) => m.name === config.embedModel && !m.remote_host && !m.remote_model && !/:cloud$/i.test(m.name) && /^[0-9a-f]{64}$/.test(m.digest) && (!m.capabilities || m.capabilities.includes('embedding')));
+  if (!model) throw new HttpError('model_missing', 503);
+  return model;
+}
+export async function embedText(model: LocalModel, text: string[], query = false) {
+  if (!text.length || text.length > 4 || text.some((t) => new TextEncoder().encode(t).length > 8000)) throw new HttpError('context_budget_exceeded');
+  const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(4) }).parse(await ollama('/api/embed', {
+    model: model.name, input: text.map((t) => `${query ? 'search_query' : 'search_document'}: ${t}`), truncate: false, keep_alive: '5m', options: { num_ctx: 8192 },
+  }, 15_000));
+  if (data.embeddings.length !== text.length || data.embeddings.some((v) => !v.some((n) => n !== 0))) throw new HttpError('invalid_model_output', 502);
+  // Tags may change while inference is running; never persist/query vectors under a stale digest.
+  if ((await embeddingModel()).digest !== model.digest) throw new HttpError('model_changed', 503);
+  return data.embeddings;
+}
 export async function generateJson(model: LocalModel, prompt: string, schema: unknown) {
   const config = aiConfig();
   // Conservative UTF-8 budget: one token per byte, reserving instructions and output.

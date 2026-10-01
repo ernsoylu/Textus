@@ -83,13 +83,13 @@ isOneToOne: false
                   ]
                 },"asset_passages": {
                   Row: {
-                    "asset_id": string,"cfi": string | null,"content": string,"id": number,"index_version": string,"ordinal": number,"page": number | null,"page_label": string | null,"search_vector": unknown,"section": number | null,"user_id": string
+                    "asset_id": string,"cfi": string | null,"content": string,"embedding": string | null,"embedding_digest": string | null,"id": number,"index_version": string,"ordinal": number,"page": number | null,"page_label": string | null,"search_vector": unknown,"section": number | null,"user_id": string
                   }
                   Insert: {
-                    "asset_id": string,"cfi"?: string | null,"content": string,"id"?: never,"index_version": string,"ordinal": number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id": string
+                    "asset_id": string,"cfi"?: string | null,"content": string,"embedding"?: string | null,"embedding_digest"?: string | null,"id"?: never,"index_version": string,"ordinal": number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id": string
                   }
                   Update: {
-                    "asset_id"?: string,"cfi"?: string | null,"content"?: string,"id"?: never,"index_version"?: string,"ordinal"?: number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id"?: string
+                    "asset_id"?: string,"cfi"?: string | null,"content"?: string,"embedding"?: string | null,"embedding_digest"?: string | null,"id"?: never,"index_version"?: string,"ordinal"?: number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -598,6 +598,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"commit_embedding_batch":
+{ Args: { "p_generation": number,"p_job": string,"p_vectors": Json }; Returns: boolean
+                           },
 "commit_passage_batch":
 { Args: { "p_done": number,"p_generation": number,"p_job": string,"p_passages": Json,"p_reason"?: string,"p_status"?: string,"p_total": number }; Returns: boolean
                            },
@@ -632,6 +635,11 @@ isOneToOne: false
 "finish_storage_deletion":
 { Args: { "p_bucket": string,"p_path": string }; Returns: undefined
                            },
+"hybrid_passages":
+{ Args: { "p_digest": string,"p_embedding": string,"p_limit"?: number,"p_query": string,"p_work_ids"?: (string)[] }; Returns: {
+              "asset_id": string,"byline": string,"cfi": string,"content": string,"id": number,"page": number,"page_label": string,"record_id": string,"score": number,"section": number,"title": string,"work_id": string,"year": number
+            }[]
+                           },
 "library_languages":
 { Args: Record<PropertyKey, never>; Returns: {
               "language": string
@@ -651,10 +659,16 @@ isOneToOne: false
 "passage_coverage":
 { Args: { "p_work_ids"?: (string)[] }; Returns: Json
                            },
+"passage_embedding_coverage":
+{ Args: { "p_digest": string,"p_work_ids"?: (string)[] }; Returns: Json
+                           },
 "possible_duplicate_contributors":
 { Args: Record<PropertyKey, never>; Returns: {
               "contributor_a": string,"contributor_b": string
             }[]
+                           },
+"queue_embedding_jobs":
+{ Args: { "p_digest": string }; Returns: number
                            },
 "queue_passage_index":
 { Args: { "p_asset": string,"p_owner": string }; Returns: boolean

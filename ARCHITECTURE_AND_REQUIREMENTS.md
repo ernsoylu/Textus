@@ -185,7 +185,7 @@ Design in [§8.7](#87-ai), [§8.8](#88-mcp) and [§9.4](#94-agent-question-to-ci
 | Validation | Zod | 3+ |
 | Testing | Vitest + Testing Library | latest |
 | Readers | pdf.js (`pdfjs-dist` viewer components), foliate-js (EPUB, MOBI, AZW3, FB2, CBZ; pinned GitHub tarball, not on npm), DjVu.js (vendored in `src/vendor/djvu`, GPL-2.0-or-later) | pinned |
-| Vector search (M6) | `pgvector` (`vector` extension, HNSW index) | 0.8+ |
+| Vector search (M6) | `pgvector` (`vector` extension, exact filtered cosine search) | 0.8+ |
 | Local LLM (M6, optional) | Ollama HTTP API, admin-hosted outside Textus; called only from Edge Functions | Pin a tested release; verify required APIs and local-only mode during M6.1 |
 | Agent protocol (M6) | MCP Streamable HTTP via the official TypeScript SDK (`@modelcontextprotocol/sdk`), stateless | pinned |
 
@@ -1462,17 +1462,18 @@ CREATE TABLE asset_passages (
     content TEXT NOT NULL CHECK (length(content) <= 8000),
     search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
     embedding extensions.vector(768),        -- dimension of OLLAMA_EMBED_MODEL (nomic-embed-text)
-    embedding_model TEXT,                  -- immutable model digest/version, not only a mutable tag
+    embedding_digest TEXT,                  -- immutable model digest/version, not only a mutable tag
     UNIQUE (asset_id, index_version, ordinal),
     FOREIGN KEY (asset_id, user_id) REFERENCES assets(id, user_id) ON DELETE CASCADE
     -- Migration must first add UNIQUE (id, user_id) to assets for this ownership constraint.
 );
 CREATE INDEX idx_asset_passages_search ON asset_passages USING GIN (search_vector);
-CREATE INDEX idx_asset_passages_embedding ON asset_passages USING hnsw (embedding extensions.vector_cosine_ops);
+-- Exact filtered cosine search initially; add HNSW only after measured latency/recall warrants it.
 CREATE INDEX idx_asset_passages_user ON asset_passages(user_id);
 -- RLS: SELECT own; no INSERT/UPDATE/DELETE policy (service role only), rows go with their asset or user.
 
--- search_passages(p_query TEXT, p_embedding extensions.vector(768) DEFAULT NULL, p_limit INT DEFAULT 20,
+-- search_passages(p_query TEXT, p_limit INT DEFAULT 20, p_work_ids UUID[] DEFAULT NULL): FTS only.
+-- hybrid_passages(p_query TEXT, p_embedding extensions.vector(768), p_digest TEXT, p_limit INT DEFAULT 20,
 --                 p_work_ids UUID[] DEFAULT NULL):
 -- SECURITY INVOKER (RLS applies). Reciprocal-rank fusion of FTS (websearch_to_tsquery) and cosine
 -- distance; returns passage id, asset_id, record_id, work_id, title, byline, year, page/page_label,
@@ -1484,8 +1485,8 @@ CREATE INDEX idx_asset_passages_user ON asset_passages(user_id);
 -- jobs.job_type gains:
 --   'extract_metadata_ai'  {asset_id, record_id}            FR-AI-3, queued by extract_text when no identifier is found
 --   'index_passages'       {asset_id, index_version, from_page | from_section}  FR-AI-4, bounded/resumable
---   'embed_passages'       {asset_id, index_version, model_digest, after_id}   FR-AI-4, bounded/resumable
--- Batch size follows measured token/memory/time budgets; 64 is a ceiling to validate, not a guarantee.
+--   'embed_passages'       {asset_id, index_version, digest}   FR-AI-4, bounded/resumable
+-- Embedding batches contain at most four small passages (one for long Unicode text).
 -- Checkpoint + next-job enqueue + claim-fenced completion commit together; retries use deterministic keys.
 -- Indexing state lives in assets.metadata.passage_index = {status, done, total, passages, error} (metadata is
 -- not a bytes-describing column, so the immutability trigger allows it). LLM metadata suggestions use the
@@ -1604,7 +1605,7 @@ An OPDS 1.2 catalog for e-reader apps (FR-SER-3). Routes under `/functions/v1/op
 
 ### 8.7 `ai`
 
-`user` auth. Status/models implemented in M6.1; source finding follows M6.5.
+`user` auth. Status/models and source finding are implemented.
 - `POST { action: 'status' }` → `{ enabled: boolean, reachable: boolean, defaultModel, embedModel, selectedModel, agentsEnabled }`. `enabled` mirrors `AI_ENABLED` with a non-empty `OLLAMA_URL`; `reachable` is a 3 s `GET /api/version`.
 - `POST { action: 'models' }` → `{ models: { name, family, parameterSize, quantization, sizeBytes }[] }` from `GET /api/tags`, intersected with the admin-approved local generation model list. No pull/delete/cloud/proxy operations are exposed.
 - `POST { action: 'find-sources', question: string (3–1000 chars), limit?: 1–10, workIds?: uuid[] }` → `{ sources: Source[], searched: number, mode: 'hybrid' | 'fts', coverage: { indexedAssets: number, eligibleAssets: number, partial: boolean }, warning?: string }` where `Source = { workId, recordId, assetId, title, byline, year, page?, pageLabel?, cfi?, quote, passage, link }`. Steps: embed the question, call `search_passages()` as the user with bounded `workIds` (top 20 before deduplication/budgeting), fit candidates plus question and output allowance into the selected model's context, then send them to the user's model with a JSON schema asking for the passage ids and the exact supporting sentences, drop any quote not found verbatim in its passage, and build `link` as `/works/{workId}/read?asset={assetId}&page={page}` (or `&cfi=`). AI failure reasons: `ai_disabled`, `ai_unreachable`, `model_missing`, `timeout`. If retrieval still works, return these as warnings with explicitly labelled FTS passages/coverage without model selection; return a typed error only when retrieval cannot complete. With FTS fallback, never claim passages were model-verified. Never returns generated prose (FR-AI-5).
@@ -1886,14 +1887,14 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 Revised 2026-10-01 after source/security review. **Security and systemic fixes precede new exposure.**
 The detailed evidence, proposed fixes and acceptance tests live in
 [docs/ROADMAP.md](docs/ROADMAP.md#security-and-systemic-review--2026-10-01).
-All items remain open; existing M1–M5 completion does not waive these gates.
+Completion below reflects implementation/test milestones; deployment gates remain open until M6.7. Existing M1–M5 completion does not waive them.
 
 1. [x] **M6.0 — security/integrity:** isolate browser caches (SEC-01), close URL SSRF (SEC-02), patch audited dependencies (SEC-03), make uploads replayable and immutable (SYS-01), make cleanup safe/progressive (SYS-02), and fix worker deadlines/claims/states (SYS-03). Inventory deployment limits.
 2. [x] **M6.1 — optional AI foundation:** Activity count/state (FR-FILE-6), AI settings/status and approved local models (FR-AI-1/2), network restrictions, quotas and bounded concurrency (M6-SEC-03). AI failure must not break ordinary catalog work.
 3. [x] **M6.2 — complete FTS passages:** bounded/versioned PDF/EPUB indexing, existing-library backfill, coverage, retry/cancel and reader links (FR-AI-4, M6-SYS-01). Prove two-user isolation and crash recovery before embedding.
 4. [x] **M6.3 — reviewed metadata fallback:** `extract_metadata_ai` suggestions (FR-AI-3), explicit provenance/locks, exclusion from automatic apply and consent for external title/author searches (SYS-04).
 5. [x] **M6.4 — read-only MCP/Hermes:** token settings, central scope/revocation checks, transport validation and real client compatibility (FR-AI-6/7/8, M6-SEC-01/02). Ship `integrations/hermes/textus/SKILL.md`; advertise AI tools only when available.
-6. [ ] **M6.5 — hybrid/cited sources:** embedding batches, filtered hybrid ranking, `find-sources` / `find_sources`, context budgets and measured GPU latency (FR-AI-4/5, M6-SYS-02). Keep explicit FTS fallback and coverage warnings.
+6. [x] **M6.5 — hybrid/cited sources:** embedding batches, filtered hybrid ranking, `find-sources` / `find_sources`, context budgets and measured GPU latency (FR-AI-4/5, M6-SYS-02). Keep explicit FTS fallback and coverage warnings.
 7. [ ] **M6.6 — authorized writes:** atomic/idempotent identifier creation, safe URL imports, tags and collections (FR-AI-7). Require concrete owner approval enforced server-side; pass scope/replay/injection tests before enablement.
 8. [ ] **M6.7 — deployment sign-off:** malicious-reader fixtures (SEC-04), restore/rollback drill, HTTPS/SMTP/OPDS verification, accessibility/device tests and staged enablement (OPS-01). Verify every earlier gate on the actual deployment.
 
@@ -1987,3 +1988,13 @@ Agent settings issue 256-bit read tokens, display plaintext once, store SHA-256 
 The stateless Streamable HTTP endpoint provides `search_library`, bounded/paginated `get_work`, FTS `search_passages` with owned reader links and coverage, and `lookup_identifier` previews. `find_sources` explicitly reports unavailable until M6.5. All tools check read scope; write tools are absent. Private responses use `Cache-Control: no-store`. The Hermes integration requires strict redirect header handling and treats all library content as untrusted evidence. Setup and the skill are in `integrations/hermes/`.
 
 Validation: owner isolation, expired/revoked/banned tokens, agent-token vault denial, token quota, forged Origin, invalid protocol, oversized requests, one-time token display and real gateway tool calls. The installed Hermes client on monster negotiated MCP 2025-11-25, discovered all five tools and searched a synthetic owned catalog through a private SSH-forwarded local Supabase gateway. The temporary fixture/token was removed afterward. Production HTTPS validation and permanent configuration remain M6.7 gates.
+
+### M6.5 implemented retrieval contracts
+
+pgvector 0.8.2 stores 768-dimensional embeddings with `embedding_digest`, an immutable installed-model digest. `nomic-embed-text:latest` on monster has digest `0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f`. The worker schedules missing/current-model embeddings for up to 20 eligible files per invocation, subject to the 500 active-job owner quota; it skips existing version keys so failed/completed early files cannot starve later files. Each shared-GPU-leased batch embeds up to four small passages (long Unicode passages run alone), checks dimensions/finite values/model digest, and commits vectors plus continuation under the live job generation and active asset version. Cancellation/deletion fences prevent stale writes. Disabled/unreachable/busy AI defers without spending attempts; retry/reindex is available through Activity.
+
+`search_passages(query, limit, work_ids)` remains FTS-only for compatibility. `hybrid_passages(query, embedding, digest, limit, work_ids)` combines owner/work-filtered exact cosine and lexical top-100 lists with reciprocal-rank fusion (constant 60). Approximate HNSW is deferred: exact top-20 matched the filtered reference in the 10,000-passage/two-owner fixture, and measured local retrieval took 415–431 ms. Add ANN only if measured latency at the owner passage ceiling requires it, with filtered recall checked first. `passage_embedding_coverage(digest, work_ids)` separately reports current-model embedding coverage.
+
+Both the AI `find-sources` action and MCP `find_sources` use the same implementation. Natural-language questions retrieve broad lexical candidates plus vectors; candidate text, instructions, question and output reserves fit the selected model's context. Only retrieved IDs and exact quote substrings survive verification. The server builds bibliographic citations and `/library/{work}/records/{record}/assets/{asset}/read?page=…` or `?cfi=…` links. Partial indexing/embedding warnings accompany results. Model/embedding/lease failures return explicitly unverified FTS matches; an unsupported question cannot justify claiming the whole library has no answer. Activity includes the source-search UI.
+
+Validation: 14 database assertions cover two-owner isolation, work filters, stale claims, foreign passage rejection, atomic continuation, current digest/coverage, non-English retrieval, page-nine evidence, exact-reference recall and service-only writes. Quote validation drops invented IDs, fabricated quotes and duplicate citations. Monster embedding latency was 1.862 s cold and 0.065 s warm for two short passages. Through the local Edge gateway, resumable six-passage embedding and verified thermodynamics citations to pages 9/10 passed in 16.233/17.597 s; an unrelated question returned no sources in 12.198 s. The AI-disabled gateway returned useful, explicitly unverified FTS citations. Temporary synthetic accounts were removed; no real library content was used. Actual deployment and concurrent Hermes/model-swap verification remain M6.7 gates.

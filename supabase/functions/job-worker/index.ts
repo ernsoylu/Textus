@@ -16,7 +16,8 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
 import { extractAiMetadata } from '../_shared/aiMetadata.ts';
-import { aiConfig } from '../_shared/ollama.ts';
+import { aiConfig, embeddingModel } from '../_shared/ollama.ts';
+import { embedPassages } from './embeddings.ts';
 import { HttpError } from '../_shared/http.ts';
 import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
@@ -279,6 +280,7 @@ async function processCover(admin: any, job: Job) {
 const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   extract_text: extractText,
   index_passages: indexPassages,
+  embed_passages: embedPassages,
   extract_metadata_ai: extractAiMetadata,
   process_cover: processCover,
   fetch_metadata: fetchMetadata,
@@ -288,6 +290,10 @@ const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
 export default {
   fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
     await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
+    if (aiConfig().enabled) {
+      try { const model = await embeddingModel(); await checked(ctx.supabaseAdmin.rpc('queue_embedding_jobs', { p_digest: model.digest })); }
+      catch { /* An unavailable optional model must not stop other jobs. */ }
+    }
     await checked(ctx.supabaseAdmin.from('jobs').upsert(
       { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
       { onConflict: 'idempotency_key', ignoreDuplicates: true },
@@ -307,7 +313,7 @@ export default {
         const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
         results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
       } catch (error) {
-        if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'timeout'].includes(error.code) && ['extract_metadata_ai', 'embed_passages'].includes(job.job_type)) {
+        if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && ['extract_metadata_ai', 'embed_passages'].includes(job.job_type)) {
           await checked(ctx.supabaseAdmin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
           results.push({ id: job.id, status: 'paused' });
           continue;
