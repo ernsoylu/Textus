@@ -5,17 +5,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewWork } from './NewWork';
 import { uploadFile, uploadUrl } from '@/hooks/useUploadAsset';
 import { importMetadata } from '@/lib/autoMetadataImport';
+import { findDuplicateWorks, workWithFile } from '@/lib/duplicates';
 
-const { navigate, inserted } = vi.hoisted(() => ({ navigate: vi.fn(), inserted: [] as { table: string; data: Record<string, unknown> }[] }));
+const { navigate, inserted, deleted } = vi.hoisted(() => ({ navigate: vi.fn(), inserted: [] as { table: string; data: Record<string, unknown> }[], deleted: [] as string[] }));
 vi.mock('react-router-dom', async (original) => ({ ...await original<typeof import('react-router-dom')>(), useNavigate: () => navigate }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ session: { user: { id: 'user' } } }) }));
 vi.mock('@/hooks/useUploadAsset', () => ({ uploadFile: vi.fn(), uploadUrl: vi.fn(), MAX_UPLOAD_BYTES: 524_288_000 }));
 vi.mock('@/lib/autoMetadataImport', () => ({ importMetadata: vi.fn() }));
+vi.mock('@/lib/duplicates', () => ({ DUPLICATE_REASON_LABELS: { identifier: 'same ISBN' }, sha256Hex: vi.fn(async () => 'hash'), workWithFile: vi.fn(), findDuplicateWorks: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { from: (table: string) => {
   let data: Record<string, unknown> | undefined;
   const builder = {
     insert: (value: Record<string, unknown>) => { data = value; inserted.push({ table, data: value }); return builder; },
     select: () => builder,
+    delete: () => ({ eq: async (_column: string, id: string) => { deleted.push(id); return { error: null }; } }),
     eq: () => builder,
     single: async () => ({ error: null, data: data ? { id: `${table}-${inserted.filter((row) => row.table === table).length}` } : { records: [{ id: `records-${inserted.filter((row) => row.table === 'records').length}` }] } }),
   };
@@ -28,7 +31,14 @@ function setup(files: File[]) {
   fireEvent.click(screen.getByRole('button', { name: 'Upload and add to library' }));
 }
 
-beforeEach(() => { vi.clearAllMocks(); inserted.length = 0; vi.mocked(importMetadata).mockResolvedValue(undefined); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  inserted.length = 0;
+  deleted.length = 0;
+  vi.mocked(importMetadata).mockResolvedValue(undefined);
+  vi.mocked(workWithFile).mockResolvedValue(undefined);
+  vi.mocked(findDuplicateWorks).mockResolvedValue([]);
+});
 
 describe('batch uploads', () => {
   it('opens a single uploaded work immediately without waiting for identifier extraction', async () => {
@@ -83,5 +93,40 @@ describe('batch uploads', () => {
     expect(uploadUrl).toHaveBeenCalledWith('records-1', 'primary', 'https://arxiv.org/pdf/attention%20paper.pdf');
     expect(uploadFile).toHaveBeenCalledWith('records-2', 'primary', expect.any(File), expect.any(Function));
     expect(inserted.filter((row) => row.table === 'works').map((row) => row.data.title)).toEqual(['attention paper', 'first']);
+  });
+});
+
+describe('duplicate detection', () => {
+  it('finds a file already in the library by checksum before creating a work or uploading', async () => {
+    vi.mocked(workWithFile).mockResolvedValueOnce('existing-work');
+    setup([new File(['same bytes'], 'copy.pdf')]);
+    expect(await screen.findByText('This file is already in your library.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View details' })).toHaveAttribute('href', '/library/existing-work');
+    expect(inserted).toHaveLength(0);
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('removes the new work when a linked file turns out to be already in the library', async () => {
+    vi.mocked(uploadUrl).mockResolvedValue({ status: 'deduplicated', asset: { checksum_sha256: 'hash' } as never });
+    vi.mocked(workWithFile).mockResolvedValueOnce('existing-work');
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><NewWork /></QueryClientProvider></MemoryRouter>);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Link to a file' }), { target: { value: 'https://example.org/book.pdf' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Upload and add to library' }));
+    expect(await screen.findByText('This file is already in your library.')).toBeInTheDocument();
+    expect(workWithFile).toHaveBeenCalledWith('hash', 'works-1');
+    expect(deleted).toEqual(['works-1']);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('warns about a likely-same work after metadata import and stays on the page', async () => {
+    vi.mocked(uploadFile).mockResolvedValue({ status: 'created', asset: {} as never });
+    vi.mocked(findDuplicateWorks).mockResolvedValueOnce([{ work_id: 'other', title: 'Dune', reason: 'identifier' }]).mockResolvedValue([]);
+    setup([new File(['a'], 'dune.pdf'), new File(['b'], 'other.pdf')]);
+    expect(await screen.findByRole('link', { name: 'Dune' })).toHaveAttribute('href', '/library/other');
+    expect(screen.getByText(/same ISBN/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Upload and add to library' })).toBeDisabled());
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

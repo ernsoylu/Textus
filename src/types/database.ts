@@ -478,6 +478,11 @@ isOneToOne: false
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
+"find_duplicate_works":
+{ Args: { "p_work_id": string }; Returns: {
+              "reason": string,"title": string,"work_id": string
+            }[]
+                           },
 "library_languages":
 { Args: Record<PropertyKey, never>; Returns: {
               "language": string
@@ -638,4 +643,3 @@ export const Constants = {
           }
         }
 } as const
-

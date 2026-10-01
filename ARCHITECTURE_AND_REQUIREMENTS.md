@@ -52,6 +52,7 @@ IDs are stable; reference them in issues and commits. Milestones are defined in 
 | FR-CAT-3 | Records carry ordered contributor credits with roles — see [Contributors](#contributors). |
 | FR-CAT-4 | Identifiers are validated and normalized on entry (see [§6.2](#62-identifier-rules)); invalid identifiers are rejected with a reason. |
 | FR-CAT-5 | Adding a record whose identifier already exists in the user's library warns about the duplicate. |
+| FR-CAT-7 | Adding files warns about duplicates of existing works: identical bytes (SHA-256) are caught before upload and reuse the existing work instead of creating a second one; after metadata import, works sharing a file, a non-ISSN identifier, or a similar title + subtitle with the same author `match_key` are listed as possible duplicates (`find_duplicate_works()`), never merged automatically. |
 | FR-CAT-6 | Books have an optional personal rating from 0.5 to 5 stars in half-star steps, persisted on the work, editable from library covers and work editing, and clearable in the work editor. |
 
 ### Contributors
@@ -1077,6 +1078,57 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
                       JOIN public.contributor_identifiers ib ON ib.scheme = ia.scheme AND ib.value <> ia.value
                       WHERE ia.contributor_id = a.id AND ib.contributor_id = b.id);
 $$;
+
+-- FR-CAT-7: other works in the caller's library that are likely the same as p_work_id, strongest evidence first:
+-- same_file (a shared non-cover asset, i.e. identical bytes), identifier (a shared ISBN/DOI/arXiv/PMID/standard
+-- number; ISSN is skipped because it names a serial, not one item), title_author (similar folded title + subtitle,
+-- so a subtitle split off or kept in the title still matches while sequels like Dune / Dune Messiah do not, and a
+-- shared contributor match_key). Warnings only: works are never merged automatically.
+-- SECURITY INVOKER, so RLS limits every joined table to the caller's rows.
+CREATE OR REPLACE FUNCTION public.find_duplicate_works(p_work_id UUID)
+RETURNS TABLE (work_id UUID, title TEXT, reason TEXT)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
+    WITH target AS (
+        SELECT w.id, w.user_id, lower(public.unaccent(normalize(concat_ws(' ', w.title, w.subtitle), NFC))) AS folded
+        FROM public.works w WHERE w.id = p_work_id
+    ),
+    matches AS (
+        SELECT r2.work_id, 1 AS strength, 'same_file' AS reason
+        FROM target t
+        JOIN public.records r ON r.work_id = t.id
+        JOIN public.record_assets ra ON ra.record_id = r.id AND ra.role NOT IN ('cover', 'thumbnail')
+        JOIN public.record_assets ra2 ON ra2.asset_id = ra.asset_id AND ra2.role NOT IN ('cover', 'thumbnail')
+        JOIN public.records r2 ON r2.id = ra2.record_id
+        UNION ALL
+        SELECT r2.work_id, 2, 'identifier'
+        FROM target t
+        JOIN public.records r ON r.work_id = t.id
+        JOIN public.identifiers i ON i.record_id = r.id AND i.scheme <> 'issn'
+        JOIN public.identifiers i2 ON i2.scheme = i.scheme AND i2.normalized_value = i.normalized_value
+        JOIN public.records r2 ON r2.id = i2.record_id
+        UNION ALL
+        -- ponytail: trigram similarity is computed per candidate sharing a match_key; add a folded-title
+        -- trigram index if large libraries make this slow.
+        SELECT r2.work_id, 3, 'title_author'
+        FROM target t
+        JOIN public.records r ON r.work_id = t.id
+        JOIN public.record_contributors rc ON rc.record_id = r.id
+        JOIN public.contributors c ON c.id = rc.contributor_id
+        JOIN public.contributors c2 ON c2.user_id = t.user_id AND c2.match_key = c.match_key
+        JOIN public.record_contributors rc2 ON rc2.contributor_id = c2.id
+        JOIN public.records r2 ON r2.id = rc2.record_id
+        JOIN public.works w2 ON w2.id = r2.work_id
+        WHERE public.similarity(lower(public.unaccent(normalize(concat_ws(' ', w2.title, w2.subtitle), NFC))), t.folded) >= 0.6
+    )
+    SELECT d.work_id, d.title, d.reason FROM (
+        SELECT DISTINCT ON (w.id) w.id AS work_id, w.title, m.reason, m.strength
+        FROM matches m
+        JOIN public.works w ON w.id = m.work_id
+        JOIN target t ON w.user_id = t.user_id AND w.id <> t.id
+        ORDER BY w.id, m.strength
+    ) d
+    ORDER BY d.strength, d.title;
+$$;
 ```
 
 ### 7.3 Row-Level Security
@@ -1458,6 +1510,7 @@ Properties:
 - **Idempotent:** same `uploadId` → same staging path; content-addressed destination; `ON CONFLICT` on asset, link, and jobs. Retrying `complete` at any point is safe.
 - **No dangling rows:** the file is copied to its final path *before* the asset row is inserted.
 - **Orphans:** interrupted uploads leave only staging files, removed by `cleanup`.
+- **Duplicate works (FR-CAT-7):** before creating a work for a chosen file, the SPA hashes it with Web Crypto and looks the checksum up in `assets` (RLS-scoped); a hit linked to an existing work skips the upload. Links can't be hashed in advance, so a `deduplicated` result whose asset already belongs to another work deletes the just-created work. After metadata import, `find_duplicate_works()` reports likely-same works on the upload page and the work page.
 
 ### 9.2 Metadata lookup and apply
 
@@ -1637,6 +1690,7 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [ ] OAuth — deferred until release planning
 - [x] Schema, RLS, storage migrations (§7)
 - [x] Work / record / identifier CRUD — FR-CAT-1..5
+- [x] Duplicate-work detection on upload — FR-CAT-7
 - [x] Contributors: structured names, paste parsing, ordered credits with roles, editor fallback in bylines — FR-CONTRIB-1..4
 - [x] Upload flow with verification and dedup — FR-FILE-1..6
 - [x] Job worker with `extract_text` and `generate_thumbnail`
