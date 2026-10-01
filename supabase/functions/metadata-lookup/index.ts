@@ -322,7 +322,7 @@ export function providersFor(scheme: IdentifierScheme): string[] {
   }
 }
 
-export async function lookupAcrossProviders(ctx: SupabaseContext, scheme: IdentifierScheme, id: string): Promise<Response> {
+export async function lookupAcrossProviders(ctx: Pick<SupabaseContext, 'supabase' | 'supabaseAdmin'>, scheme: IdentifierScheme, id: string): Promise<Response> {
   const providers = providersFor(scheme);
   let failure: { provider: string; result: Lookup } | undefined;
   let data: Metadata | undefined;

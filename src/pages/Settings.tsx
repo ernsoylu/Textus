@@ -3,6 +3,7 @@ import { supabase, supabaseUrl } from '@/lib/supabase';
 import { SignOutButton } from '@/components/account/SignOutButton';
 import { useAuth } from '@/hooks/useAuth';
 import { PasswordForm } from '@/components/account/PasswordForm';
+import { AgentTab } from '@/components/account/AgentTab';
 import { AiTab } from '@/components/account/AiTab';
 import { AppearanceTab } from '@/components/account/AppearanceTab';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'opds', label: 'OPDS' },
   { id: 'ai', label: 'AI' },
+  { id: 'agents', label: 'Agents' },
 ] as const;
 
 function AccountTab() {
@@ -160,6 +162,7 @@ export function Settings() {
       </div>
       {tab === 'account' && <AccountTab />}
       {tab === 'ai' && <AiTab />}
+      {tab === 'agents' && <AgentTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'opds' && <OpdsTab onSetPassword={() => setTab('account')} />}
     </div>

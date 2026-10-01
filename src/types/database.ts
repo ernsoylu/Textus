@@ -5,7 +5,20 @@ export type Database = {
 
   "public": {
           Tables: {
-            "ai_settings": {
+            "agent_tokens": {
+                  Row: {
+                    "created_at": string,"expires_at": string | null,"id": string,"last_used_at": string | null,"name": string,"scope": string,"token_hash": string,"token_prefix": string,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"expires_at"?: string | null,"id"?: string,"last_used_at"?: string | null,"name": string,"scope"?: string,"token_hash": string,"token_prefix": string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"expires_at"?: string | null,"id"?: string,"last_used_at"?: string | null,"name"?: string,"scope"?: string,"token_hash"?: string,"token_prefix"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"ai_settings": {
                   Row: {
                     "generation_model": string | null,"updated_at": string,"user_id": string
                   }
@@ -682,6 +695,11 @@ isOneToOne: false
                            },
 "unaccent":
 { Args: { "": string }; Returns: string
+                           },
+"use_agent_token":
+{ Args: { "p_hash": string }; Returns: {
+              "scope": string,"token_id": string,"user_id": string
+            }[]
                            }
           }
           Enums: {

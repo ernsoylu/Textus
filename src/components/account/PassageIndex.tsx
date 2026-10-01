@@ -1,3 +1,4 @@
+import { readerLink } from '../../../supabase/functions/_shared/sourceLinks';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -51,7 +52,7 @@ export function PassageIndex() {
     {search.error && <p role="alert">Could not search indexed passages.</p>}
     {search.isSuccess && !search.data.length && <p role="status">No supporting passage found in indexed text.</p>}
     <ul className="flex flex-col gap-3">{search.data?.map((hit) => <li key={hit.id}>
-      <Link className="text-green underline" to={`/library/${hit.work_id}/records/${hit.record_id}/assets/${hit.asset_id}/read?${hit.page ? `page=${hit.page}` : `cfi=${encodeURIComponent(hit.cfi ?? '')}`}`}>{hit.title} · {hit.page_label ?? hit.page ?? `section ${hit.section + 1}`}</Link>
+      <Link className="text-green underline" to={readerLink(hit.work_id, hit.record_id, hit.asset_id, hit.page, hit.cfi)}>{hit.title} · {hit.page_label ?? hit.page ?? `section ${hit.section + 1}`}</Link>
       <p className="text-small text-muted">{hit.content}</p>
     </li>)}</ul>
   </div>;

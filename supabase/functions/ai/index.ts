@@ -17,6 +17,6 @@ export default {
     const setting = await checked(ctx.supabase.from('ai_settings').select('generation_model').eq('user_id', ctx.userClaims!.id).maybeSingle());
     let reachable = false;
     if (config.enabled) { try { await ollama('/api/version', undefined, 3000); reachable = true; } catch { /* status must work during an outage */ } }
-    return Response.json({ enabled: config.enabled, reachable, defaultModel: config.defaultModel, embedModel: config.embedModel, selectedModel: setting?.generation_model ?? config.defaultModel });
+    return Response.json({ enabled: config.enabled, agentsEnabled: Deno.env.get('MCP_ENABLED') === 'true', reachable, defaultModel: config.defaultModel, embedModel: config.embedModel, selectedModel: setting?.generation_model ?? config.defaultModel });
   })),
 };

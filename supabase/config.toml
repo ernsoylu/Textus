@@ -418,3 +418,6 @@ enabled = true
 # platform's JWT check must be off for it. On hosted projects deploy it with --no-verify-jwt.
 [functions.opds]
 verify_jwt = false
+
+[functions.mcp]
+verify_jwt = false
