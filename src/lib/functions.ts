@@ -30,7 +30,7 @@ export interface UploadIntentResponse {
 
 export type UploadCompleteResponse =
   | { status: 'created' | 'deduplicated'; asset: import('@/types').AssetRow }
-  | { status: 'rejected'; reason: 'missing' | 'size_mismatch' | 'unsupported_type' };
+  | { status: 'rejected'; reason: 'missing' | 'size_mismatch' | 'unsupported_type' | 'unreachable' };
 
 export function uploadIntent(body: { uploadId: string; recordId: string; filename: string; size: number }) {
   return callFunction<UploadIntentResponse>('upload/intent', body);
@@ -38,6 +38,11 @@ export function uploadIntent(body: { uploadId: string; recordId: string; filenam
 
 export function uploadComplete(body: { uploadId: string; recordId: string; role: 'primary' | 'supplement' | 'cover'; filename: string }) {
   return callFunction<UploadCompleteResponse>('upload/complete', body);
+}
+
+// The server downloads the link (invariant 9) and finishes like uploadComplete.
+export function uploadFromUrl(body: { uploadId: string; recordId: string; role: 'primary' | 'supplement' | 'cover'; url: string }) {
+  return callFunction<UploadCompleteResponse>('upload/from-url', body);
 }
 
 export interface NormalizedMetadata {

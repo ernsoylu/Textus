@@ -73,7 +73,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 ### Files (M1)
 | ID | Requirement |
 |----|-------------|
-| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu files and attach them to a record. |
+| FR-FILE-1 | Upload PDF, EPUB, MOBI, AZW3, CBZ, DjVu files, or add one from a public link, and attach them to a record. |
 | FR-FILE-2 | The server verifies size, detects the real MIME type from file bytes, and computes SHA-256. |
 | FR-FILE-3 | Uploading bytes already in the user's library reuses the existing asset (deduplication by checksum). |
 | FR-FILE-4 | A record can have several assets with roles: primary, supplement, cover, converted, thumbnail. |
@@ -1366,7 +1366,7 @@ The same authenticated function also accepts `{ action: 'queue-cover', recordId,
 
 ### 8.2 `upload`
 
-Two actions on one function: `intent` and `complete`. See [§9.1](#91-upload).
+Three actions on one function: `intent`, `complete` and `from-url`. See [§9.1](#91-upload).
 
 ```typescript
 // POST /upload/intent
@@ -1388,8 +1388,20 @@ interface UploadCompleteRequest {
 type UploadCompleteResponse =
     | { status: 'created'; asset: AssetRow }
     | { status: 'deduplicated'; asset: AssetRow }  // bytes already existed; linked the existing asset
-    | { status: 'rejected'; reason: 'missing' | 'size_mismatch' | 'unsupported_type' };
+    | { status: 'rejected'; reason: 'missing' | 'size_mismatch' | 'unsupported_type' | 'unreachable' };
+
+// POST /upload/from-url — "add via link": the server downloads the file into the staging path an
+// intent would issue, then finishes exactly like complete. Returns UploadCompleteResponse
+// ('unreachable' when the download fails), or 400 { error: 'invalid_url' }.
+interface UploadFromUrlRequest {
+    uploadId: string;
+    recordId: string;
+    role: 'primary' | 'supplement' | 'cover';
+    url: string;               // http(s), default port, no credentials
+}
 ```
+
+The link's host is user-chosen, so instead of a host allowlist `from-url` follows redirects by hand and refuses any hop whose IP literal or DNS answers are not public (`_shared/publicUrl.ts`: loopback, private, link-local, CGNAT, multicast, non-global IPv6). Size is capped by `Content-Length` when present and by the staging bucket's 500 MB limit while streaming. The filename for identifier suggestions comes from the URL's last path segment. Known ceiling: `fetch` re-resolves DNS after the check, so a rebinding resolver is not fully excluded.
 
 ### 8.3 `job-worker`
 
