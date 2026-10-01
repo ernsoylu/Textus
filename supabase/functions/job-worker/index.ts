@@ -21,7 +21,7 @@ import { embedPassages } from './embeddings.ts';
 import { HttpError } from '../_shared/http.ts';
 import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
-import { checked, withBudget, boundedFetch as fetch } from '../_shared/budget.ts';
+import { checked, withBudget, boundedFetch as fetch, JOB_WORKER_MS } from '../_shared/budget.ts';
 
 // ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
 const MAX_EXTRACT_BYTES = 25_000_000;
@@ -298,7 +298,7 @@ export default {
       { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
       { onConflict: 'idempotency_key', ignoreDuplicates: true },
     ));
-    const jobs = await checked(ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 1 })) as Job[];
+    const jobs = await checked(ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 1, p_lease: `${JOB_WORKER_MS / 1000 + 20} seconds` })) as Job[];
     const results = [];
     for (const job of jobs ?? []) {
       try {
@@ -324,5 +324,5 @@ export default {
       }
     }
     return Response.json({ claimed: jobs?.length ?? 0, results });
-  })),
+  }, JOB_WORKER_MS)),
 };

@@ -2,12 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { DOMParser, type Element, type Node } from '@xmldom/xmldom';
 import { readCentralDirectory, readEntry } from './epub.ts';
-import { checked, boundedFetch } from '../_shared/budget.ts';
+import { checked, boundedFetch, JOB_WORKER_MS } from '../_shared/budget.ts';
 
 export interface Passage { ordinal: number; content: string; page?: number; page_label?: string; section?: number; cfi?: string }
 interface IndexJob { id: string; user_id: string | null; claim_generation: number; payload: Record<string, unknown> }
-const MAX_BUFFER = 25_000_000;
+// pdf.js allocates the whole file length up front, and the Edge runtime counts it against the worker's
+// memory limit. JOB_WORKER_MEMORY_MB mirrors the router's job-worker limit (150 MB by default).
+const MEMORY_BYTES = (Number(Deno.env.get('JOB_WORKER_MEMORY_MB')) || 150) * 1_000_000;
+const MAX_PDF_BYTES = MEMORY_BYTES * 0.6;
+const MAX_BUFFER = Math.min(200_000_000, Math.max(25_000_000, MEMORY_BYTES / 4));
 const MAX_RANGE_BYTES = 24_000_000;
+const WORK_MS = JOB_WORKER_MS / 2;
 const MAX_PASSAGES = 128;
 class ParserLimit extends Error {}
 export function chunks(text: string): string[] {
@@ -90,6 +95,7 @@ async function pdfDocument(url: string) {
   const head = await boundedFetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
   const length = Number(head.headers.get('content-length'));
   if (!head.ok || !Number.isSafeInteger(length) || length <= 0) throw new Error('PDF size unavailable');
+  if (length > MAX_PDF_BYTES) throw new ParserLimit('PDF exceeds the worker memory limit');
   const initial = await readRange(0, Math.min(length, 65536));
   class Ranges extends pdfjs.PDFDataRangeTransport {
     override requestDataRange(begin: number, end: number) {
@@ -100,7 +106,7 @@ async function pdfDocument(url: string) {
   const rangeFailure = new Promise<never>((_resolve, reject) => { rejectRange = reject; });
   const range = new Ranges(length, initial);
   const task = pdfjs.getDocument({ range, disableAutoFetch: true, disableStream: true, rangeChunkSize: 65536, useSystemFonts: false, maxImageSize: 0 });
-  const timeout = setTimeout(() => { rejectRange(new ParserLimit('PDF parsing exceeded the time budget')); void task.destroy(); }, 35_000);
+  const timeout = setTimeout(() => { rejectRange(new ParserLimit('PDF parsing exceeded the time budget')); void task.destroy(); }, JOB_WORKER_MS * 0.7);
   try {
     const doc = await Promise.race([task.promise, rangeFailure]);
     return { doc, wait: <T>(promise: Promise<T>) => Promise.race([promise, rangeFailure]), destroy: async () => { clearTimeout(timeout); await task.destroy(); } };
@@ -118,19 +124,19 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
   const started = Date.now();
   try {
     if (asset.file_format === 'epub') {
-      if (asset.file_size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the 25 MB parser limit');
+      if (asset.file_size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser memory limit');
       const file = await checked(admin.storage.from(asset.bucket).download(asset.storage_path));
       if (!file || file.size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser limit');
       const sections = epubSections(new Uint8Array(await file.arrayBuffer()));
       total = sections.length;
-      for (const section of sections.slice(from, from + 4)) {
+      for (const section of sections.slice(from, from + 16)) {
         const result = section.read();
         const parts = chunks(result.text);
         if (parts.length > MAX_PASSAGES) { reason = 'A section exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
         if (passages.length + parts.length > MAX_PASSAGES && done > from) break;
         passages.push(...parts.map((content) => ({ ordinal: ordinal++, section: section.section, cfi: result.cfi, content })));
         done++;
-        if (Date.now() - started > 25_000) break;
+        if (Date.now() - started > WORK_MS) break;
       }
     } else if (asset.file_format === 'pdf') {
       const signed = await checked(admin.storage.from(asset.bucket).createSignedUrl(asset.storage_path, 120));
@@ -138,7 +144,7 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
       try {
         total = task.doc.numPages;
         const labels = await task.wait(task.doc.getPageLabels()).catch(() => null);
-        for (let page = from + 1; page <= Math.min(total, from + 6); page++) {
+        for (let page = from + 1; page <= Math.min(total, from + 24); page++) {
           const pdfPage = await task.wait(task.doc.getPage(page));
           const text = await task.wait(pdfPage.getTextContent());
           const parts = chunks(text.items.map((item) => 'str' in item ? item.str : '').join(' '));
@@ -147,7 +153,7 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
           passages.push(...parts.map((content) => ({ ordinal: ordinal++, page, ...(labels?.[page - 1] ? { page_label: labels[page - 1] } : {}), content })));
           pdfPage.cleanup();
           done = page;
-          if (Date.now() - started > 25_000) break;
+          if (Date.now() - started > WORK_MS) break;
         }
       } finally { await task.destroy(); }
     } else throw new ParserLimit('Unsupported format');

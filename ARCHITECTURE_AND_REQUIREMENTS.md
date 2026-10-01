@@ -220,7 +220,7 @@ pg_cron (every minute) ──pg_net──► job-worker Edge Function ──► 
 AI agent (e.g. Hermes) ──MCP + agent token──► mcp Edge Function ──5-min user JWT──► PostgREST (RLS)   (M6)
 ```
 
-**Reference deployment.** Supabase and the `textus-web` container run on one LAN host (app102). A Pangolin tunnel publishes `https://base.textus.bff.bz` (API gateway) and `https://textus.bff.bz` (app). Ollama and Hermes Agent run on a second LAN host (monster, GTX 1050 Ti 4 GB); the Edge Functions container reaches Ollama directly over the LAN, and Hermes reaches Textus through the public API URL. The Edge runtime there limits each worker to 150 MB of memory and 60 s of wall-clock time (`volumes/functions/main/index.ts`), which bounds file parsing (§15 #1) and LLM calls (§15 #15).
+**Reference deployment.** Supabase and the `textus-web` container run on one LAN host (app102). A Pangolin tunnel publishes `https://base.textus.bff.bz` (API gateway) and `https://textus.bff.bz` (app). Ollama and Hermes Agent run on a second LAN host (monster, GTX 1050 Ti 4 GB); the Edge Functions container reaches Ollama directly over the LAN, and Hermes reaches Textus through the public API URL. The Edge runtime there limits each worker to 150 MB of memory and 60 s of wall-clock time (`volumes/functions/main/index.ts`), except `job-worker`, which gets 1024 MB and 115 s for whole-file parsing (§15 #1); the limits also bound LLM calls (§15 #15).
 
 **Responsibilities**
 
@@ -1392,7 +1392,7 @@ const { data, error } = await supabase.storage.from('documents').createSignedUrl
 
 ### 7.5 Worker schedule (environment-specific, not in migrations)
 
-The job worker is triggered every minute by `pg_cron` through `pg_net`. The service role key is read from Supabase Vault, never hard-coded:
+The job worker is triggered by `pg_cron` through `pg_net` every minute by default; app102 runs it every 30 seconds (`cron.alter_job(<id>, schedule := '30 seconds')`) so up to four claims overlap. `claim_jobs()` hands overlapping workers different jobs, and same-priority job types take turns (migration `20261001000031`), so passage indexing cannot starve embedding. The service role key is read from Supabase Vault, never hard-coded:
 
 ```sql
 SELECT cron.schedule('job-worker', '* * * * *', $$
@@ -1938,7 +1938,7 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 
 | # | Topic | Detail | Proposed default |
 |---|-------|--------|------------------|
-| 1 | **Large files in Edge Functions — P1** | Upload streams bytes with a 500 MB limit, but extraction currently skips files over 25 MB and buffers smaller files; PDF covers eight pages, EPUB eight HTML entries. Compressed size alone does not bound parser memory. The draft reports 150 MB/60 s on the host, not reverified in this review. | M6.0/2: measure range requests with automatic fetching/streaming controlled, bound decode/inflation and batch deadlines, retain partial coverage and distinguish unsupported/encrypted/no-text files (SYS-03, M6-SYS-01). |
+| 1 | **Large files in Edge Functions — P1** | Upload streams bytes with a 500 MB limit. Passage indexing reads PDFs through bounded ranges, but pdf.js allocates the whole file length up front and the Edge runtime counts it against the worker memory limit, so 27–188 MB PDFs were killed under the default 150 MB/60 s. app102's Edge router grants only `job-worker` 1024 MB/115 s; `JOB_WORKER_MEMORY_MB`/`JOB_WORKER_BUDGET_MS` mirror that, and PDFs above 60% of the memory limit are reported not indexable instead of crashing. Batches cover up to 24 PDF pages or 16 EPUB sections within half the run budget. | M6.0/2: measure range requests with automatic fetching/streaming controlled, bound decode/inflation and batch deadlines, retain partial coverage and distinguish unsupported/encrypted/no-text files (SYS-03, M6-SYS-01). |
 | 2 | PDF text/thumbnail | PDF text extraction uses pdfjs-dist in Deno; PDF and DjVu covers can be captured client-side from the first rendered page when no cover exists. | Implemented; large-file extraction remains subject to #1. |
 | 3 | ~~Annotation / reading-state cross-ownership~~ | Resolved in migration `20260929000002`: INSERT and UPDATE policies on `reading_states` and `annotations` now require `private.is_record_owner(record_id)` and an owned `asset_id`. | Done. |
 | 4 | Old-style arXiv IDs | `hep-th/9901001` format is not accepted. | Add when a user needs it. |
