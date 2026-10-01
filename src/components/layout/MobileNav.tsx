@@ -1,3 +1,4 @@
+import { ActivityCount } from './ActivityCount';
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -52,7 +53,7 @@ export function MobileNav() {
     </nav>
     <ModalDialog open={moreOpen} title="Explore your library" onClose={() => setMoreOpen(false)}>
       <nav aria-label="More pages" className="grid grid-cols-2 gap-2">
-        {MORE_ITEMS.map((item) => <NavLink key={item.to} to={item.to} onClick={() => setMoreOpen(false)} className={({ isActive }) => cn('min-h-11 rounded-8 p-3 text-label', isActive ? 'bg-green-bg text-green' : 'bg-dim text-fg hover:bg-green-bg')}>{item.label}</NavLink>)}
+        {MORE_ITEMS.map((item) => <NavLink key={item.to} to={item.to} onClick={() => setMoreOpen(false)} className={({ isActive }) => cn('min-h-11 rounded-8 p-3 text-label', isActive ? 'bg-green-bg text-green' : 'bg-dim text-fg hover:bg-green-bg')}>{item.label}{item.to === '/activity' && <ActivityCount />}</NavLink>)}
       </nav>
       <Button variant="secondary" onClick={() => setMoreOpen(false)}>Close</Button>
     </ModalDialog>

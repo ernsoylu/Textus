@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { parseIdentifier } from 'shared/identifier';
-import { splitNames, type ParsedCredit, type Role } from 'shared/names';
+import { fold, splitNames, type ParsedCredit, type Role } from 'shared/names';
 import { supabase } from '@/lib/supabase';
+import { validIds } from '@/lib/metadataApply';
 import { metadataLookup, type NormalizedMetadata } from '@/lib/functions';
 import { useAuth } from '@/hooks/useAuth';
-import { saveCredits, type CreditInput } from '@/hooks/useContributorCredits';
+import { type CreditInput } from '@/hooks/useContributorCredits';
 import { mapCsvRows, parseDoiList, type ColumnMapping, type CsvImportRow, type CsvTable, type RowError } from '@/lib/importRows';
 import { FIRST_RECORD_TYPE, WORK_TYPES, type WorkType } from '@/lib/recordTypes';
 
@@ -62,46 +63,30 @@ async function alreadyInLibrary(identifiers: NewItem['identifiers']): Promise<bo
   return false;
 }
 
-// Find-or-create each tag by name, then put it on the record (FR-ORG-1). Names compare case-insensitively.
-async function attachTags(userId: string, recordId: string, names: string[]): Promise<void> {
-  const { data: existing, error } = await supabase.from('tags').select('id, name');
-  if (error) throw error;
-  const byName = new Map(existing.map((t) => [t.name.toLowerCase(), t.id]));
-  for (const name of names) {
-    if (byName.has(name.toLowerCase())) continue;
-    const { data: created, error: createError } = await supabase.from('tags').insert({ user_id: userId, name }).select('id').single();
-    if (createError) throw createError;
-    byName.set(name.toLowerCase(), created.id);
-  }
-  const rows = names.map((name) => ({ record_id: recordId, tag_id: byName.get(name.toLowerCase())! }));
-  const { error: linkError } = await supabase.from('record_tags').upsert(rows, { onConflict: 'record_id,tag_id', ignoreDuplicates: true });
-  if (linkError) throw linkError;
-}
-
-async function createItem(item: NewItem): Promise<string> {
-  const { data: work, error: workError } = await supabase
-    .from('works')
-    .insert({ user_id: item.userId, title: item.title, subtitle: item.subtitle ?? null, abstract: item.abstract ?? null, language: item.language ?? null, work_type: item.workType })
-    .select('id')
-    .single();
-  if (workError) throw workError;
-  const recordType = FIRST_RECORD_TYPE[item.workType] ?? 'other';
-  const { data: record, error: recordError } = await supabase.from('records').insert({ work_id: work.id, record_type: recordType, ...item.record }).select('id').single();
-  if (recordError) throw recordError;
-  for (const { scheme, value } of item.identifiers) {
+// Catalog, identifiers, credits and tags commit together; request IDs survive a retry.
+async function createItem(item: NewItem, requestId: string): Promise<string> {
+  const identifiers = item.identifiers.map(({ scheme, value }) => {
     const parsed = parseIdentifier(scheme, value);
-    if (!parsed.ok) continue;
-    const { error } = await supabase.from('identifiers').insert({ record_id: record.id, scheme, normalized_value: parsed.normalized, original_value: parsed.original });
-    if (error) throw error;
-  }
-  if (item.credits.length) await saveCredits(record.id, item.credits, { lock: item.lockCredits });
-  if (item.tags?.length) await attachTags(item.userId, record.id, item.tags);
-  return work.id;
+    if (!parsed.ok) throw new Error(`Invalid ${scheme.toUpperCase()}.`);
+    return { scheme, value: parsed.normalized };
+  });
+  const credits = item.credits.map((row) => {
+    const display = row.kind === 'organization' ? row.organizationName : [row.givenNames, row.particle, row.familyName, row.suffix].filter(Boolean).join(' ');
+    return { ...(row.contributorId ? { contributor_id: row.contributorId } : {}), kind: row.kind, display_name: display,
+      family_name: row.kind === 'person' ? row.familyName : null, given_names: row.givenNames || null, particle: row.particle || null, suffix: row.suffix || null,
+      sort_name: row.kind === 'organization' ? display : `${row.particle ? row.particle + ' ' : ''}${row.familyName}${row.givenNames ? ', ' + row.givenNames : ''}`,
+      match_key: fold(row.kind === 'organization' ? display : row.familyName), identifiers: row.identifiers ?? {}, role: row.role, credited_as: row.creditedAs || null };
+  });
+  const payload = { expectedOwner: item.userId, work: { title: item.title, subtitle: item.subtitle ?? null, abstract: item.abstract ?? null, language: item.language ?? null, work_type: item.workType },
+    record: { ...item.record, record_type: FIRST_RECORD_TYPE[item.workType] ?? 'other' }, identifiers, credits, tags: item.tags ?? [], lockCredits: item.lockCredits };
+  const { data, error } = await supabase.rpc('create_catalog', { p_request: requestId, p_payload: payload });
+  if (error) throw error;
+  return (data as { workId: string }).workId;
 }
 
 const splitTags = (raw?: string) => [...new Set((raw ?? '').split(/[;,]/).map((t) => t.trim()).filter(Boolean))];
 
-async function importCsvRow(userId: string, data: CsvImportRow): Promise<ImportResult> {
+async function importCsvRow(userId: string, data: CsvImportRow, requestId: string): Promise<ImportResult> {
   const identifiers = (['doi', 'isbn'] as const).flatMap((scheme) => (data[scheme] ? [{ scheme, value: data[scheme]! }] : []));
   if (await alreadyInLibrary(identifiers)) return { label: data.title, status: 'skipped', message: 'Already in your library (matching identifier).' };
   const workId = await createItem({
@@ -114,7 +99,7 @@ async function importCsvRow(userId: string, data: CsvImportRow): Promise<ImportR
     credits: data.authors ? creditsFromText(data.authors.replaceAll(';', ' & ')) : [],
     lockCredits: true,
     tags: splitTags(data.tags),
-  });
+  }, requestId);
   return { label: data.title, status: 'imported', workId };
 }
 
@@ -122,13 +107,14 @@ function providerCredits(meta: NormalizedMetadata): CreditInput[] {
   return (meta.contributors ?? []).flatMap((c) => {
     const role: Role = c.role === 'editor' ? 'editor' : 'author';
     if (c.family) {
-      return [{ kind: 'person' as const, creditedAs: c.name, organizationName: '', familyName: c.family, givenNames: c.given ?? '', particle: '', suffix: '', role }];
+      return [{ kind: 'person' as const, creditedAs: c.name, organizationName: '', familyName: c.family, givenNames: c.given ?? '', particle: '', suffix: '', role, identifiers: validIds(c.identifiers) }];
     }
-    return creditsFromText(c.name, role);
+    return creditsFromText(c.name, role).map((credit) => ({ ...credit, identifiers: validIds(c.identifiers) }));
   });
 }
 
-async function importDoi(userId: string, doi: string): Promise<ImportResult> {
+async function importDoi(userId: string, doi: string, requestId: string, prepared: { item?: NewItem }): Promise<ImportResult> {
+  if (prepared.item) return { label: prepared.item.title, status: 'imported', workId: await createItem(prepared.item, requestId) };
   if (await alreadyInLibrary([{ scheme: 'doi', value: doi }])) return { label: doi, status: 'skipped', message: 'Already in your library.' };
   const res = await metadataLookup('doi', doi);
   if (res.status !== 'success') {
@@ -138,7 +124,7 @@ async function importDoi(userId: string, doi: string): Promise<ImportResult> {
   const meta = res.data;
   if (!meta.title) return { label: doi, status: 'failed', message: 'The provider returned no title.' };
   const workType = (WORK_TYPES as readonly string[]).includes(meta.work_type) ? (meta.work_type as WorkType) : 'article';
-  const workId = await createItem({
+  prepared.item = {
     userId,
     title: meta.title,
     subtitle: meta.subtitle,
@@ -153,7 +139,8 @@ async function importDoi(userId: string, doi: string): Promise<ImportResult> {
     identifiers: [{ scheme: 'doi', value: doi }],
     credits: providerCredits(meta),
     lockCredits: false,
-  });
+  };
+  const workId = await createItem(prepared.item, requestId);
   return { label: meta.title, status: 'imported', workId };
 }
 
@@ -202,7 +189,8 @@ async function planCsv(userId: string, table: CsvTable, mapping: ColumnMapping):
     else if (repeat) plan.duplicates.push({ label, reason: 'Repeated earlier in this file.' });
     else {
       keys.forEach((k) => seen.add(k));
-      plan.ready.push({ label, detail: [data.authors, data.year].filter(Boolean).join(' · '), run: () => importCsvRow(userId, data) });
+      const requestId = crypto.randomUUID();
+      plan.ready.push({ label, detail: [data.authors, data.year].filter(Boolean).join(' · '), run: () => importCsvRow(userId, data, requestId) });
     }
   }
   return plan;
@@ -214,7 +202,11 @@ async function planDois(userId: string, text: string): Promise<ImportPlan> {
   const plan: ImportPlan = { ready: [], duplicates: [], invalid: errors };
   for (const doi of dois) {
     if (existing.has(`doi:${doi}`)) plan.duplicates.push({ label: doi, reason: 'Already in your library.' });
-    else plan.ready.push({ label: doi, detail: 'Looked up on import', run: () => importDoi(userId, doi) });
+    else {
+      const requestId = crypto.randomUUID();
+      const prepared: { item?: NewItem } = {};
+      plan.ready.push({ label: doi, detail: 'Looked up on import', run: () => importDoi(userId, doi, requestId, prepared) });
+    }
   }
   return plan;
 }

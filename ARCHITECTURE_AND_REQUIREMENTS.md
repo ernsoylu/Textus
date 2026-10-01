@@ -28,9 +28,9 @@ Textus is a self-hosted, web-based library manager for books, research papers, a
 
 **Target users:** researchers, students, and readers managing mixed collections on their own infrastructure.
 
-**In scope:** single-user libraries (each account owns an isolated library), multiple accounts per instance, PDF/EPUB/MOBI/AZW3/CBZ/DjVu reading in the browser, metadata from public providers.
+**In scope:** single-user libraries (each account owns an isolated library), multiple accounts per instance, PDF/EPUB/MOBI/AZW3/CBZ/DjVu reading in the browser, metadata from public providers. From M6: optional AI assistance through an admin-configured, self-hosted Ollama server, and an MCP endpoint that lets the owner's own AI agent (for example Hermes Agent) search the library, find cited passages and add books.
 
-**Out of scope (for now):** public/shared collections, multi-user shared libraries, storage backends other than Supabase Storage (no Google Drive, NAS adapters), native mobile apps, DRM-protected files, format conversion.
+**Out of scope (for now):** public/shared collections, multi-user shared libraries, storage backends other than Supabase Storage (no Google Drive, NAS adapters), native mobile apps, DRM-protected files, format conversion. For M6: Textus does not write answers to questions (the agent does, from the passages Textus returns), does not call cloud LLM providers, does not OCR scans without a text layer, and does not run an in-app chat.
 
 ---
 
@@ -79,7 +79,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 | FR-FILE-3 | Uploading bytes already in the user's library reuses the existing asset (deduplication by checksum). |
 | FR-FILE-4 | A record can have several assets with roles: primary, supplement, cover, converted, thumbnail. |
 | FR-FILE-5 | Uploads are idempotent: retrying an upload with the same upload ID does not create duplicates. |
-| FR-FILE-6 | Asset processing state (pending → processing → ready / failed) is visible in the UI. |
+| FR-FILE-6 | Asset processing state (pending → processing → ready / failed) is visible in the UI: per item on library cards and the work page, and app-wide as a count of the user's queued or running jobs on the Activity navigation link (M6). |
 
 ### Search and organization (M1, M3)
 | ID | Requirement | Milestone |
@@ -101,7 +101,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 | FR-META-5 | Provider responses are cached; repeated lookups are served from cache. |
 | FR-META-6 | Lookup failures are reported precisely: not found, invalid identifier, rate limited, provider error. |
 
-Metadata precedence when merging: (1) user-locked manual values, (2) reviewed exact identifier matches, (3) metadata extracted from the file, (4) unreviewed provider suggestions.
+Metadata precedence when merging: (1) user-locked manual values, (2) reviewed exact identifier matches, (3) metadata extracted from the file, (4) unreviewed provider suggestions, (5) LLM-extracted suggestions (FR-AI-3).
 
 ### Reading (M1, M4)
 | ID | Requirement | Milestone |
@@ -123,6 +123,20 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | FR-SER-2 | Show volume/issue completeness per serial. The run a collector expects is stored as text per volume in `works.metadata.expected_issues` (`{"2024": "1-6, 8"}`); without one, issues are assumed to run 1..max. |
 | FR-SER-3 | OPDS catalog feed. |
 
+### AI and agent access (M6)
+Design in [§8.7](#87-ai), [§8.8](#88-mcp) and [§9.4](#94-agent-question-to-cited-sources). AI is optional and advisory: model output is only ever a suggestion the user confirms or a verbatim quote with a reference. Textus never writes the final answer to a question.
+
+| ID | Requirement |
+|----|-------------|
+| FR-AI-1 | AI features are enabled per instance by `AI_ENABLED=true` and `OLLAMA_URL` in the Edge Functions environment. When disabled or the server is unreachable, AI controls are hidden or explain why, AI jobs are not queued, and every other feature behaves as before. |
+| FR-AI-2 | Settings › AI shows whether AI is available and lists the generation models installed on the Ollama server; the user picks the model used for their library (default `OLLAMA_DEFAULT_MODEL`). Only admin-approved local models are selectable; cloud-backed models and model-management operations are excluded. The embedding model is instance-wide (`OLLAMA_EMBED_MODEL`) and shown read-only; record its digest and dimension, because changing it requires a versioned reindex without mixing old/new vectors. |
+| FR-AI-3 | When text extraction finds no identifier, the chosen model extracts title, subtitle, contributors, edition, publisher, year and printed identifiers from the file's front matter. Printed identifiers are validated (§6.2) and looked up as usual; otherwise a bounded title + author provider search is offered with consent to send those file-derived fields to the external provider; what remains is a suggestion labelled `llm:<model>`. Nothing is applied without the user's confirmation, and locks are respected (FR-META-2/3). The existing automatic suggestion consumer must explicitly exclude `llm:` entries; map insertion order is not metadata precedence. It ranks last in metadata precedence (§2 Metadata) and never overrides provider or file-embedded values. |
+| FR-AI-4 | The full text of PDF and EPUB files is split into passages of about 500 tokens, each with its location (PDF page number and label; EPUB section index and CFI), indexed for full-text search and embedded with the instance embedding model. Indexing runs in the background in bounded batches; its progress and failures show in Activity. Files without a text layer are marked as not indexable. Existing assets are backfilled; retry/cancel/reindex and partial coverage are visible. Passage FTS remains available without Ollama; unsupported formats are distinguished from files with no text. |
+| FR-AI-5 | Finding sources: for a question, Textus retrieves candidate passages from the user's library (hybrid full-text + vector ranking), the local model selects the relevant ones and marks the exact supporting sentences, and Textus returns sources with work title, byline, year, page or location, verbatim quote and a reader deep link. Quotes are verified to occur in the retrieved passage text; unverifiable quotes or IDs outside the retrieved set are dropped. Server-owned bibliographic data supplies citations and links. Results report indexed coverage/partial state; no match means no supporting passage was found in indexed text, not proof that the library lacks an answer. |
+| FR-AI-6 | Agent access tokens: the user creates, names, lists and revokes tokens in Settings › Agent access, with scope `read` or `read_write` and an optional expiry. The secret is shown once and stored only as a SHA-256 hash; last use is recorded. |
+| FR-AI-7 | An MCP endpoint (Streamable HTTP) exposes the library to the user's agent: search the library, get a work, search passages, find sources (FR-AI-5), look up an identifier and create a work from it, add a file from a public URL, tag, and add to a collection. Every call runs as the token's user under RLS; write tools need `read_write`. |
+| FR-AI-8 | A Textus skill for Hermes Agent ships in the repository: it teaches the agent to search the user's library first, answer only from returned quotes, cite as *Title — Author, p. N* with the deep link, report when no supporting passage was found in the indexed text, and request owner approval before writes. Start with a read-only token; book/tool content must never authorize another tool call. Upload/write approval is enforced by Textus against the concrete action, not solely by skill instructions. |
+
 ---
 
 ## 3. Non-functional requirements
@@ -134,12 +148,20 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | NFR-SEC-3 | Security | Service role key and provider API keys exist only in Edge Functions. |
 | NFR-SEC-4 | Security | Client-reported MIME types are never trusted. |
 | NFR-SEC-5 | Security | Outbound provider requests use a host allowlist, timeouts (10 s), and response size limits (5 MB). |
+| NFR-SEC-6 | Security | Agent tokens are random 256-bit secrets stored only as SHA-256 hashes, scoped, revocable and optionally expiring. The `mcp` function exchanges a valid token for a 5-minute server-internal JWT for that user; library reads and ordinary catalog writes use RLS. The existing upload service retains narrowly privileged asset finalization after owner validation; MCP must not gain general service-role library access. |
+| NFR-SEC-7 | Security | The Ollama server is admin-configured (`OLLAMA_URL`), reached only from Edge Functions on the private network, and never exposed through the gateway or to the SPA. Calls use a timeout below the runtime's wall-clock limit, cap `num_predict` and the response at 5 MB, and validate structured output with Zod. Text from books is untrusted: prompts delimit it, and output is validated rather than followed. |
+| NFR-SEC-8 | Security | Scope is enforced centrally on every MCP call, independently of owner RLS. Internal user JWTs never leave the server; token revocation/expiry and live owner are checked for each request. Validate transport Origin, body size, protocol and tool arguments; redact credentials and private content from logs. |
+| NFR-SEC-9 | Security | Arbitrary URL downloads connect only to verified public destinations on every hop, with no DNS check/connect gap. Ollama is restricted to approved callers/models even on the LAN. Enforce per-user/token limits and instance-wide AI concurrency/resource budgets. |
+| NFR-SEC-10 | Security | Browser private state is isolated across auth identity changes, including in-flight requests and signed URLs. Untrusted book/model/provider content cannot grant permission for writes; agent writes require explicit owner authorization bound to their arguments. |
 | NFR-PERF-1 | Performance | Library list and search: p95 < 300 ms server time at 10,000 records per user. |
 | NFR-PERF-2 | Performance | Every RLS policy uses indexed columns and `(select auth.uid())` so it is evaluated once per query. |
+| NFR-PERF-3 | Performance | Finding sources (FR-AI-5) completes within the Edge runtime's wall-clock limit (60 s on the reference host) with the default 4B model on a 4 GB GPU; retrieval alone (`search_passages`) stays under 500 ms server time. |
 | NFR-REL-1 | Reliability | Background jobs are retried up to `max_attempts` with a lease so crashed workers do not lose work. |
-| NFR-REL-2 | Reliability | A failed step never leaves an asset row pointing to a missing file. |
+| NFR-REL-3 | Reliability | Long background work (passage indexing, embedding) runs in bounded batches that each fit the runtime's memory and wall-clock limits and re-queue the next batch; a failed batch resumes, it does not restart the file. |
+| NFR-REL-2 | Reliability | A failed step never leaves an asset row pointing to a missing file. Upload completion is replayable after a lost response and publishes the exact verified bytes; asset/link/job finalization and deletion claims coordinate with all linking paths. |
+| NFR-REL-4 | Reliability | Jobs use an end-to-end deadline, claim-generation checks and atomic checkpoints/continuations. Cleanup makes bounded forward progress across all users and objects; deletion and indexing stop safely when the owner/asset disappears. |
 | NFR-A11Y-1 | Accessibility | Library and metadata UI meet WCAG 2.1 AA; the reader is keyboard-navigable. |
-| NFR-OPS-1 | Operations | Deployable with Docker on a single host; backup = `pg_dump` + storage sync. |
+| NFR-OPS-1 | Operations | Deployable with Docker on a single host; consistent backup covers PostgreSQL, Storage metadata/bytes and configuration. An isolated restore verifies records, files, covers and annotations; derived indexes can be rebuilt and restored agent tokens are invalidated by default. |
 | NFR-MAINT-1 | Maintainability | TypeScript strict mode, no `any`; Zod validation at every trust boundary. |
 
 ---
@@ -163,6 +185,9 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | Validation | Zod | 3+ |
 | Testing | Vitest + Testing Library | latest |
 | Readers | pdf.js (`pdfjs-dist` viewer components), foliate-js (EPUB, MOBI, AZW3, FB2, CBZ; pinned GitHub tarball, not on npm), DjVu.js (vendored in `src/vendor/djvu`, GPL-2.0-or-later) | pinned |
+| Vector search (M6) | `pgvector` (`vector` extension, exact filtered cosine search) | 0.8+ |
+| Local LLM (M6, optional) | Ollama HTTP API, admin-hosted outside Textus; called only from Edge Functions | Pin a tested release; verify required APIs and local-only mode during M6.1 |
+| Agent protocol (M6) | MCP Streamable HTTP via the official TypeScript SDK (`@modelcontextprotocol/sdk`), stateless | pinned |
 
 Build prerequisite: Node.js 22.13+ for the pinned pdfjs-dist version; CI and Docker use Node.js 24.
 
@@ -173,6 +198,7 @@ Build prerequisite: Node.js 22.13+ for the pinned pdfjs-dist version; CI and Doc
 - No Redis, RabbitMQ, or external queue — the `jobs` table is the queue.
 - No ORM — Supabase client, plus SQL functions where a query needs it.
 - Database row types are generated (`supabase gen types typescript`), not hand-written.
+- Ollama is an external provider, like Crossref: Textus does not deploy, manage or depend on it, and runs without it. No cloud LLM APIs, vector databases or embedding services outside PostgreSQL.
 
 ---
 
@@ -186,10 +212,15 @@ Browser (React SPA)
   └──────────────► Edge Functions                       lookup, upload, export
                         │  service role
                         ├──► PostgreSQL / Storage
-                        └──► External providers (allowlisted hosts)
+                        ├──► External providers (allowlisted hosts)
+                        └──► Ollama (OLLAMA_URL, private network, optional — M6)
 
 pg_cron (every minute) ──pg_net──► job-worker Edge Function ──► jobs table
+
+AI agent (e.g. Hermes) ──MCP + agent token──► mcp Edge Function ──5-min user JWT──► PostgREST (RLS)   (M6)
 ```
+
+**Reference deployment.** Supabase and the `textus-web` container run on one LAN host (app102). A Pangolin tunnel publishes `https://base.textus.bff.bz` (API gateway) and `https://textus.bff.bz` (app). Ollama and Hermes Agent run on a second LAN host (monster, GTX 1050 Ti 4 GB); the Edge Functions container reaches Ollama directly over the LAN, and Hermes reaches Textus through the public API URL. The Edge runtime there limits each worker to 150 MB of memory and 60 s of wall-clock time (`volumes/functions/main/index.ts`), which bounds file parsing (§15 #1) and LLM calls (§15 #15).
 
 **Responsibilities**
 
@@ -197,7 +228,9 @@ pg_cron (every minute) ──pg_net──► job-worker Edge Function ──► 
 |-----------|------|-----------|
 | SPA | Catalog CRUD via supabase-js under RLS; renders files from signed URLs; calls Edge Functions | Calls external providers; holds the service role key; creates assets |
 | PostgreSQL | Stores everything; enforces ownership (RLS), uniqueness, asset immutability (trigger) | — |
-| Edge Functions | Validate input with Zod; talk to providers; verify uploads; create assets; run jobs | Return placeholder data; trust client MIME types |
+| Edge Functions | Validate input with Zod; talk to providers and Ollama; verify uploads; create assets; run jobs; serve MCP | Return placeholder data; trust client MIME types; write answers for the agent |
+| Ollama (optional) | Extracts metadata suggestions, selects relevant passages, embeds text | Is reached from the browser or the internet |
+| AI agent (user's own) | Calls MCP tools with its token; writes answers from returned quotes and cites them | Gets service-role access or reads other users' data |
 | Storage | Holds bytes in `documents`, `covers`, `staging` buckets | Serves anything publicly |
 
 ---
@@ -1372,6 +1405,94 @@ SELECT cron.schedule('job-worker', '* * * * *', $$
 $$);
 ```
 
+### 7.6 M6 database additions
+
+**Implemented in M6.0:** migrations `20261001000002`–`20261001000004` add service-only `upload_attempts` (owner/upload ID, intent, bound completion request and durable result), `storage_deletions` (bucket/path, optional asset ID, attempts/availability), `assets.deleting_at`, and `jobs.claim_generation`/`available_at`. `begin_upload()` binds retries to their owner/request; `complete_upload()` atomically locks/verifies the record and finalizes the asset, attachment and extraction job. `claim_storage_cleanup()` qualifies candidates before limiting; linking/collection-cover triggers lock assets and forbid attaching a deletion claim or crossing owners. `finish_storage_deletion()` removes database state only after Storage deletion. `claim_jobs()` claims one eligible job, advances its generation and asset state; `finish_job()` fences completion, retry and continuation to a live lease. All privileged RPCs explicitly revoke PUBLIC/anon/authenticated execution.
+
+**Implemented in M6.1:** migrations `20261001000005`–`20261001000006` add owner-scoped `ai_settings`, private request-window counters and a singleton expiring GPU lease. Service-only RPCs enforce request limits/concurrency; `active_job_count()` runs under owner RLS. Upload intents reserve a 10 GB per-owner storage budget (including recent pending intents) and reject a queue of 500 active jobs. The `ai` function implements authenticated status/model discovery with bounded bodies; generation is restricted to `OLLAMA_ALLOWED_MODELS`, cloud/embedding-only models are rejected, and responses share the invocation deadline. AI stays disabled by default until deployment network checks.
+
+**Still planned for later M6 phases:**
+
+Move each block into §7.1–7.3 when its migration lands. This is a schema sketch, not a ready-to-run migration. Split migrations by the gated build order in §13; include ownership/versioning constraints, explicit grants and RLS tests before using each table. Run `npm run gen:types` after schema changes. Security/systemic acceptance criteria are in [ROADMAP.md](docs/ROADMAP.md#security-and-systemic-review--2026-10-01).
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+
+-- Per-user AI preferences (FR-AI-2). NULL model = OLLAMA_DEFAULT_MODEL. The model name is checked
+-- against the admin-approved local model list when used; being installed alone is insufficient.
+CREATE TABLE ai_settings (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    generation_model TEXT CHECK (generation_model IS NULL OR length(generation_model) BETWEEN 1 AND 200),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- RLS: SELECT/INSERT/UPDATE/DELETE own ((SELECT auth.uid()) = user_id).
+
+-- Agent tokens (FR-AI-6, NFR-SEC-6). The SPA generates the secret with Web Crypto, shows it once and
+-- inserts only its SHA-256 hash; revoking deletes the row.
+CREATE TABLE agent_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 100),
+    token_hash TEXT NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    token_prefix TEXT NOT NULL,              -- e.g. 'tx_3fa9' for display
+    scope TEXT NOT NULL CHECK (scope IN ('read', 'read_write')),
+    expires_at TIMESTAMPTZ,
+    last_used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_agent_tokens_user ON agent_tokens(user_id);
+-- RLS: SELECT/INSERT/DELETE own; deliberately no UPDATE policy.
+-- private.use_agent_token(p_hash TEXT) RETURNS (user_id UUID, scope TEXT): SECURITY DEFINER, EXECUTE granted
+-- to service_role only; returns a live owner of an unexpired token and stamps last_used_at (at most once a minute).
+-- Keep private outside the exposed API schemas. A narrow public wrapper callable only by service_role
+-- reaches this function through PostgREST; revoke PUBLIC/anon/authenticated EXECUTE explicitly.
+-- Token-management policies must exclude internal agent JWTs: agents cannot mint broader tokens.
+
+-- Passages (FR-AI-4). Written only by the job worker (service role).
+CREATE TABLE asset_passages (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    index_version TEXT NOT NULL,            -- extraction/chunking version; only active generation is queried
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    page INTEGER CHECK (page > 0),          -- PDF: 1-based page
+    page_label TEXT,                         -- PDF: printed label, when the file has page labels
+    section INTEGER,                         -- EPUB: spine index
+    cfi TEXT,                                -- EPUB: start CFI, used by the reader deep link
+    content TEXT NOT NULL CHECK (length(content) <= 8000),
+    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
+    embedding extensions.vector(768),        -- dimension of OLLAMA_EMBED_MODEL (nomic-embed-text)
+    embedding_digest TEXT,                  -- immutable model digest/version, not only a mutable tag
+    UNIQUE (asset_id, index_version, ordinal),
+    FOREIGN KEY (asset_id, user_id) REFERENCES assets(id, user_id) ON DELETE CASCADE
+    -- Migration must first add UNIQUE (id, user_id) to assets for this ownership constraint.
+);
+CREATE INDEX idx_asset_passages_search ON asset_passages USING GIN (search_vector);
+-- Exact filtered cosine search initially; add HNSW only after measured latency/recall warrants it.
+CREATE INDEX idx_asset_passages_user ON asset_passages(user_id);
+-- RLS: SELECT own; no INSERT/UPDATE/DELETE policy (service role only), rows go with their asset or user.
+
+-- search_passages(p_query TEXT, p_limit INT DEFAULT 20, p_work_ids UUID[] DEFAULT NULL): FTS only.
+-- hybrid_passages(p_query TEXT, p_embedding extensions.vector(768), p_digest TEXT, p_limit INT DEFAULT 20,
+--                 p_work_ids UUID[] DEFAULT NULL):
+-- SECURITY INVOKER (RLS applies). Reciprocal-rank fusion of FTS (websearch_to_tsquery) and cosine
+-- distance; returns passage id, asset_id, record_id, work_id, title, byline, year, page/page_label,
+-- section/cfi, content and score. Clamp limits/query/work-ID sizes in SQL as well as at the HTTP boundary.
+-- Require live owned asset-record-work links and active index/model versions in both ranking branches.
+-- Without an embedding it ranks by FTS alone; distinguish incomplete indexing from no matches.
+-- Verify tenant-filtered HNSW recall against exact search before enabling approximate ranking.
+
+-- jobs.job_type gains:
+--   'extract_metadata_ai'  {asset_id, record_id}            FR-AI-3, queued by extract_text when no identifier is found
+--   'index_passages'       {asset_id, index_version, from_page | from_section}  FR-AI-4, bounded/resumable
+--   'embed_passages'       {asset_id, index_version, digest}   FR-AI-4, bounded/resumable
+-- Embedding batches contain at most four small passages (one for long Unicode text).
+-- Checkpoint + next-job enqueue + claim-fenced completion commit together; retries use deterministic keys.
+-- Indexing state lives in assets.metadata.passage_index = {status, done, total, passages, error} (metadata is
+-- not a bytes-describing column, so the immutability trigger allows it). LLM metadata suggestions use the
+-- existing records.metadata.lookup_suggestions map under the key 'llm:<model>'.
+```
+
 ---
 
 ## 8. Edge Functions
@@ -1379,9 +1500,9 @@ $$);
 All functions:
 - validate input with Zod and return `400` with a reason on failure;
 - return CORS headers on **every** response, including errors and `OPTIONS`;
-- authenticate the caller from the `Authorization` JWT (except `job-worker`, which requires the service role, and `opds`, which authenticates e-readers with HTTP Basic, §8.5);
+- authenticate the caller from the `Authorization` JWT (except `job-worker`, which requires the service role, and `opds`, which authenticates e-readers with HTTP Basic, §8.5; planned `mcp` verifies agent tokens itself, §8.8);
 - build URLs with `URL` / `URLSearchParams`, never string concatenation;
-- use `AbortSignal.timeout(10_000)` on every outbound fetch and cap response size at 5 MB;
+- use explicit per-fetch and whole-invocation deadlines below the deployed runtime budget; metadata defaults to 10 s / 5 MB, while streaming uploads and AI use their own bounded contracts (SYS-03 resolves current deadline mismatches);
 - log technical details server-side; return user-safe messages.
 
 Shared code lives in `supabase/functions/_shared/` (CORS, auth, Zod schemas, identifier validation, providers).
@@ -1453,7 +1574,7 @@ interface UploadFromUrlRequest {
 }
 ```
 
-The link's host is user-chosen, so instead of a host allowlist `from-url` follows redirects by hand and refuses any hop whose IP literal or DNS answers are not public (`_shared/publicUrl.ts`: loopback, private, link-local, CGNAT, multicast, non-global IPv6). Size is capped by `Content-Length` when present and by the staging bucket's 500 MB limit while streaming. The filename for identifier suggestions comes from the URL's last path segment. Known ceiling: `fetch` re-resolves DNS after the check, so a rebinding resolver is not fully excluded.
+The link's host is user-chosen, so instead of a host allowlist `from-url` follows redirects by hand and refuses any hop whose IP literal or DNS answers are not public (`_shared/publicUrl.ts`: loopback, private, link-local, CGNAT, multicast, non-global IPv6). Size is capped by `Content-Length` when present and by the staging bucket's 500 MB limit while streaming. The filename for identifier suggestions comes from the URL's last path segment. **M6.0:** An Undici TCP/TLS connector connects only to previously checked literal public addresses, preserving the original TLS hostname/SNI and closing the DNS check/connect gap. Uploads move the signed client path to a server-only frozen path before inspection; final objects are never upserted. Intent/record/request binding and completion results persist in `upload_attempts`; asset/link/job writes commit atomically through `complete_upload()`. Retries return the durable original result even after staging cleanup.
 
 ### 8.3 `job-worker`
 
@@ -1468,7 +1589,7 @@ Invoked by `pg_cron` ([§7.5](#75-worker-schedule-environment-specific-not-in-mi
 | `export_data` | Produces a bulk export file |
 | `cleanup` | Deletes staging files older than 24 h and assets no longer referenced by any `record_assets` row (row + object) |
 
-Asset state transitions: `pending` → `processing` (first job claimed) → `ready` (all required jobs succeeded) or `failed` (with `processing_error`).
+Required asset state transitions: `pending` → `processing` (first job claimed) → `ready` (all required jobs succeeded) or `failed` (with `processing_error`). **M6.0:** the worker claims one job at a time, bounds outbound work within a 50 s invocation budget, and checks generation-fenced completion/retry results. Extraction claims mark assets processing; final failures/expired final attempts mark them failed. In M6, passage/embedding state is separate from whether the original file is readable; an unavailable AI service must not make the file unreadable.
 
 ### 8.4 `export`
 
@@ -1476,11 +1597,38 @@ Asset state transitions: `pending` → `processing` (first job claimed) → `rea
 
 ### 8.5 `opds`
 
-An OPDS 1.2 catalog for e-reader apps (FR-SER-3). Routes under `/functions/v1/opds`: `` (start, a navigation feed), `all` (paginated, `?page=N`, 100 per page), `new` (25 newest), `collections`, `collection/{id}` (in the collection's manual order), `search?q=` (via `search_library()`), `opensearch.xml`, `download/{assetId}` and `cover/{assetId}`. Records with no primary asset are omitted; entries carry cover images when a cover asset exists. E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic with the account email and password, exchanged for a session on the request-scoped client. Every query then runs as that user under RLS; no service-role client is used. Accounts that only use magic-link sign-in have no password and cannot use the feed. Files stay private (invariant 7): file and cover links re-authenticate and redirect to a fresh 300 s signed URL. Links are built from `SUPABASE_PUBLIC_URL`.
+An OPDS 1.2 catalog for e-reader apps (FR-SER-3). Routes under `/functions/v1/opds`: `` (start, a navigation feed), `all` (paginated, `?page=N`, 100 per page), `new` (25 newest), `collections`, `collection/{id}` (in the collection's manual order), `search?q=` (via `search_library()`), `opensearch.xml`, `download/{assetId}` and `cover/{assetId}`. Records with no primary asset are omitted; entries carry cover images when a cover asset exists. E-readers cannot send a Supabase JWT, so the function does its own auth (`auth: 'none'`, `verify_jwt = false` in `config.toml`, `--no-verify-jwt` when deploying to a hosted project): HTTP Basic whose password is an agent token (Settings → Agents; any username). The service role only resolves the token hash through `use_agent_token()`; every query then runs as the owner under RLS with a five-minute agent JWT. Account passwords are rejected: Auth requires a CAPTCHA for password sign-in, and a revocable 256-bit token cannot be guessed. Files stay private (invariant 7): file and cover links re-authenticate and redirect to a fresh 300 s signed URL. Links are built from `SUPABASE_PUBLIC_URL`.
 
 ### 8.6 `delete-account`
 
-`POST { confirm: 'DELETE' }` → `{ status: 'deleted', objectsRemoved }`. The signed-in user deletes their own account and library (`user` auth; a caller can only ever delete themselves). `auth.admin.deleteUser()` cascades every table (all `user_id` foreign keys are `ON DELETE CASCADE`), then the function removes the user's `${userId}/` prefix in `documents`, `covers` and `staging`. If the storage step fails, the daily `cleanup` job removes the folder of a user that no longer exists (§15 #9). This is the second function, with `job-worker`, that uses the service role for something a user cannot do.
+`POST { confirm: 'DELETE' }` → `{ status: 'deleted', objectsRemoved }`. The signed-in user deletes their own account and library (`user` auth; a caller can only ever delete themselves). `auth.admin.deleteUser()` cascades every table (all `user_id` foreign keys are `ON DELETE CASCADE`), then the function removes the user's `${userId}/` prefix in `documents`, `covers` and `staging`. If the storage step fails, the daily `cleanup` job is intended to remove the folder of a user that no longer exists; SQL candidate selection and durable deletion claims avoid folder/list starvation and coordinate with every asset-linking path (§15 #9, M6.0). This is the second function, with `job-worker`, that uses the service role for something a user cannot do.
+
+### 8.7 `ai`
+
+`user` auth. Status/models and source finding are implemented.
+- `POST { action: 'status' }` → `{ enabled: boolean, reachable: boolean, defaultModel, embedModel, selectedModel, agentsEnabled, agentWritesEnabled }`. `enabled` mirrors `AI_ENABLED` with a non-empty `OLLAMA_URL`; `reachable` is a 3 s `GET /api/version`.
+- `POST { action: 'models' }` → `{ models: { name, family, parameterSize, quantization, sizeBytes }[] }` from `GET /api/tags`, intersected with the admin-approved local generation model list. No pull/delete/cloud/proxy operations are exposed.
+- `POST { action: 'find-sources', question: string (3–1000 chars), limit?: 1–10, workIds?: uuid[] }` → `{ sources: Source[], searched: number, mode: 'hybrid' | 'fts', coverage: { indexedAssets: number, eligibleAssets: number, partial: boolean }, warning?: string }` where `Source = { workId, recordId, assetId, title, byline, year, page?, pageLabel?, cfi?, quote, passage, link }`. Steps: embed the question, call `search_passages()` as the user with bounded `workIds` (top 20 before deduplication/budgeting), fit candidates plus question and output allowance into the selected model's context, then send them to the user's model with a JSON schema asking for the passage ids and the exact supporting sentences, drop any quote not found verbatim in its passage, and build `link` as `/works/{workId}/read?asset={assetId}&page={page}` (or `&cfi=`). AI failure reasons: `ai_disabled`, `ai_unreachable`, `model_missing`, `timeout`. If retrieval still works, return these as warnings with explicitly labelled FTS passages/coverage without model selection; return a typed error only when retrieval cannot complete. With FTS fallback, never claim passages were model-verified. Never returns generated prose (FR-AI-5).
+- The model setting itself is written by the SPA to `ai_settings` under RLS.
+
+### 8.8 `mcp`
+
+MCP Streamable HTTP at `/functions/v1/mcp`, stateless (no session id), JSON responses. Auth: `Authorization: Bearer <agent token>` (`auth: 'none'` in `withSupabase`, `verify_jwt = false`, like `opds`). The function hashes the token, calls `private.use_agent_token()` with the service role, signs a 5-minute HS256 JWT (`sub` = user, `role` = `authenticated`) with `JWT_SECRET`, and runs every tool through a client carrying that JWT (NFR-SEC-6). This JWT is server-internal only, never returned or logged; owner RLS does not enforce token scope. The central dispatcher checks scope on every call and never proxies arbitrary RPC/HTTP requests. Check expiry/revocation and that the owner still exists on each request, including after restart; v1 does not cache successful token authentication. Agent JWTs cannot manage agent tokens. Implement a service-role-only public wrapper to reach the private verifier without exposing the private schema; pin/test signing configuration and key rotation rather than assuming every instance accepts HS256.
+
+Validate allowed `Origin` values (reject invalid supplied origins; permit authenticated non-browser clients without one), content type, negotiated protocol and bounded JSON bodies. Serve HTTPS, redact credentials and signed URLs, set private responses `Cache-Control: no-store`, and test actual SDK/Hermes behavior through the gateway. Per-token/user limits and global AI concurrency apply here as in `ai`. Write tools require `MCP_WRITES_ENABLED=true`, a read_write token and server-checked owner approval bound to exact action arguments and a replay key. Prompt text or an agent-supplied confirmation flag cannot supply that approval. Tools, all validated with Zod:
+
+| Tool | Scope | Does |
+|------|-------|------|
+| `search_library` | read | Reuse `library_page()` for filters/paging and `search_library()` for text ranking; the existing `search_library()` RPC alone does not accept all filters. Returns works with byline, year, formats, tags |
+| `get_work` | read | Work, records, identifiers, contributors, files, tags, collections and the user's notes |
+| `search_passages` | read | `search_passages()` without the LLM step; quotes with references |
+| `find_sources` | read | Same contract as `ai` `find-sources` |
+| `lookup_identifier` | read | `metadata-lookup` logic; returns the normalized preview |
+| `create_work_from_identifier` | read_write | Looks up, creates work + record + identifiers + credits (contributor matching as in §9.2, uncertain → provisional) |
+| `add_file_from_url` | read_write | Call the hardened upload path as the token owner (§8.2, SEC-02/SYS-01); its narrowly privileged asset finalization remains server-owned. Public destinations only, size cap, sniffing, dedup, jobs and durable replay |
+| `tag_work` / `add_to_collection` | read_write | Existing tables under RLS |
+
+Tool results carry passages as untrusted data with server-resolved references; the agent's own model writes the answer (FR-AI-8). `get_work` and list tools cap/paginate nested data. `create_work_from_identifier` uses an atomic, owner-scoped catalog transaction after provider fetches; all writes use a request key bound to owner, tool and arguments. Do not copy the current multi-request browser import sequence into the MCP handler.
 
 ---
 
@@ -1525,6 +1673,14 @@ Properties:
 1. SPA picks the asset (the one in `reading_states.asset_id`, else the primary), requests a 5-minute signed URL, and loads it into pdf.js (PDF), foliate-js (EPUB, MOBI, AZW3, CBZ) or DjVu.js (DjVu). Books render in iframes whose own scripts never run: the page CSP (`deploy/security-headers.conf`) blocks them, and every book page also gets a `script-src 'none'` meta policy (`src/lib/inertBookHtml.ts`) for servers that send no CSP.
 2. Progress is saved (debounced, ~5 s) with an upsert on `reading_states (user_id, record_id)`.
 3. Annotations are stored against the exact `asset_id` they were made on. `/…/read?annotation=<id>` opens the book at a note with its comment showing.
+
+### 9.4 Agent question to cited sources
+
+1. The user asks Hermes: "What is the second law of thermodynamics? Check my library."
+2. Hermes (Textus skill) calls MCP `find_sources { question }` with its token.
+3. `mcp` exchanges the token for a user JWT; embeds the question with `OLLAMA_EMBED_MODEL`; `search_passages()` returns the top 20 candidates under RLS.
+4. The user's Ollama model picks the relevant passages and supporting sentences (JSON schema); quotes are verified against the stored text.
+5. Hermes receives sources (title, byline, page, quote, link), writes the answer and cites each claim. It includes coverage/fallback warnings. If no source is returned, it says no supporting passage was found in the indexed text; partial indexing, unsupported formats and retrieval misses prevent a stronger claim.
 
 ---
 
@@ -1726,6 +1882,22 @@ Unit and component tests are co-located (`Foo.test.tsx` next to `Foo.tsx`). `sha
 - [x] Chapters / articles inside container records — FR-CONTRIB-10
 - [x] OPDS feed — FR-SER-3
 
+### M6 — AI assistance and agent access (planned)
+
+Revised 2026-10-01 after source/security review. **Security and systemic fixes precede new exposure.**
+The detailed evidence, proposed fixes and acceptance tests live in
+[docs/ROADMAP.md](docs/ROADMAP.md#security-and-systemic-review--2026-10-01).
+Completion below reflects implementation/test milestones; deployment gates remain open until M6.7. Existing M1–M5 completion does not waive them.
+
+1. [x] **M6.0 — security/integrity:** isolate browser caches (SEC-01), close URL SSRF (SEC-02), patch audited dependencies (SEC-03), make uploads replayable and immutable (SYS-01), make cleanup safe/progressive (SYS-02), and fix worker deadlines/claims/states (SYS-03). Inventory deployment limits.
+2. [x] **M6.1 — optional AI foundation:** Activity count/state (FR-FILE-6), AI settings/status and approved local models (FR-AI-1/2), network restrictions, quotas and bounded concurrency (M6-SEC-03). AI failure must not break ordinary catalog work.
+3. [x] **M6.2 — complete FTS passages:** bounded/versioned PDF/EPUB indexing, existing-library backfill, coverage, retry/cancel and reader links (FR-AI-4, M6-SYS-01). Prove two-user isolation and crash recovery before embedding.
+4. [x] **M6.3 — reviewed metadata fallback:** `extract_metadata_ai` suggestions (FR-AI-3), explicit provenance/locks, exclusion from automatic apply and consent for external title/author searches (SYS-04).
+5. [x] **M6.4 — read-only MCP/Hermes:** token settings, central scope/revocation checks, transport validation and real client compatibility (FR-AI-6/7/8, M6-SEC-01/02). Ship `integrations/hermes/textus/SKILL.md`; advertise AI tools only when available.
+6. [x] **M6.5 — hybrid/cited sources:** embedding batches, filtered hybrid ranking, `find-sources` / `find_sources`, context budgets and measured GPU latency (FR-AI-4/5, M6-SYS-02). Keep explicit FTS fallback and coverage warnings.
+7. [x] **M6.6 — authorized writes:** atomic/idempotent identifier creation, safe URL imports, tags and collections (FR-AI-7). Require concrete owner approval enforced server-side; pass scope/replay/injection tests before enablement.
+8. [ ] **M6.7 — deployment sign-off:** malicious-reader fixtures (SEC-04), restore/rollback drill, HTTPS/SMTP/OPDS verification, accessibility/device tests and staged enablement (OPS-01). Verify every earlier gate on the actual deployment.
+
 ---
 
 ## 14. Deviations from the original definition
@@ -1766,15 +1938,87 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 
 | # | Topic | Detail | Proposed default |
 |---|-------|--------|------------------|
-| 1 | **Large files in Edge Functions** | Upload verification and copying stream bytes; buckets retain the 500 MB limit. Background PDF/EPUB extraction still loads the file into memory and can exceed runtime limits on large scans. | Measure large-file extraction separately; bound or stream parsing if it exceeds the self-hosted runtime budget. |
+| 1 | **Large files in Edge Functions — P1** | Upload streams bytes with a 500 MB limit, but extraction currently skips files over 25 MB and buffers smaller files; PDF covers eight pages, EPUB eight HTML entries. Compressed size alone does not bound parser memory. The draft reports 150 MB/60 s on the host, not reverified in this review. | M6.0/2: measure range requests with automatic fetching/streaming controlled, bound decode/inflation and batch deadlines, retain partial coverage and distinguish unsupported/encrypted/no-text files (SYS-03, M6-SYS-01). |
 | 2 | PDF text/thumbnail | PDF text extraction uses pdfjs-dist in Deno; PDF and DjVu covers can be captured client-side from the first rendered page when no cover exists. | Implemented; large-file extraction remains subject to #1. |
 | 3 | ~~Annotation / reading-state cross-ownership~~ | Resolved in migration `20260929000002`: INSERT and UPDATE policies on `reading_states` and `annotations` now require `private.is_record_owner(record_id)` and an owned `asset_id`. | Done. |
 | 4 | Old-style arXiv IDs | `hep-th/9901001` format is not accepted. | Add when a user needs it. |
 | 5 | Denormalized `records.user_id` | Every record-scoped check joins `works`. | Add only if RLS shows up in query plans at NFR-PERF-1 scale. |
 | 6 | Unicode and contributor search performance | `search_library()` combines FTS, contributor trigrams and folded substring metadata matching; `library_page()` filters/pages on the server. The earlier 10,000-record benchmark predates the Unicode substring scan. | Repeat the benchmark after migration `20260930000004`; add folded indexes only if NFR-PERF-1 is missed. |
 | 7 | Metadata locking model | Both `works.metadata` and `records.metadata` store `locked_fields`; unchanged form values do not gain new locks. | Implemented; preserve locks on lookup/apply and preserve hidden fields when changing record type. |
-| 8 | OPDS authentication | HTTP Basic exchanges account email/password for a request-scoped session; queries use RLS (§8.5). Magic-link-only accounts need a password. | Implemented; serve over HTTPS before exposing publicly. |
-| 9 | ~~Account deletion~~ | `ON DELETE CASCADE` removes rows but not storage objects. | Resolved: `delete-account` (§8.6) sweeps the user's storage immediately, and the `cleanup` job sweeps folders whose user no longer exists. |
+| 8 | OPDS authentication | HTTP Basic carries a revocable agent token, never the account password; queries use RLS with an agent JWT (§8.5). | Implemented; account passwords replaced by tokens when Auth CAPTCHA was enabled. |
+| 9 | **Account deletion and garbage collection — reopened, P0** | The deletion endpoint exists, but capped scans can starve later objects/users and unreferenced-asset deletion races with relinking. A local reproduction confirms orphan starvation. | SYS-02 before M6: durable forward progress and deletion claims coordinated with linking; retry storage failures, stop jobs for deleted users and verify complete erasure including derived passages. |
 | 10 | Contributor matching calibration | The score constants were validated on one 282-file collection. | Keep them in one constant block; revisit with review-queue accept/reject rates. |
 | 11 | Large-collaboration papers | Papers with thousands of authors make `contributor_candidates()` arrays large and the credit list long. | Store all credits; the byline truncates. Cap evidence arrays if matching gets slow. |
 | 12 | Name order and scripts | Spanish/Portuguese double surnames, East Asian names without separators, and nicknames parse wrongly. | Rely on structured provider data and the editable preview; add locale-aware rules only if users hit them. |
+| 13 | **Ollama network/model access — P1** | The draft reports listening on `0.0.0.0:11434` without authentication; LAN placement alone is not access control. | Restrict ingress to approved callers before M6.1; use an authenticated proxy where the segment is not isolated. Allow only approved local models, disable cloud use and never expose model-management or arbitrary proxy tools (M6-SEC-03). |
+| 14 | **Agent authentication/scope — P1** | Draft HS256 signing depends on instance keys; owner RLS does not enforce read-only token scope. A private verifier also needs a narrow API-callable entry point. | M6-SEC-01: central scope checks, server-only JWTs, live revocation/owner checks, service-only verifier wrapper, protocol/Origin tests and a tested signing-key rotation path. Do not broaden accepted algorithms merely to make integration pass. |
+| 15 | **Context/GPU/deadline budget — P1** | Existing investigation reports ~30–40 s warm and ~8 s model swaps; these are not whole-pipeline/concurrency acceptance results. Twenty ~500-token passages already exceed 8k before instructions/output. Two resident models may exceed 4 GB. | M6-SYS-02: budget total prompt/output tokens, benchmark warm/cold/swap/concurrent loads and enforce instance-wide concurrency. Tune batch/model/context first; do not assume dual residency or raise host limits without memory/throughput measurements. |
+| 16 | **Prompt injection through books/provider content — P1** | Delimiters/JSON schemas/verbatim quotes do not prevent an agent from obeying malicious passage instructions. | M6-SEC-02: read-only initial integration, membership checks against retrieved passages, server-built citations, and owner-approved concrete write actions enforced outside the model. Test hostile books across retrieval and subsequent tool calls. |
+| 17 | **Embedding/index generation — P1** | Model tags can change without renaming; equal dimensions do not imply comparable vectors. Chunking/extraction changes can invalidate locations and leave stale passages. | M6-SYS-01: persist model digest/dimension and extraction/chunk versions, reindex deterministically, query only active compatible generations and retire stale rows. Test interrupted backfills, model changes and tenant-filtered recall. |
+| 18 | Scans without a text layer | Not indexable without OCR, which is out of scope. | Show "not indexable" in Activity; revisit OCR if it is common. |
+| 19 | Full-text search language | `asset_passages` uses the `english` configuration like `asset_texts`; neither English stemming nor the chosen embedding model guarantees multilingual recall. | Validate representative non-English fixtures in M6-SYS-02; choose a language-appropriate FTS fallback/configuration where needed and document the model's measured language coverage. |
+| 20 | **Browser auth cache isolation — P0** | Private query keys/cache survive identity changes; reproduced locally. | SEC-01: clear/cancel at the auth boundary, scope keys and test delayed responses/account switching. |
+| 21 | **URL import SSRF — P0** | DNS check and connection are separate; the existing code documents this window. | SEC-02: enforce the actual connected destination on every redirect or disable arbitrary URL downloads until safe. |
+| 22 | **Upload integrity/replay — P0** | Mutable staging is read twice, completion ignores link/job errors, and a lost response cannot be replayed after staging deletion. | SYS-01: freeze verified bytes, transactional finalization and owner/request-bound durable results. |
+| 23 | **Worker scheduling/state — P1** | Five serial claims, unchecked final writes and inconsistent asset failure state cannot safely support full-book/AI jobs. | SYS-03: deadline-aware claims, claim-fenced checkpoints, bounded retry/backoff and state reconciliation. |
+| 24 | **LLM review bypass/partial catalog creation — P1** | The current automatic importer accepts any suggestion with a title; catalog creation uses multiple independent writes. | SYS-04: exclude LLM suggestions from auto-apply, explicit review/provenance and atomic replay-safe creation. |
+| 25 | **Dependency/reader security verification — P1** | Current npm audit finds development-tool advisories; hostile-book browser isolation is not covered by existing string tests. | SEC-03/04: patched compatible tooling, CI audit/Edge tests and adversarial reader fixtures. Production-only npm audit is clean; this does not cover Deno/vendored code. |
+| 26 | **Deployment/restore evidence — P1** | Old app02 notes conflict with the new reference deployment; consistent recovery and new token/index operational controls are unverified. | OPS-01: inventory, staged enablement, redacted logs/retention, restore/rollback drill and token invalidation on restore. |
+
+### M6.2 implemented index contract
+
+`asset_passages` and the owner/asset composite foreign key are live in migrations. FTS uses `simple` to retain non-English words; embeddings follow in M6.5. `search_passages(query, limit, work_ids)` and `passage_coverage(work_ids)` are security-invoker RPCs. `control_passage_index(action, asset)` requires an owner session and supports backfill (100 files), retry from the last checkpoint, cancellation and a fresh-version reindex. The service-only `commit_passage_batch` atomically inserts deterministic ordinals, writes progress and continues/finishes the current fenced job. Automatic extraction scheduling is replay-safe; extraction metadata merges preserve newer checkpoints. Controls and checkpoints acquire owner locks before job/asset locks.
+
+PDF indexing uses signed HEAD/range requests with automatic fetching/streaming disabled: six pages, 128 passages, 24 MB fetched and a 35 s parser deadline per invocation. EPUB indexing follows the container/OPF spine, four sections per batch, actual OPF/body section-start CFIs, at most 25 MB compressed input, 2 MB per inflated entry and 10,000 markup delimiters per parsed document. Oversized/encrypted or limited input reports not-indexable/partial coverage, retaining any completed passages; no text is distinct from parsing failure. Chunks preserve word/Unicode boundaries at approximately 2,000 characters. Per-owner quota: 50,000 passages and 500 active jobs. Section CFIs locate the section start; they do not pretend to identify an exact quoted character. Activity shows coverage, progress, reasons and controls, with FTS results linked to the actual `/library/:workId/records/:recordId/assets/:assetId/read` route.
+
+### M6.3 implemented metadata and catalog contracts
+
+`extract_metadata_ai` is queued only when AI is enabled and file front matter has no identifier. It uses the owner’s approved model, the global GPU lease, a UTF-8 context budget and a strict schema. Evidence is constrained to actual short front-matter substrings and checked again after generation; URLs and identifiers are excluded from model output. The service-only `store_ai_metadata_suggestion` rechecks owner/record/asset links and merges a private `llm:<model>` suggestion with model digest and warning. Disabled, unreachable, missing/busy models and timeouts defer AI jobs five minutes without spending an attempt. Stored AI suggestions are explicitly excluded from automatic metadata import. Review starts with every field/credit unselected.
+
+`metadata-lookup` also accepts `{action:'search-title',recordId,title,author,consent:true}` (200-character title/author limits). It checks the owned record before sending only those two fields to fixed Open Library/Crossref endpoints, with at most three candidates each. Nothing is applied or disclosed automatically; provider identifiers are only offered for explicit saving. Bounded bodies and per-owner rates apply to all metadata actions.
+
+CSV and DOI imports call `create_catalog(request,payload)`, a single owner-bound transaction for work/record/identifiers/credits/tags and replay result. IDs are kept for retries and DOI payloads freeze after the first successful provider response. `expectedOwner` prevents an old account’s pending import from writing into a newly signed-in account. Existing owned identifiers return the existing catalog record. Invalid credits/tags roll back everything. Names alone never merge imported identities: unresolved contributors are provisional; validated authority IDs or explicit owned contributor IDs can resolve identity. `catalog_requests` is owner-readable and RPC-written only. `apply_metadata_fields` checks current locks under row locks and merges record metadata; `set_metadata_contributors` checks the current contributor lock before applying a reviewed byline. The catalog quota is 100,000 works per owner.
+
+M6.3 live AI validation: synthetic private metadata suggestion persisted through the shared GPU lease and owner/asset/record checks in 5.87 s on monster. Initial non-verbatim evidence was rejected; constraining evidence to actual front-matter excerpts produced a valid reviewed suggestion. No real library content was used in these model checks.
+
+### M6.4 implemented agent contracts
+
+Agent settings issue 256-bit read tokens, display plaintext once, store SHA-256 hashes only and cap each owner at 100 tokens. Expiry, revocation, disabled-account checks and owner RLS apply on every request; internal agent JWTs cannot access or modify the token vault. No token-authentication cache is used. MCP remains disabled unless `MCP_ENABLED=true`; allowed browser origins must be explicit, while authenticated non-browser clients may omit Origin. Requests are bounded to 32 KB, results to 250 KB, and token/owner requests to 30/60 per minute. HS256 uses the instance JWT secret; optional private ES256/EdDSA signing JWKs support instances without legacy symmetric verification. Never return these internal credentials.
+
+The stateless Streamable HTTP endpoint provides `search_library`, bounded/paginated `get_work`, FTS `search_passages` with owned reader links and coverage, and `lookup_identifier` previews. `find_sources` explicitly reports unavailable until M6.5. All tools check read scope; write tools are absent. Private responses use `Cache-Control: no-store`. The Hermes integration requires strict redirect header handling and treats all library content as untrusted evidence. Setup and the skill are in `integrations/hermes/`.
+
+Validation: owner isolation, expired/revoked/banned tokens, agent-token vault denial, token quota, forged Origin, invalid protocol, oversized requests, one-time token display and real gateway tool calls. The installed Hermes client on monster negotiated MCP 2025-11-25, discovered all five tools and searched a synthetic owned catalog through a private SSH-forwarded local Supabase gateway. The temporary fixture/token was removed afterward. Production HTTPS validation and permanent configuration remain M6.7 gates.
+
+### M6.5 implemented retrieval contracts
+
+pgvector 0.8.2 stores 768-dimensional embeddings with `embedding_digest`, an immutable installed-model digest. `nomic-embed-text:latest` on monster has digest `0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f`. The worker schedules missing/current-model embeddings for up to 20 eligible files per invocation, subject to the 500 active-job owner quota; it skips existing version keys so failed/completed early files cannot starve later files. Each shared-GPU-leased batch embeds up to four small passages (long Unicode passages run alone), checks dimensions/finite values/model digest, and commits vectors plus continuation under the live job generation and active asset version. Cancellation/deletion fences prevent stale writes. Disabled/unreachable/busy AI defers without spending attempts; retry/reindex is available through Activity.
+
+`search_passages(query, limit, work_ids)` remains FTS-only for compatibility. `hybrid_passages(query, embedding, digest, limit, work_ids)` combines owner/work-filtered exact cosine and lexical top-100 lists with reciprocal-rank fusion (constant 60). Approximate HNSW is deferred: exact top-20 matched the filtered reference in the 10,000-passage/two-owner fixture, and measured local retrieval took 415–431 ms. Add ANN only if measured latency at the owner passage ceiling requires it, with filtered recall checked first. `passage_embedding_coverage(digest, work_ids)` separately reports current-model embedding coverage.
+
+Both the AI `find-sources` action and MCP `find_sources` use the same implementation. Natural-language questions retrieve broad lexical candidates plus vectors; candidate text, instructions, question and output reserves fit the selected model's context. Only retrieved IDs and exact quote substrings survive verification. The server builds bibliographic citations and `/library/{work}/records/{record}/assets/{asset}/read?page=…` or `?cfi=…` links. Partial indexing/embedding warnings accompany results. Model/embedding/lease failures return explicitly unverified FTS matches; an unsupported question cannot justify claiming the whole library has no answer. Activity includes the source-search UI.
+
+Validation: 14 database assertions cover two-owner isolation, work filters, stale claims, foreign passage rejection, atomic continuation, current digest/coverage, non-English retrieval, page-nine evidence, exact-reference recall and service-only writes. Quote validation drops invented IDs, fabricated quotes and duplicate citations. Monster embedding latency was 1.862 s cold and 0.065 s warm for two short passages. Through the local Edge gateway, resumable six-passage embedding and verified thermodynamics citations to pages 9/10 passed in 16.233/17.597 s; an unrelated question returned no sources in 12.198 s. The AI-disabled gateway returned useful, explicitly unverified FTS citations. Temporary synthetic accounts were removed; no real library content was used. Actual deployment and concurrent Hermes/model-swap verification remain M6.7 gates.
+
+### M6.6 implemented approval and write contracts
+
+`MCP_WRITES_ENABLED=false` is a separate deployment gate. Read tokens remain the default and do not discover write tools. Deliberately issued `read_write` tokens discover `create_work_from_identifier`, `add_file_from_url`, `tag_work` and `add_to_collection`. Each strict schema requires a stable UUID `requestId`; unknown confirmation flags are rejected. Every call checks scope centrally, then the database rechecks a live, unexpired, unrevoked write token and active owner. Proposals are private `agent_actions` rows bound to token/request/tool/exact normalized arguments; up to 100 live proposals per owner and 10 write attempts per owner/minute. Arguments and provider previews have 8/32 KB limits. Agent JWTs cannot inspect the approval vault or invoke the browser catalog entry point.
+
+The owner reviews human-readable titles, credits, identifier/provider data, tag/collection names or exact public URL and destination record in Settings → Agents. Only an owner session can approve/reject; approval expires after 30 minutes and can be withdrawn before execution. The client repeats the same requestId and arguments after approval; it cannot self-confirm. Catalog/tag/collection writes, live token/approval checks and the durable result commit together. Completed requests replay that result; changed arguments are rejected. Token/user row locks serialize final writes with revocation/deletion. Tags/collections apply to at most 100 owned records, checking ownership of both targets.
+
+Identifier creation freezes the provider preview for approval and reuses the existing atomic catalog transaction, shared name parsing and validated authority IDs. Names alone create provisional identities; they never auto-merge. All accepted identifier schemes are supported, and edition/container/standards metadata is retained. URL actions reuse the public-address-pinned immutable upload pipeline and the action UUID as upload ID. `complete_agent_upload` checks the exact approved URL, record and role plus live token/approval in the same transaction that creates/links the asset, queues jobs and stores the result. Revocation during transfer prevents linking; orphan bytes remain eligible for cleanup.
+
+Live gateway testing found that Deno 2.1 rejects Node HTTP `lookup` overrides. The shared downloader now uses pinned Undici 6.29.0 with an explicit validated-IP TCP/TLS connector; native TLS still verifies the original hostname/SNI, HTTP Host remains the original URL and every redirect is revalidated. There is no unchecked-fetch fallback or forwarded credential. This fixes ordinary browser URL imports as well as agent imports. An approved public URL created exactly one linked asset through the real local Edge runtime; `wrong.host.badssl.com` was rejected with native `NotValidForName`. Transfer logs contain only error class, never full URLs or credentials. Live external transfer/certificate probes are opt-in test fixtures; CI exercises deterministic approval/replay/isolation paths.
+
+Validation: 25 database assertions cover scope, self-approval denial, two-owner isolation, pending/withdrawn/expired approvals, exact argument binding, atomic catalog/tag/collection/URL writes, edition/container preservation, response-loss replay and revoked-token denial. MCP gateway checks reject confirmation flags, return readable proposals without mutation, execute only after owner approval, replay identically and reject revoked approved downloads. UI tests verify default read tokens/one-time secrets and approval of the exact server action. Shared name rules and record-type constants now live in the deployable Edge tree with frontend/shared re-exports; existing golden cases remain covered.
+
+### M6.7 operational contracts
+
+Agent credentials represent a named integration acting within an existing owner's account, rather than a second independent library. Owners can issue expiring or permanent personal tokens and revoke them in Settings → Agents. Hermes on monster acts for its configured owner; write access still requires approval of each exact action.
+
+`deploy/backup.sh` quiesces API writers and snapshots the frozen PostgreSQL data directory (with the pgsodium root key), a logical dump, filesystem objects, configuration and a tagged frontend image together. A logical dump cannot be replayed into a fresh Supabase image, so restores use the physical copy of the same image. `deploy/restore-drill.sh` restores into isolation with cron/network disabled and checks RLS/grant parity with production; verify active Storage object version, asset size/checksum, delete restored agent tokens, discard staging attempts and rebuild derived passage indexes before enabling services. Never publish private snapshots.
+
+Service-only `prune_operational_history()` runs through daily cleanup: terminal jobs age out after 30 days; request counters after two idle days; expired GPU holders are cleared. Agent replay records survive for the token's usable lifetime and at least 30 days after expiry/deletion, preserving retry guarantees. Durable catalog/upload replay records remain owner-bound. Nginx privacy logs omit query strings and document responses force attachment; bounded Docker logs rotate at 10 MB × 3.
+
+The production frontend calls its own origin; nginx proxies the API over the Docker network. A direct `base.textus.bff.bz` build was reverted because the CSP's `connect-src 'self'` blocked every API call and it bypassed forced document attachment. Hermes and OPDS clients use the HTTPS API gateway.
+
+Public sign-up is closed (`DISABLE_SIGNUP`); owners create accounts with the Auth admin API. Supabase Auth requires a Cloudflare Turnstile token for password sign-in, magic links, recovery and sign-up (`GOTRUE_SECURITY_CAPTCHA_*`), so the SPA renders the widget when built with `VITE_TURNSTILE_SITE_KEY`. OPDS therefore authenticates with an agent token as the HTTP Basic password, never the account password, which also removes a CAPTCHA-free password oracle.

@@ -18,13 +18,16 @@ export function isPublicIp(ip: string): boolean {
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 0 && c === 0) ||
       (a === 192 && b === 168) ||
+      (a === 192 && b === 0 && c === 2) ||
+      (a === 198 && b === 51 && c === 100) ||
+      (a === 203 && b === 0 && c === 113) ||
       (a === 198 && (b === 18 || b === 19))
     );
   }
   if (!ip.includes(':')) return false;
   // IPv6: only global unicast (2000::/3). This also rejects ::1, ::ffff:<v4>, fc00::/7, fe80::/10 and multicast.
   const first = ip.startsWith('::') ? 0 : Number.parseInt(ip.split(':')[0], 16);
-  return first >= 0x2000 && first <= 0x3fff && !/^2001:0?db8:/i.test(ip);
+  return first >= 0x2000 && first < 0x3fff && !/^(2002:|2001:(?:0{0,4}|0?db8|0?0?0?[12]):)/i.test(ip);
 }
 
 // Returns the parsed URL when its shape is fetchable, else null. Hostnames still need their DNS answers checked

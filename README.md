@@ -276,13 +276,26 @@ Provider configuration (`CROSSREF_MAILTO`, `SEMANTIC_SCHOLAR_API_KEY`, `GOOGLE_B
 Vite inlines `VITE_*` variables at **build time**, so they are build arguments, not runtime environment. The provided image serves the SPA with nginx and **proxies `/auth`, `/rest`, `/storage` and `/functions` to the Supabase gateway over Docker's internal network**, so the browser only talks to one origin and API calls skip the public gateway. Run it on the same host as Supabase and join Supabase's compose network:
 
 ```bash
-echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL is not needed
+echo 'VITE_SUPABASE_ANON_KEY=<publishable key>' > .env      # VITE_SUPABASE_URL is not needed; add VITE_TURNSTILE_SITE_KEY for CAPTCHA
 docker compose up -d --build                                  # serves on :8080 (TEXTUS_PORT to change)
 ```
 
-`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). If Supabase runs elsewhere, build the SPA with `VITE_SUPABASE_URL` and adjust the image/proxy configuration; the provided compose/Dockerfile build only exposes `VITE_SUPABASE_ANON_KEY`.
+`docker-compose.yml` attaches the container to the external `supabase_default` network; nginx reaches the gateway at `api-gw:8000` (`deploy/nginx.conf`). The SPA calls its own origin, so the CSP's `connect-src 'self'` holds and the proxy forces document downloads to attach. If Supabase runs elsewhere, build with `VITE_SUPABASE_URL` and add that origin to `connect-src`/`img-src` in `deploy/security-headers.conf`.
 
 Point Supabase Auth at the app so magic links and recovery links land on it: set `SITE_URL` (and `ADDITIONAL_REDIRECT_URLS`) to the app's URL in the Supabase `.env`, then `docker compose up -d auth`. Auth emails also need a working SMTP server (`SMTP_*` in the same `.env`); without one, generate links with the admin API (`/auth/v1/admin/generate_link`).
+
+Textus is invite-only and its sign-in is CAPTCHA-protected. Create a Cloudflare Turnstile widget for the app's hostname, build the SPA with `VITE_TURNSTILE_SITE_KEY`, put the secret in the Supabase `.env` as `TURNSTILE_SECRET_KEY`, then extend the `auth` service (app102 keeps this in `docker-compose.textus.yml`) and run `docker compose up -d --no-deps auth`:
+
+```yaml
+  auth:
+    environment:
+      GOTRUE_DISABLE_SIGNUP: "true"          # the owner creates accounts with the Auth admin API
+      GOTRUE_SECURITY_CAPTCHA_ENABLED: "true"
+      GOTRUE_SECURITY_CAPTCHA_PROVIDER: turnstile
+      GOTRUE_SECURITY_CAPTCHA_SECRET: ${TURNSTILE_SECRET_KEY:?set TURNSTILE_SECRET_KEY in .env}
+```
+
+Deploy the frontend with the widget before enabling the CAPTCHA, or sign-in stops working. OPDS readers authenticate with an agent token as the Basic-auth password, so the CAPTCHA does not affect them.
 
 The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it must be reachable without a JWT: `verify_jwt = false` locally (already in `supabase/config.toml`) and `--no-verify-jwt` on hosted projects; the self-hosted `main` router does not verify JWTs unless `VERIFY_JWT=true`.
 
@@ -291,6 +304,7 @@ The `opds` function authenticates e-readers itself (HTTP Basic, §8.5), so it mu
 | Variable | Where | Required |
 |----------|-------|----------|
 | `VITE_SUPABASE_URL` | Frontend (build time) | Optional; defaults to the app origin and nginx proxy |
+| `VITE_TURNSTILE_SITE_KEY` | Frontend (build time) | Production; must match Supabase Auth's CAPTCHA secret |
 | `VITE_SUPABASE_ANON_KEY` | Frontend (build time) | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions only | Yes |
 | `CROSSREF_MAILTO` | Edge Functions — Crossref polite pool | Recommended |
@@ -317,22 +331,17 @@ On self-hosted Supabase, pass provider keys through the `functions` service's `d
 
 ## Backup and recovery
 
-Back up three things: the **PostgreSQL database**, **Storage objects**, and **configuration** (`.env`, compose files).
+Run `bash deploy/backup.sh` on app102. It briefly pauses API writers, snapshots the committed database and filesystem Storage together, captures private configuration and the deployed frontend image ID, then resumes services even after failure. Snapshots live under `~/.local/share/textus-backups/` with restricted permissions; keep an encrypted off-host copy. Never commit or publish their contents.
 
-```bash
-# Database
-pg_dump "postgresql://postgres:<password>@<host>:5432/postgres" > backup_$(date +%Y%m%d).sql
+Run `bash deploy/restore-drill.sh <snapshot>` on app102 after each backup. It verifies `SHA256SUMS`, starts the frozen `postgres.tar` data directory (including the pgsodium root key Vault needs) in a network-less container with pg_cron jobs disabled, then fails unless every public table has RLS, every bucket is private, and policies, table grants and function privileges match production exactly. It deletes the restored `agent_tokens` and verifies every asset against its Storage object version, byte size and SHA-256. For real recovery, restore `postgres.tar` into the `db` volumes of the same `supabase/postgres` image and `storage.tar` into Storage before starting services, delete restored `agent_tokens` before enabling MCP, discard abandoned staging uploads, and rebuild derived passage/vector indexes. `database.dump` is for inspecting or extracting individual tables only: replaying it into a fresh Supabase image collides with the image's own `auth`/`storage` schemas and silently drops users and foreign keys. `bash deploy/smoke-private-files.sh` proves that anonymous object/table reads through the public API fail.
 
-# Storage (S3-compatible endpoint)
-rclone sync <remote>:documents ./backup/documents
-rclone sync <remote>:covers    ./backup/covers
+Deploy migrations, functions and frontend with `AI_ENABLED`, `MCP_ENABLED` and `MCP_WRITES_ENABLED` false. Run HTTPS, private-file and login smoke tests before enabling MCP; enable AI only after monster's network/local-model restrictions pass. If a release fails, disable these flags first and restore the saved functions/frontend image. Keep additive database migrations; use the verified full snapshot only for disaster recovery.
 
-# Restore
-psql "postgresql://postgres:<password>@<host>:5432/postgres" < backup_20260101.sql
-rclone sync ./backup/documents <remote>:documents
-```
+Before setting `AI_ENABLED=true`, run `ssh -t monster 'sudo sh -s' < deploy/ollama-hardening.sh`. It disables Ollama cloud inference and bounds concurrency/queueing in a separate systemd drop-in; Ollama stays reachable from the LAN for other uses. Textus only selects models in `OLLAMA_ALLOWED_MODELS`, but other LAN clients can manage models and share the GPU outside Textus's lease, so busy-GPU AI jobs defer rather than fail.
 
-Database and storage must be backed up together — an asset row without its file (or vice versa) is an inconsistency.
+Rollback: `docker tag textus-web:backup-<snapshot> textus-web:latest && docker compose up -d --no-build textus`, and extract `volumes/functions` from the snapshot's `configuration.tar.gz` before restarting the `functions` service.
+
+Daily cleanup retains completed jobs for 30 days and removes rate counters after two idle days. Agent action replay results remain while their token can authenticate, then become eligible 30 days after token expiry or deletion. Library text/notes remain owner data until deletion. Operational logs contain no token values, tool arguments, questions or signed URL query strings; frontend Docker logs rotate at 10 MB × 3.
 
 ---
 

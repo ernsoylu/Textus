@@ -1,3 +1,4 @@
+import { boundedFetch as fetch } from '../_shared/budget.ts';
 import { z } from 'zod';
 import { parseStandardReference, type StandardScheme } from '../_shared/identifier.ts';
 import { readCapped } from '../_shared/http.ts';
@@ -37,7 +38,7 @@ class CatalogueError extends Error {
 
 async function firecrawl(endpoint: 'search' | 'scrape', body: unknown, key: string): Promise<unknown> {
   const response = await fetch(`https://api.firecrawl.dev/v2/${endpoint}`, {
-    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(70_000),
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20_000),
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -91,13 +92,13 @@ export async function standardProvider(scheme: StandardScheme, reference: string
     .replace(/^BSEN/, 'BS EN ').replace(/^BS(?=ISO|IEC)/, 'BS ').replace(/(ISO|IEC)(?=\d)/, '$1 ').replace(/^IEC(TS|TR|PAS)/, 'IEC $1');
   try {
     const search = z.object({ web: z.array(z.object({ url: z.string().url(), title: z.string().optional() })).default([]) }).parse(await firecrawl('search', {
-      query: `site:${CATALOGUES[scheme].site} ${searchReference}`, limit: 3, sources: ['web'], timeout: 60_000,
+      query: `site:${CATALOGUES[scheme].site} ${searchReference}`, limit: 3, sources: ['web'], timeout: 15_000,
     }, key));
     let extractionFailed = false;
     for (const result of search.web.filter((result) => officialUrl(result.url, scheme) && (scheme !== 'bs' || result.title?.toUpperCase().startsWith('BS ')))) {
       const url = result.url;
       const page = z.object({ markdown: z.string().optional(), json: z.unknown(), metadata: z.object({ sourceURL: z.string().optional(), url: z.string().optional(), statusCode: z.number().optional() }).optional() }).parse(await firecrawl('scrape', {
-        url, timeout: 60_000, onlyMainContent: true,
+        url, timeout: 15_000, onlyMainContent: true,
         formats: scheme === 'iec' ? ['markdown'] : ['markdown', { type: 'json', schema: extractionSchema, prompt: 'Extract the MAIN standard publication starting at the FIRST H1 heading on this catalogue page. For ASME read the H3 below the H1 for its reference and edition year. Use its displayed full reference including edition year and amendments, never a successor, citation, or an edition merely listed in a selector. Do not infer the requested edition. Extract title without the reference prefix, abstract, publication date in YYYY, YYYY-MM or YYYY-MM-DD, edition, publisher, language, status and page count. Missing fields must be null. Do not guess.' }],
       }, key));
       if (page.metadata?.statusCode && page.metadata.statusCode >= 400) { extractionFailed = true; continue; }

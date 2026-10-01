@@ -1,4 +1,4 @@
-import { parseAuthorityIdentifier, parseStandardReference, type AuthorityScheme } from 'shared/identifier';
+import { validAuthorityIds as validIds, parseStandardReference } from 'shared/identifier';
 import { chooseImportedContributor, fold, isJunk, parseName, type ImportedCandidate } from 'shared/names';
 import { queueCover, type NormalizedMetadata } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
@@ -23,18 +23,7 @@ export function locks(value: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
 }
 
-const AUTHORITY_SCHEMES = new Set<string>(['orcid', 'isni', 'viaf', 'wikidata', 'openlibrary', 'semantic_scholar']);
-
-// Keeps only authority identifiers that validate (§6.2); anything else from a provider is dropped.
-export function validIds(value: Record<string, string> | undefined): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(value ?? {}).flatMap(([scheme, raw]) => {
-      if (!AUTHORITY_SCHEMES.has(scheme)) return [];
-      const normalized = parseAuthorityIdentifier(scheme as AuthorityScheme, raw);
-      return normalized ? [[scheme, normalized]] : [];
-    }),
-  );
-}
+export { validIds };
 
 function personParts(person: Person) {
   const parts = parseName(person.name).parts;
@@ -207,7 +196,7 @@ async function applyContributors(input: ApplyInput) {
     positions.set(person.role, position + 1);
     credits.push({ contributor_id: contributorId, role: person.role, position, credited_as: person.name, affiliation: person.affiliation ?? null, resolved_by: resolvedBy });
   }
-  const { error } = await supabase.rpc('set_record_contributors', { p_record_id: input.recordId, p_credits: credits });
+  const { error } = await supabase.rpc('set_metadata_contributors', { p_record: input.recordId, p_credits: credits });
   if (error) throw error;
 }
 
@@ -226,26 +215,17 @@ export async function applyMetadata(input: ApplyInput) {
     if (typeof fileTitle === 'string') workPatch.title = fileTitle.normalize('NFC');
     else delete workPatch.title;
   }
-  if (Object.keys(workPatch).length) {
-    const { error } = await supabase.from('works').update(workPatch as never).eq('id', workId);
-    if (error) throw error;
+  const metadataPatch: Record<string, unknown> = {};
+  for (const field of ['container_title', 'standard_status']) {
+    if (field in recordPatch) { metadataPatch[field] = recordPatch[field]; delete recordPatch[field]; }
   }
-  if (Object.keys(workPatch).length || Object.keys(recordPatch).length || selectedCredits.length || includeCover || reference?.ok) {
-    const metadataPatch: Record<string, unknown> = {};
-    for (const field of ['container_title', 'standard_status']) {
-      if (field in recordPatch) { metadataPatch[field] = recordPatch[field]; delete recordPatch[field]; }
-    }
-    if (data.source_url) metadataPatch.source_url = data.source_url;
-    if (Object.keys(metadataPatch).length) {
-      const { data: current, error: readError } = await supabase.from('records').select('metadata').eq('id', recordId).single();
-      if (readError) throw readError;
-      const metadata = meta(current.metadata);
-      const unlocked = Object.fromEntries(Object.entries(metadataPatch).filter(([field]) => !locks(metadata).includes(field)));
-      if (Object.keys(unlocked).length) recordPatch.metadata = { ...metadata, ...unlocked };
-    }
+  if (data.source_url) metadataPatch.source_url = data.source_url;
+  if (Object.keys(workPatch).length || Object.keys(recordPatch).length || Object.keys(metadataPatch).length || selectedCredits.length || includeCover || reference?.ok) {
     recordPatch.metadata_source = data.source_provider;
     recordPatch.metadata_fetched_at = input.fetchedAt;
-    const { error } = await supabase.from('records').update(recordPatch as never).eq('id', recordId);
+    const { error } = await supabase.rpc('apply_metadata_fields', {
+      p_work: workId, p_record: recordId, p_work_patch: workPatch as Record<string, string>, p_record_patch: recordPatch as Record<string, string>, p_metadata_patch: metadataPatch as Record<string, string>,
+    });
     if (error) throw error;
   }
   if (reference?.ok) {

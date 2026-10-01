@@ -2,10 +2,55 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
-  
+
   "public": {
           Tables: {
-            "annotation_tags": {
+            "agent_actions": {
+                  Row: {
+                    "arguments": NonNullable<Json>,"created_at": string,"expires_at": string,"id": string,"preview": Json | null,"request_id": string,"result": Json | null,"status": string,"token_id": string | null,"tool": string,"user_id": string
+                  }
+                  Insert: {
+                    "arguments": NonNullable<Json>,"created_at"?: string,"expires_at"?: string,"id"?: string,"preview"?: Json | null,"request_id": string,"result"?: Json | null,"status"?: string,"token_id"?: string | null,"tool": string,"user_id": string
+                  }
+                  Update: {
+                    "arguments"?: NonNullable<Json>,"created_at"?: string,"expires_at"?: string,"id"?: string,"preview"?: Json | null,"request_id"?: string,"result"?: Json | null,"status"?: string,"token_id"?: string | null,"tool"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "agent_actions_token_id_fkey"
+      columns: ["token_id"]
+isOneToOne: false
+      referencedRelation: "agent_tokens"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"agent_tokens": {
+                  Row: {
+                    "created_at": string,"expires_at": string | null,"id": string,"last_used_at": string | null,"name": string,"scope": string,"token_hash": string,"token_prefix": string,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"expires_at"?: string | null,"id"?: string,"last_used_at"?: string | null,"name": string,"scope"?: string,"token_hash": string,"token_prefix": string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"expires_at"?: string | null,"id"?: string,"last_used_at"?: string | null,"name"?: string,"scope"?: string,"token_hash"?: string,"token_prefix"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"ai_settings": {
+                  Row: {
+                    "generation_model": string | null,"updated_at": string,"user_id": string
+                  }
+                  Insert: {
+                    "generation_model"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "generation_model"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+
+                  ]
+                },"annotation_tags": {
                   Row: {
                     "annotation_id": string,"tag_id": string
                   }
@@ -55,6 +100,25 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"asset_passages": {
+                  Row: {
+                    "asset_id": string,"cfi": string | null,"content": string,"embedding": string | null,"embedding_digest": string | null,"id": number,"index_version": string,"ordinal": number,"page": number | null,"page_label": string | null,"search_vector": unknown,"section": number | null,"user_id": string
+                  }
+                  Insert: {
+                    "asset_id": string,"cfi"?: string | null,"content": string,"embedding"?: string | null,"embedding_digest"?: string | null,"id"?: never,"index_version": string,"ordinal": number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id": string
+                  }
+                  Update: {
+                    "asset_id"?: string,"cfi"?: string | null,"content"?: string,"embedding"?: string | null,"embedding_digest"?: string | null,"id"?: never,"index_version"?: string,"ordinal"?: number,"page"?: number | null,"page_label"?: string | null,"search_vector"?: never,"section"?: number | null,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "asset_passages_asset_id_user_id_fkey"
+      columns: ["asset_id","user_id"]
+isOneToOne: false
+      referencedRelation: "assets"
+      referencedColumns: ["id","user_id"]
+    }
+                  ]
                 },"asset_texts": {
                   Row: {
                     "asset_id": string,"content": string,"created_at": string | null,"search_vector": unknown,"user_id": string
@@ -76,16 +140,29 @@ isOneToOne: true
                   ]
                 },"assets": {
                   Row: {
-                    "bucket": string,"checksum_sha256": string,"created_at": string | null,"file_format": string,"file_size": number,"id": string,"metadata": Json | null,"mime_type": string,"processing_error": string | null,"processing_state": string,"storage_path": string,"updated_at": string | null,"user_id": string
+                    "bucket": string,"checksum_sha256": string,"created_at": string | null,"deleting_at": string | null,"file_format": string,"file_size": number,"id": string,"metadata": Json | null,"mime_type": string,"processing_error": string | null,"processing_state": string,"storage_path": string,"updated_at": string | null,"user_id": string
                   }
                   Insert: {
-                    "bucket": string,"checksum_sha256": string,"created_at"?: string | null,"file_format": string,"file_size": number,"id"?: string,"metadata"?: Json | null,"mime_type": string,"processing_error"?: string | null,"processing_state"?: string,"storage_path": string,"updated_at"?: string | null,"user_id": string
+                    "bucket": string,"checksum_sha256": string,"created_at"?: string | null,"deleting_at"?: string | null,"file_format": string,"file_size": number,"id"?: string,"metadata"?: Json | null,"mime_type": string,"processing_error"?: string | null,"processing_state"?: string,"storage_path": string,"updated_at"?: string | null,"user_id": string
                   }
                   Update: {
-                    "bucket"?: string,"checksum_sha256"?: string,"created_at"?: string | null,"file_format"?: string,"file_size"?: number,"id"?: string,"metadata"?: Json | null,"mime_type"?: string,"processing_error"?: string | null,"processing_state"?: string,"storage_path"?: string,"updated_at"?: string | null,"user_id"?: string
+                    "bucket"?: string,"checksum_sha256"?: string,"created_at"?: string | null,"deleting_at"?: string | null,"file_format"?: string,"file_size"?: number,"id"?: string,"metadata"?: Json | null,"mime_type"?: string,"processing_error"?: string | null,"processing_state"?: string,"storage_path"?: string,"updated_at"?: string | null,"user_id"?: string
                   }
                   Relationships: [
-                    
+
+                  ]
+                },"catalog_requests": {
+                  Row: {
+                    "created_at": string,"id": string,"payload": NonNullable<Json>,"result": NonNullable<Json>,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id": string,"payload": NonNullable<Json>,"result": NonNullable<Json>,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"payload"?: NonNullable<Json>,"result"?: NonNullable<Json>,"user_id"?: string
+                  }
+                  Relationships: [
+
                   ]
                 },"collection_records": {
                   Row: {
@@ -230,7 +307,7 @@ isOneToOne: false
                     "birth_year"?: number | null,"created_at"?: string | null,"death_year"?: number | null,"display_name"?: string,"family_name"?: string | null,"given_names"?: string | null,"id"?: string,"kind"?: string,"match_key"?: string,"notes"?: string | null,"particle"?: string | null,"sort_name"?: string,"status"?: string,"suffix"?: string | null,"updated_at"?: string | null,"user_id"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 },"identifiers": {
                   Row: {
@@ -253,16 +330,16 @@ isOneToOne: false
                   ]
                 },"jobs": {
                   Row: {
-                    "attempts": number | null,"completed_at": string | null,"created_at": string | null,"id": string,"idempotency_key": string | null,"job_type": string,"last_error": string | null,"lease_expires_at": string | null,"max_attempts": number | null,"payload": NonNullable<Json>,"result": Json | null,"started_at": string | null,"status": string,"user_id": string | null
+                    "attempts": number | null,"available_at": string,"claim_generation": number,"completed_at": string | null,"created_at": string | null,"id": string,"idempotency_key": string | null,"job_type": string,"last_error": string | null,"lease_expires_at": string | null,"max_attempts": number | null,"payload": NonNullable<Json>,"result": Json | null,"started_at": string | null,"status": string,"user_id": string | null
                   }
                   Insert: {
-                    "attempts"?: number | null,"completed_at"?: string | null,"created_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"job_type": string,"last_error"?: string | null,"lease_expires_at"?: string | null,"max_attempts"?: number | null,"payload": NonNullable<Json>,"result"?: Json | null,"started_at"?: string | null,"status"?: string,"user_id"?: string | null
+                    "attempts"?: number | null,"available_at"?: string,"claim_generation"?: number,"completed_at"?: string | null,"created_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"job_type": string,"last_error"?: string | null,"lease_expires_at"?: string | null,"max_attempts"?: number | null,"payload": NonNullable<Json>,"result"?: Json | null,"started_at"?: string | null,"status"?: string,"user_id"?: string | null
                   }
                   Update: {
-                    "attempts"?: number | null,"completed_at"?: string | null,"created_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"job_type"?: string,"last_error"?: string | null,"lease_expires_at"?: string | null,"max_attempts"?: number | null,"payload"?: NonNullable<Json>,"result"?: Json | null,"started_at"?: string | null,"status"?: string,"user_id"?: string | null
+                    "attempts"?: number | null,"available_at"?: string,"claim_generation"?: number,"completed_at"?: string | null,"created_at"?: string | null,"id"?: string,"idempotency_key"?: string | null,"job_type"?: string,"last_error"?: string | null,"lease_expires_at"?: string | null,"max_attempts"?: number | null,"payload"?: NonNullable<Json>,"result"?: Json | null,"started_at"?: string | null,"status"?: string,"user_id"?: string | null
                   }
                   Relationships: [
-                    
+
                   ]
                 },"metadata_cache": {
                   Row: {
@@ -275,7 +352,7 @@ isOneToOne: false
                     "expires_at"?: string | null,"fetched_at"?: string | null,"id"?: string,"identifier_scheme"?: string,"identifier_value"?: string,"provider"?: string,"response_data"?: NonNullable<Json>
                   }
                   Relationships: [
-                    
+
                   ]
                 },"reading_states": {
                   Row: {
@@ -413,7 +490,26 @@ isOneToOne: false
                     "created_at"?: string | null,"filters"?: NonNullable<Json>,"id"?: string,"name"?: string,"user_id"?: string
                   }
                   Relationships: [
-                    
+
+                  ]
+                },"storage_deletions": {
+                  Row: {
+                    "asset_id": string | null,"attempts": number,"available_at": string,"bucket": string,"created_at": string,"path": string
+                  }
+                  Insert: {
+                    "asset_id"?: string | null,"attempts"?: number,"available_at"?: string,"bucket": string,"created_at"?: string,"path": string
+                  }
+                  Update: {
+                    "asset_id"?: string | null,"attempts"?: number,"available_at"?: string,"bucket"?: string,"created_at"?: string,"path"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "storage_deletions_asset_id_fkey"
+      columns: ["asset_id"]
+isOneToOne: false
+      referencedRelation: "assets"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"tags": {
                   Row: {
@@ -426,7 +522,26 @@ isOneToOne: false
                     "color"?: string | null,"created_at"?: string | null,"id"?: string,"name"?: string,"user_id"?: string
                   }
                   Relationships: [
-                    
+
+                  ]
+                },"upload_attempts": {
+                  Row: {
+                    "id": string,"intent": NonNullable<Json>,"record_id": string,"request": Json | null,"result": Json | null,"updated_at": string,"user_id": string
+                  }
+                  Insert: {
+                    "id": string,"intent": NonNullable<Json>,"record_id": string,"request"?: Json | null,"result"?: Json | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "id"?: string,"intent"?: NonNullable<Json>,"record_id"?: string,"request"?: Json | null,"result"?: Json | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "upload_attempts_record_id_fkey"
+      columns: ["record_id"]
+isOneToOne: false
+      referencedRelation: "records"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"works": {
                   Row: {
@@ -439,7 +554,7 @@ isOneToOne: false
                     "abstract"?: string | null,"created_at"?: string | null,"id"?: string,"language"?: string | null,"metadata"?: NonNullable<Json>,"search_vector"?: never,"subtitle"?: string | null,"title"?: string,"updated_at"?: string | null,"user_id"?: string,"user_rating"?: number | null,"work_type"?: string
                   }
                   Relationships: [
-                    
+
                   ]
                 }
           }
@@ -447,9 +562,26 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "claim_jobs":
+            "acquire_ai_lease":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"active_job_count":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"apply_metadata_fields":
+{ Args: { "p_metadata_patch": Json,"p_record": string,"p_record_patch": Json,"p_work": string,"p_work_patch": Json }; Returns: undefined
+                           },
+"begin_upload":
+{ Args: { "p_id": string,"p_intent": Json,"p_record": string,"p_user": string }; Returns: Json
+                           },
+"check_request_limit":
+{ Args: { "p_key": string,"p_limit"?: number,"p_period"?: number }; Returns: boolean
+                           },
+"claim_jobs":
 { Args: { "p_lease"?: string,"p_limit"?: number }; Returns: {
               "attempts": number | null,
+"available_at": string,
+"claim_generation": number,
 "completed_at": string | null,
 "created_at": string | null,
 "id": string,
@@ -470,10 +602,49 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_storage_cleanup":
+{ Args: { "p_limit"?: number }; Returns: {
+              "asset_id": string | null,
+"attempts": number,
+"available_at": string,
+"bucket": string,
+"created_at": string,
+"path": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "storage_deletions"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
+"commit_embedding_batch":
+{ Args: { "p_generation": number,"p_job": string,"p_vectors": Json }; Returns: boolean
+                           },
+"commit_passage_batch":
+{ Args: { "p_done": number,"p_generation": number,"p_job": string,"p_passages": Json,"p_reason"?: string,"p_status"?: string,"p_total": number }; Returns: boolean
+                           },
+"complete_agent_upload":
+{ Args: { "p_action": string,"p_asset": Json,"p_request": Json,"p_token": string }; Returns: Json
+                           },
+"complete_upload":
+{ Args: { "p_asset": Json,"p_id": string,"p_request": Json,"p_user": string }; Returns: Json
+                           },
 "contributor_candidates":
 { Args: { "p_match_keys": (string)[] }; Returns: {
               "affiliations": (string)[],"birth_year": number,"coauthor_keys": (string)[],"contributor_id": string,"death_year": number,"display_name": string,"given_names": string,"identifiers": Json,"kind": string,"match_key": string,"names": (string)[],"work_ids": (string)[]
             }[]
+                           },
+"control_passage_index":
+{ Args: { "p_action": string,"p_asset"?: string }; Returns: number
+                           },
+"create_catalog":
+{ Args: { "p_payload": Json,"p_request": string }; Returns: Json
+                           },
+"defer_ai_job":
+{ Args: { "p_generation": number,"p_id": string,"p_reason": string }; Returns: boolean
+                           },
+"execute_agent_action":
+{ Args: { "p_action": string,"p_token": string }; Returns: Json
                            },
 "expire_stale_jobs":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -481,6 +652,17 @@ isOneToOne: false
 "find_duplicate_works":
 { Args: { "p_work_id": string }; Returns: {
               "reason": string,"title": string,"work_id": string
+            }[]
+                           },
+"finish_job":
+{ Args: { "p_continue"?: Json,"p_error"?: string,"p_generation": number,"p_id": string,"p_result"?: Json }; Returns: boolean
+                           },
+"finish_storage_deletion":
+{ Args: { "p_bucket": string,"p_path": string }; Returns: undefined
+                           },
+"hybrid_passages":
+{ Args: { "p_digest": string,"p_embedding": string,"p_limit"?: number,"p_query": string,"p_work_ids"?: (string)[] }; Returns: {
+              "asset_id": string,"byline": string,"cfi": string,"content": string,"id": number,"page": number,"page_label": string,"record_id": string,"score": number,"section": number,"title": string,"work_id": string,"year": number
             }[]
                            },
 "library_languages":
@@ -496,18 +678,56 @@ isOneToOne: false
 "merge_contributors":
 { Args: { "p_force"?: boolean,"p_keep": string,"p_merge": string }; Returns: undefined
                            },
+"merge_extraction_metadata":
+{ Args: { "p_asset": string,"p_owner": string,"p_patch": Json }; Returns: Json
+                           },
+"passage_coverage":
+{ Args: { "p_work_ids"?: (string)[] }; Returns: Json
+                           },
+"passage_embedding_coverage":
+{ Args: { "p_digest": string,"p_work_ids"?: (string)[] }; Returns: Json
+                           },
 "possible_duplicate_contributors":
 { Args: Record<PropertyKey, never>; Returns: {
               "contributor_a": string,"contributor_b": string
             }[]
                            },
+"prune_operational_history":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
+"queue_embedding_jobs":
+{ Args: { "p_digest": string }; Returns: number
+                           },
+"queue_passage_index":
+{ Args: { "p_asset": string,"p_owner": string }; Returns: boolean
+                           },
 "reassign_credits":
 { Args: { "p_from": string,"p_record_ids": (string)[],"p_to": string }; Returns: undefined
+                           },
+"release_ai_lease":
+{ Args: { "p_holder": string }; Returns: undefined
+                           },
+"request_agent_action":
+{ Args: { "p_arguments": Json,"p_preview"?: Json,"p_request": string,"p_token": string,"p_tool": string }; Returns: Json
+                           },
+"retry_storage_deletion":
+{ Args: { "p_bucket": string,"p_path": string }; Returns: undefined
+                           },
+"review_agent_action":
+{ Args: { "p_action": string,"p_approve": boolean }; Returns: undefined
                            },
 "search_library":
 { Args: { "p_limit"?: number,"p_query": string }; Returns: {
               "rank": number,"record_id": string,"title": string,"work_id": string
             }[]
+                           },
+"search_passages":
+{ Args: { "p_limit"?: number,"p_query": string,"p_work_ids"?: (string)[] }; Returns: {
+              "asset_id": string,"byline": string,"cfi": string,"content": string,"id": number,"page": number,"page_label": string,"record_id": string,"score": number,"section": number,"title": string,"work_id": string,"year": number
+            }[]
+                           },
+"set_metadata_contributors":
+{ Args: { "p_credits": Json,"p_record": string }; Returns: boolean
                            },
 "set_record_contributors":
 { Args: { "p_credits": Json,"p_record_id": string }; Returns: undefined
@@ -518,8 +738,16 @@ isOneToOne: false
 "show_trgm":
 { Args: { "": string }; Returns: (string)[]
                            },
+"store_ai_metadata_suggestion":
+{ Args: { "p_asset": string,"p_data": Json,"p_key": string,"p_record": string,"p_user": string }; Returns: boolean
+                           },
 "unaccent":
 { Args: { "": string }; Returns: string
+                           },
+"use_agent_token":
+{ Args: { "p_hash": string }; Returns: {
+              "scope": string,"token_id": string,"user_id": string
+            }[]
                            }
           }
           Enums: {
@@ -639,7 +867,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            
+
           }
         }
 } as const

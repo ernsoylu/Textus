@@ -3,20 +3,25 @@
 // ('secret' auth mode) — this is the one function CLAUDE.md's own convention exempts from
 // per-caller JWT auth.
 //
-// Scope of this pass: extract_text for PDF assets only (real pdfjs-dist text extraction,
-// verified against a live signed URL before this was written — see the M1 session notes).
-// EPUB/MOBI/AZW3/CBZ/DjVu/HTML/TXT extraction isn't implemented; those jobs succeed as a no-op
-// rather than failing forever on a format this will never handle.
+// Front-matter extraction supplies metadata suggestions and the legacy search preview.
+// M6 passage indexing handles full PDF/EPUB text in separate fenced, resumable batches.
+// Other file formats remain readable/downloadable and are skipped by extraction.
 //
 // generate_thumbnail has no handler here at all, deliberately: thumbnails are captured
 // client-side on first read instead (Reader.tsx's onFirstPageRendered), per §15 open
 // question 2's own proposed resolution — Deno's edge runtime has no canvas to rasterize a
 // PDF page into an image. upload/complete no longer enqueues that job type.
-import { withSupabase } from '@supabase/server';
+import { withSupabase, type SupabaseContext } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
 import { needsJournalRefresh, provider, providersFor } from '../metadata-lookup/index.ts';
+import { extractAiMetadata } from '../_shared/aiMetadata.ts';
+import { aiConfig, embeddingModel } from '../_shared/ollama.ts';
+import { embedPassages } from './embeddings.ts';
+import { HttpError } from '../_shared/http.ts';
+import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
+import { checked, withBudget, boundedFetch as fetch } from '../_shared/budget.ts';
 
 // ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
 const MAX_EXTRACT_BYTES = 25_000_000;
@@ -28,19 +33,28 @@ interface Job {
   payload: Record<string, unknown>;
   attempts: number;
   max_attempts: number;
+  claim_generation: number;
+  user_id: string | null;
 }
 
 // deno-lint-ignore no-explicit-any
 async function queueMetadata(admin: any, asset: { id: string; user_id: string }, found: { scheme: 'isbn' | 'doi'; value: string }[]) {
-  if (!found.length) return;
+  if (!found.length && !aiConfig().enabled) return;
   const { data: links, error } = await admin.from('record_assets').select('record_id').eq('asset_id', asset.id);
   if (error) throw error;
   for (const link of links ?? []) {
+    if (!found.length) await checked(admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'extract_metadata_ai', payload: { asset_id: asset.id, record_id: link.record_id }, idempotency_key: `extract_metadata_ai:${asset.id}:${link.record_id}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true }));
     for (const identifier of found.slice(0, 3)) {
       const { error: queueError } = await admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'fetch_metadata', payload: { record_id: link.record_id, ...identifier }, idempotency_key: `fetch_metadata:${link.record_id}:${identifier.scheme}:${identifier.value}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
       if (queueError) throw queueError;
     }
   }
+}
+
+// deno-lint-ignore no-explicit-any
+async function storeExtraction(admin: any, asset: { id: string; user_id: string }, patch: Record<string, unknown>) {
+  const metadata = await checked(admin.rpc('merge_extraction_metadata', { p_asset: asset.id, p_owner: asset.user_id, p_patch: patch })) as Record<string, unknown> | null;
+  if (metadata && !metadata.passage_index) await checked(admin.rpc('queue_passage_index', { p_asset: asset.id, p_owner: asset.user_id }));
 }
 
 // Extracted text feeds search (asset_texts, FR-SRCH-1): a capped copy, one row per asset, replaced on re-extraction.
@@ -59,7 +73,7 @@ async function extractText(admin: any, job: Job) {
   const assetId = job.payload.asset_id as string | undefined;
   if (!assetId) throw new Error('extract_text job missing payload.asset_id');
 
-  const { data: asset, error: assetError } = await admin.from('assets').select('*').eq('id', assetId).single();
+  const { data: asset, error: assetError } = await admin.from('assets').select('*').eq('id', assetId).eq('user_id', job.user_id!).is('deleting_at', null).single();
   if (assetError || !asset) throw new Error(assetError?.message ?? 'asset not found');
 
   // Text is read into memory, so very large files and formats with no extractor are marked ready without it
@@ -70,8 +84,7 @@ async function extractText(admin: any, job: Job) {
   if (skipReason) {
     const filename = typeof job.payload.filename === 'string' ? job.payload.filename : '';
     const found = identifierSuggestions('', filename);
-    const { error: readyError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, identifier_suggestions: found }, processing_state: 'ready' }).eq('id', assetId);
-    if (readyError) throw readyError;
+    await storeExtraction(admin, asset, { filename, identifier_suggestions: found });
     await queueMetadata(admin, asset, found);
     return { skipped: true, reason: skipReason };
   }
@@ -84,8 +97,7 @@ async function extractText(admin: any, job: Job) {
     const result = extractEpub(bytes);
     const found = identifierSuggestions(result.text, filename);
     await storeText(admin, asset, result.text);
-    const { error: updateError } = await admin.from('assets').update({ metadata: { ...(asset.metadata as object), filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null }, processing_state: 'ready' }).eq('id', assetId);
-    if (updateError) throw updateError;
+    await storeExtraction(admin, asset, { filename, text_char_count: result.text.length, text_preview: result.text.slice(0, 2000), identifier_suggestions: found, author_suggestion: result.author ?? null, title_suggestion: result.title ?? null });
     await queueMetadata(admin, asset, found);
     return { textCharCount: result.text.length };
   }
@@ -109,17 +121,10 @@ async function extractText(admin: any, job: Job) {
     const pdfMeta = await doc.getMetadata().catch(() => null);
     const info = pdfMeta?.info as { Author?: string; Title?: string } | undefined;
 
-    // ponytail: PDF search indexes the first eight pages; scan the whole document if users need full-book search.
+    // Metadata discovery scans front matter; index_passages covers the remaining pages.
     const found = identifierSuggestions(text, filename);
     await storeText(admin, asset, text);
-    const { error: updateError } = await admin
-      .from('assets')
-      .update({
-        metadata: { ...(asset.metadata as object), filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null },
-        processing_state: 'ready',
-      })
-      .eq('id', assetId);
-    if (updateError) throw updateError;
+    await storeExtraction(admin, asset, { filename, page_count: doc.numPages, text_char_count: text.length, text_preview: text.slice(0, 2000), identifier_suggestions: found, author_suggestion: info?.Author ?? null, title_suggestion: info?.Title ?? null });
     await queueMetadata(admin, asset, found);
 
     return { pageCount: doc.numPages, textCharCount: text.length };
@@ -260,8 +265,11 @@ async function processCover(admin: any, job: Job) {
   const { extension, mime } = sniffCover(bytes);
   const checksum = await sha256Hex(bytes);
   const path = `${userId}/${checksum}.${extension}`;
-  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: mime, upsert: true });
-  if (storageError) throw storageError;
+  const { error: storageError } = await admin.storage.from('covers').upload(path, bytes, { contentType: mime, upsert: false });
+  if (storageError) {
+    const { data: exists } = await admin.storage.from('covers').exists(path);
+    if (!exists) throw storageError;
+  }
   const asset = await ensureCoverAsset(admin, userId, path, bytes.length, checksum, mime);
   const { error: linkError } = await admin.from('record_assets').upsert({ record_id: recordId, asset_id: asset.id, role: 'cover' }, { onConflict: 'record_id,asset_id,role', ignoreDuplicates: true });
   if (linkError) throw linkError;
@@ -271,44 +279,50 @@ async function processCover(admin: any, job: Job) {
 // deno-lint-ignore no-explicit-any
 const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   extract_text: extractText,
+  index_passages: indexPassages,
+  embed_passages: embedPassages,
+  extract_metadata_ai: extractAiMetadata,
   process_cover: processCover,
   fetch_metadata: fetchMetadata,
   cleanup: (admin) => runCleanup(admin),
 };
 
 export default {
-  fetch: withSupabase({ auth: 'secret' }, async (_req, ctx) => {
-    await ctx.supabaseAdmin.rpc('expire_stale_jobs');
-
-    // One system-wide cleanup a day; the idempotency key makes every later tick a no-op.
-    await ctx.supabaseAdmin.from('jobs').upsert(
+  fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
+    await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
+    if (aiConfig().enabled) {
+      try { const model = await embeddingModel(); await checked(ctx.supabaseAdmin.rpc('queue_embedding_jobs', { p_digest: model.digest })); }
+      catch { /* An unavailable optional model must not stop other jobs. */ }
+    }
+    await checked(ctx.supabaseAdmin.from('jobs').upsert(
       { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
       { onConflict: 'idempotency_key', ignoreDuplicates: true },
-    );
-
-    const { data: jobs, error: claimError } = await ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 5 });
-    if (claimError) return Response.json({ error: claimError.message }, { status: 500 });
-
+    ));
+    const jobs = await checked(ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 1 })) as Job[];
     const results = [];
-    for (const job of (jobs ?? []) as Job[]) {
-      const handler = HANDLERS[job.job_type];
+    for (const job of jobs ?? []) {
       try {
-        if (!handler) throw new Error(`no handler for job_type '${job.job_type}'`);
+        const handler = HANDLERS[job.job_type];
+        if (!handler) throw new Error('unsupported job type');
         const result = await handler(ctx.supabaseAdmin, job);
-        await ctx.supabaseAdmin.from('jobs').update({ status: 'succeeded', completed_at: new Date().toISOString(), result }).eq('id', job.id);
-        results.push({ id: job.id, status: 'succeeded' });
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error(`job ${job.id} (${job.job_type}) failed:`, message);
-        if (job.attempts >= job.max_attempts) {
-          await ctx.supabaseAdmin.from('jobs').update({ status: 'failed', completed_at: new Date().toISOString(), last_error: message }).eq('id', job.id);
-          results.push({ id: job.id, status: 'failed', error: message });
-        } else {
-          // Left 'running' on purpose: the lease expires and claim_jobs() retries it.
-          results.push({ id: job.id, status: 'retrying', error: message });
+        if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
+          const committed = result.committed || await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
+          results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });
+          continue;
         }
+        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
+        results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
+      } catch (error) {
+        if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && ['extract_metadata_ai', 'embed_passages'].includes(job.job_type)) {
+          await checked(ctx.supabaseAdmin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
+          results.push({ id: job.id, status: 'paused' });
+          continue;
+        }
+        // Logs/results contain neither provider URLs, book text nor credentials.
+        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
+        results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });
       }
     }
-    return Response.json({ claimed: (jobs ?? []).length, results });
-  }),
+    return Response.json({ claimed: jobs?.length ?? 0, results });
+  })),
 };

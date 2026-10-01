@@ -26,6 +26,7 @@ export async function importMetadata(work: { id: string; title: string; metadata
       let identifier: { scheme: 'isbn' | 'doi'; value: string } | undefined;
       const stored = object(record.metadata).lookup_suggestions;
       for (const [key, value] of Object.entries(object(stored))) {
+        if (key.startsWith('llm:')) continue;
         const suggestion = object(value);
         const candidate = object(suggestion.data) as unknown as NormalizedMetadata;
         if (typeof candidate.title === 'string') {
@@ -69,7 +70,7 @@ export async function importMetadata(work: { id: string; title: string; metadata
             const { data: currentLinks, error } = await supabase.from('record_assets').select('assets(metadata,processing_state)').eq('record_id', record.id);
             if (error) throw error;
             const assets = (currentLinks ?? []).flatMap((link) => link.assets ? [link.assets] : []);
-            extractionPending = assets.some((asset) => asset.processing_state === 'pending');
+            extractionPending = assets.some((asset) => ['pending', 'processing'].includes(asset.processing_state));
             const suggestions = assets.flatMap((asset) => {
               const raw = object(asset.metadata).identifier_suggestions;
               return Array.isArray(raw) ? raw : [];
@@ -81,7 +82,7 @@ export async function importMetadata(work: { id: string; title: string; metadata
               return parsed.ok ? [{ scheme: suggestion.scheme, value: parsed.normalized } as const] : [];
             });
             identifier = valid.find((item) => item.scheme === 'isbn') ?? valid[0];
-            if (identifier || assets.length && assets.every((asset) => asset.processing_state !== 'pending')) break;
+            if (identifier || assets.length && assets.every((asset) => !['pending', 'processing'].includes(asset.processing_state))) break;
             await pause(2500);
           }
         }

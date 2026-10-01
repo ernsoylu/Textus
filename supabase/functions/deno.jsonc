@@ -6,7 +6,13 @@
 {
   "imports": {
     "@supabase/server": "npm:@supabase/server@^1",
-    "zod": "npm:zod@3.23.8",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.103.1",
+    "@modelcontextprotocol/sdk/server/mcp.js": "npm:@modelcontextprotocol/sdk@1.31.0/server/mcp.js",
+    "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js": "npm:@modelcontextprotocol/sdk@1.31.0/server/webStandardStreamableHttp.js",
+    "undici": "npm:undici@6.29.0",
+    "jose": "npm:jose@6.2.12",
+    "@xmldom/xmldom": "npm:@xmldom/xmldom@0.9.12",
+    "zod": "npm:zod@3.25.76",
     "pdfjs-dist/legacy/build/pdf.mjs": "npm:pdfjs-dist@6.3.289/legacy/build/pdf.mjs"
   }
 }

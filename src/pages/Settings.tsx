@@ -3,18 +3,23 @@ import { supabase, supabaseUrl } from '@/lib/supabase';
 import { SignOutButton } from '@/components/account/SignOutButton';
 import { useAuth } from '@/hooks/useAuth';
 import { PasswordForm } from '@/components/account/PasswordForm';
+import { AgentTab } from '@/components/account/AgentTab';
+import { AiTab } from '@/components/account/AiTab';
 import { AppearanceTab } from '@/components/account/AppearanceTab';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { deleteAccount } from '@/lib/functions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useSearchParams } from 'react-router-dom';
 
 // Figma "settings", "appearance" and "opds": Account, Appearance and OPDS tabs.
 const TABS = [
   { id: 'account', label: 'Account' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'opds', label: 'OPDS' },
+  { id: 'ai', label: 'AI' },
+  { id: 'agents', label: 'Agents' },
 ] as const;
 
 function AccountTab() {
@@ -98,7 +103,7 @@ function AccountTab() {
   );
 }
 
-function OpdsTab({ onSetPassword }: Readonly<{ onSetPassword: () => void }>) {
+function OpdsTab({ onCreateToken }: Readonly<{ onCreateToken: () => void }>) {
   const catalogUrl = `${supabaseUrl}/functions/v1/opds`;
   const [copied, setCopied] = useState(false);
 
@@ -122,19 +127,20 @@ function OpdsTab({ onSetPassword }: Readonly<{ onSetPassword: () => void }>) {
         <ol className="list-decimal pl-5 text-body text-muted">
           <li>Add an OPDS catalog in your reader.</li>
           <li>Paste the catalog URL above.</li>
-          <li>Sign in with your account email and password.</li>
+          <li>Sign in with any username and a read-only agent token as the password.</li>
         </ol>
       </div>
       <p className="text-small text-muted">
-        Readers sign in with HTTP Basic, so an account that only uses magic links needs a password first.{' '}
-        <button type="button" className="text-green underline" onClick={onSetPassword}>Set a password</button>
+        Your account password is not accepted here. Revoke the token to disconnect the reader.{' '}
+        <button type="button" className="text-green underline" onClick={onCreateToken}>Create a token</button>
       </p>
     </div>
   );
 }
 
 export function Settings() {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('account');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>(() => TABS.find((t) => t.id === params.get('tab'))?.id ?? 'account');
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -142,7 +148,7 @@ export function Settings() {
         <p className="font-serif text-title text-fg">Make yourself at home.</p>
         <p className="text-body text-muted">Your account and private library.</p>
       </div>
-      <div role="tablist" className="flex gap-2">
+      <div role="tablist" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -157,8 +163,10 @@ export function Settings() {
         ))}
       </div>
       {tab === 'account' && <AccountTab />}
+      {tab === 'ai' && <AiTab />}
+      {tab === 'agents' && <AgentTab />}
       {tab === 'appearance' && <AppearanceTab />}
-      {tab === 'opds' && <OpdsTab onSetPassword={() => setTab('account')} />}
+      {tab === 'opds' && <OpdsTab onCreateToken={() => setTab('agents')} />}
     </div>
   );
 }

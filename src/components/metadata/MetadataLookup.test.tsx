@@ -1,0 +1,24 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { expect, it, vi } from 'vitest';
+import { MetadataLookup } from './MetadataLookup';
+const { apply, search } = vi.hoisted(() => ({ apply: vi.fn(), search: vi.fn().mockResolvedValue({ candidates: [] }) }));
+vi.mock('@/lib/metadataApply', async (original) => ({ ...await original<typeof import('@/lib/metadataApply')>(), loadCandidates: vi.fn().mockResolvedValue([]), applyMetadata: apply }));
+vi.mock('@/lib/functions', () => ({ metadataLookup: vi.fn(), titleMetadataSearch: search }));
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+it('AI review starts with no selected fields and public search requires explicit consent', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const work = { id: 'work', title: 'Current title', subtitle: null, abstract: null, language: null, work_type: 'book', metadata: {} };
+  const record = { id: 'record', title: null, publication_date: null, publication_date_precision: null, publisher: null, volume: null, issue_number: null, pages: null, metadata: { lookup_suggestions: { 'llm:local': { data: { title: 'Solar Book', source_provider: 'llm:local', work_type: 'book', evidence: 'Solar Book' } } } }, record_contributors: [], record_assets: [] };
+  const view = render(<QueryClientProvider client={client}><MetadataLookup work={work} record={record} /></QueryClientProvider>);
+  expect(screen.getByRole('button', { name: 'Search public catalogs' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review AI suggestion: Solar Book' }));
+  expect(await screen.findByText('Front matter evidence: Solar Book')).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Apply selected metadata' })).toBeDisabled();
+  expect(apply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Allow sending this title and author to these public catalogs' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Search public catalogs' }));
+  expect(await screen.findByText('No catalog candidates found.')).toBeInTheDocument();
+  expect(search).toHaveBeenCalledWith('record', 'Solar Book', '');
+  view.unmount(); client.clear();
+});

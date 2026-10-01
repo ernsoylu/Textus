@@ -34,7 +34,7 @@ function zipReader(bytes: Uint8Array) {
   return { u16: (at: number) => view.getUint16(at, true), u32: (at: number) => view.getUint32(at, true) };
 }
 
-function readCentralDirectory(bytes: Uint8Array): ZipEntry[] {
+export function readCentralDirectory(bytes: Uint8Array): ZipEntry[] {
   const { u16, u32 } = zipReader(bytes);
   let end = -1;
   for (let at = bytes.length - 22; at >= Math.max(0, bytes.length - 65557); at--) {
@@ -62,7 +62,7 @@ function readCentralDirectory(bytes: Uint8Array): ZipEntry[] {
 
 // The entry's bytes, or null when it is too large, malformed, or uses an unsupported method.
 // Sizes are checked from the central directory before anything is inflated.
-function readEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array | null {
+export function readEntry(bytes: Uint8Array, entry: ZipEntry): Uint8Array | null {
   const { u16, u32 } = zipReader(bytes);
   const { local, compressed, uncompressed, method } = entry;
   if (uncompressed > MAX_ENTRY_BYTES || compressed > MAX_ENTRY_BYTES || local + 30 > bytes.length || u32(local) !== LOCAL_ENTRY) return null;

@@ -4,6 +4,7 @@ import { fold, compareGiven, type Role } from 'shared/names';
 
 export interface CreditInput {
   contributorId?: string;
+  identifiers?: Record<string, string>;
   kind: 'person' | 'organization';
   creditedAs: string; // as printed/pasted; becomes credited_as only when it differs from the canonical name
   organizationName: string; // organization only

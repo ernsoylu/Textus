@@ -36,7 +36,9 @@ jobs:
           cache: npm
       # --ignore-scripts: no dependency lifecycle scripts run in CI (none are needed to type-check, test or build).
       - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
       - run: npm run type-check
+      - run: python3 deploy/harden-envoy-logs.test.py
       - run: npm run lint
       - run: npm run test
       - run: npm run build
@@ -63,7 +65,7 @@ jobs:
       # unlike relying on `supabase status`'s output format).
       - name: Run pgTAP tests (RLS isolation, library search and paging, duplicate works)
         run: |
-          for f in rls_isolation library_page duplicate_works; do
+          for f in rls_isolation library_page duplicate_works m6_integrity ai_foundation passages catalog metadata_review agent_tokens embeddings agent_actions operational_retention; do
             psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
               -v ON_ERROR_STOP=1 -f "supabase/tests/database/$f.test.sql" | tee "pgtap-$f.log"
             if grep -q 'not ok' "pgtap-$f.log"; then
@@ -75,7 +77,9 @@ jobs:
         run: supabase status -o env | sed -E 's/^([^=]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
       - name: Run Edge Function integration flow
         run: |
-          supabase functions serve --no-verify-jwt > /tmp/textus-functions.log 2>&1 &
+          umask 077
+          printf 'JWT_SECRET=%s\nMCP_ENABLED=true\nMCP_WRITES_ENABLED=true\n' "$JWT_SECRET" > /tmp/textus-edge.env
+          supabase functions serve --no-verify-jwt --env-file /tmp/textus-edge.env > /tmp/textus-functions.log 2>&1 &
           # The runtime from `supabase start` answers first, then `functions serve` restarts it (502s in between);
           # only a request logged by serve itself proves the new runtime is up.
           ready=false
@@ -85,7 +89,7 @@ jobs:
             sleep 1
           done
           if [ "$ready" != true ]; then cat /tmp/textus-functions.log; exit 1; fi
-          if ! deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts; then
+          if ! deno test --allow-env --allow-net supabase/tests/functions/integration.test.ts supabase/tests/functions/mcp.test.ts; then
             cat /tmp/textus-functions.log
             exit 1
           fi
@@ -107,3 +111,5 @@ jobs:
           done
       - name: deno lint
         run: deno lint supabase/functions
+      - name: Edge unit tests
+        run: deno test --allow-env --allow-net --config supabase/functions/deno.jsonc supabase/functions

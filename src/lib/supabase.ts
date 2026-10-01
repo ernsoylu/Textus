@@ -9,6 +9,8 @@ import type { Database } from '@/types/database';
 // Docker network (deploy/nginx.conf).
 export const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || globalThis.location.origin;
 export const supabaseAnonKey: string = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Public Turnstile site key; when set, Supabase Auth requires its CAPTCHA token (components/account/Turnstile.tsx).
+export const turnstileSiteKey: string = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '';
 const anonKey = supabaseAnonKey;
 
 if (!anonKey) {

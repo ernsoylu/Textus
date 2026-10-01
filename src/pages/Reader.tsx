@@ -205,9 +205,9 @@ export function Reader() {
 
       <div className="relative flex min-h-0 flex-1 gap-3">
         <div className="min-w-0 flex-1">
-          {isPdf && <PdfViewer {...common} initialPage={resume?.current_page ?? 1} onFirstPageRendered={handleFirstPageRendered} />}
-          {isDjvu && <DjvuViewer {...common} initialPage={resume?.current_page ?? 1} onFirstPageRendered={handleFirstPageRendered} />}
-          {isBook && <BookViewer {...common} format={format} initialCfi={(resume?.current_position as { cfi?: string } | null)?.cfi} />}
+          {isPdf && <PdfViewer {...common} initialPage={Math.max(1, Math.floor(Number(searchParams.get('page')) || resume?.current_page || 1))} onFirstPageRendered={handleFirstPageRendered} />}
+          {isDjvu && <DjvuViewer {...common} initialPage={Math.max(1, Math.floor(Number(searchParams.get('page')) || resume?.current_page || 1))} onFirstPageRendered={handleFirstPageRendered} />}
+          {isBook && <BookViewer {...common} format={format} initialCfi={searchParams.get('cfi') ?? (resume?.current_position as { cfi?: string } | null)?.cfi} />}
           {!readable && (
             <div className="flex items-center gap-3">
               <p className="text-body text-muted">In-browser reading isn't available for {format} files.</p>

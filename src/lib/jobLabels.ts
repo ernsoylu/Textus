@@ -6,6 +6,9 @@ const payloadOf = (job: JobItem): Record<string, unknown> => (job.payload && typ
 export function jobLabel(job: JobItem): string {
   const p = payloadOf(job);
   switch (job.job_type) {
+    case 'index_passages': return 'Indexing file passages';
+    case 'embed_passages': return 'Embedding indexed passages';
+    case 'extract_metadata_ai': return 'Preparing AI metadata suggestions';
     case 'extract_text':
       return typeof p.filename === 'string' && p.filename ? `Reading ${p.filename}` : 'Reading an uploaded file';
     case 'fetch_metadata':

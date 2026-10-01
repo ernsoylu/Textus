@@ -1,3 +1,4 @@
+import { ActivityCount } from './ActivityCount';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -39,7 +40,7 @@ export function Sidebar() {
             )
           }
         >
-          {item.label}
+          {item.label}{item.to === '/activity' && <ActivityCount />}
         </NavLink>
       ))}
       {saved.data && saved.data.length > 0 && (
