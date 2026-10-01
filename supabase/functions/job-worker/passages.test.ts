@@ -1,6 +1,6 @@
 import { textPdf } from '../../tests/fixtures/pdf.ts';
 import { createClient } from '@supabase/supabase-js';
-import { chunks, epubSections, indexPassages } from './passages.ts';
+import { chunks, concurrencyLimit, epubSections, indexPassages } from './passages.ts';
 function zip(files: [string, string][]) {
   const encoder = new TextEncoder();
   const local: Uint8Array[] = [], central: Uint8Array[] = [];
@@ -21,6 +21,18 @@ function zip(files: [string, string][]) {
   offset = 0; for (const part of parts) { result.set(part, offset); offset += part.length; }
   return result;
 }
+Deno.test('EPUB 2 XHTML DOCTYPEs and named entities parse; entity declarations stay refused', () => {
+  const book = (chapter: string) => epubSections(zip([
+    ['META-INF/container.xml', '<?xml version="1.0"?><container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>'],
+    ['book.opf', '<package><metadata/><manifest><item id="c" href="c.xhtml"/></manifest><spine><itemref idref="c"/></spine></package>'],
+    ['c.xhtml', chapter],
+  ]))[0].read();
+  const text = book('<?xml version="1.0"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body><p>Heat&nbsp;transfer &mdash; entropy</p></body></html>').text;
+  if (!text.includes('Heat\u00a0transfer \u2014 entropy')) throw new Error(`XHTML entities not resolved: ${text}`);
+  let refused = false;
+  try { book('<!DOCTYPE x [<!ENTITY a "aaaa">]><html><body>&a;</body></html>'); } catch { refused = true; }
+  if (!refused) throw new Error('entity declarations must be refused');
+});
 Deno.test('EPUB follows the OPF spine and produces real element CFIs; chunks retain Unicode', () => {
   const sections = epubSections(zip([
     ['META-INF/container.xml', '<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>'],
@@ -63,4 +75,45 @@ Deno.test('PDF batches resume across all thirty pages through bounded signed ran
     await indexPassages(admin, job);
     if (Number(done) !== 30 || String(status) !== 'complete' || !saved.some((p) => p.page === 9 && p.content.includes('page 9')) || ranges < 2) throw new Error('resume or page-nine extraction failed');
   } finally { await server.shutdown(); }
+});
+
+Deno.test('a damaged xref is repaired by reading the file through bounded ranges', async () => {
+  // Point startxref at garbage so pdf.js must rebuild the xref by reading every chunk of the file.
+  const good = new TextDecoder().decode(textPdf(40));
+  const padded = good.replace('%PDF-1.4\n', `%PDF-1.4\n${'%padding\n'.repeat(120_000)}`);
+  const bytes = new TextEncoder().encode(padded.replace(/startxref\n\d+/, 'startxref\n9'));
+  const asset = { id: crypto.randomUUID(), user_id: crypto.randomUUID(), file_format: 'pdf', file_size: bytes.length, bucket: 'documents', storage_path: 'damaged.pdf', metadata: { passage_index: { version: 'test', done: 0, passages: 0, reason: null } } };
+  let inFlight = 0, peak = 0, ranges = 0, committed: { p_done: number; p_status: string } | null = null;
+  const server = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen: () => {} }, async (req) => {
+    const path = new URL(req.url).pathname;
+    if (path === '/rest/v1/assets') return Response.json(asset);
+    if (path.startsWith('/rest/v1/rpc/commit_passage_batch')) { committed = await req.json(); return Response.json(true); }
+    if (req.method === 'POST' && path.startsWith('/storage/')) return Response.json({ signedURL: '/object/sign/documents/damaged.pdf?token=test' });
+    if (req.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': String(bytes.length) } });
+    const match = req.headers.get('Range')?.match(/bytes=(\d+)-(\d+)/);
+    if (!match) return new Response('Range required', { status: 400 });
+    inFlight++; ranges++; peak = Math.max(peak, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    inFlight--;
+    const begin = Number(match[1]), end = Number(match[2]);
+    return new Response(bytes.slice(begin, end + 1), { status: 206, headers: { 'Content-Range': `bytes ${begin}-${end}/${bytes.length}`, 'Content-Length': String(end - begin + 1) } });
+  });
+  try {
+    const admin = createClient(`http://127.0.0.1:${server.addr.port}`, 'test-key');
+    await indexPassages(admin, { id: crypto.randomUUID(), user_id: asset.user_id, claim_generation: 1, payload: { asset_id: asset.id, index_version: 'test', from: 0, ordinal: 0 } });
+    if (!committed || ranges < 5) throw new Error(`repair did not commit a batch over several ranges (${ranges})`);
+    if (peak > 4) throw new Error(`${peak} range requests were in flight`);
+  } finally { await server.shutdown(); }
+});
+
+Deno.test('range fetches run at most four at a time, in order', async () => {
+  const limit = concurrencyLimit(4);
+  let inFlight = 0, peak = 0;
+  const order: number[] = [];
+  await Promise.all(Array.from({ length: 20 }, (_, i) => limit(async () => {
+    inFlight++; peak = Math.max(peak, inFlight); order.push(i);
+    await new Promise((resolve) => setTimeout(resolve, 3));
+    inFlight--;
+  })));
+  if (peak !== 4 || order.length !== 20 || order.some((n, i) => n !== i)) throw new Error(`peak ${peak}, order ${order}`);
 });

@@ -347,7 +347,7 @@ const memoryLimitMb = isJobWorker ? 1024 : 150
 const workerTimeoutMs = (isJobWorker ? 115 : 60) * 1000
 ```
 
-Then set `JOB_WORKER_MEMORY_MB: "1024"` and `JOB_WORKER_BUDGET_MS: "100000"` in the `functions` environment. They must match the router: without them the worker keeps 60 s batches and reports PDFs over 90 MB as not indexable. With them set but the router unchanged, every long run is killed. Run the worker every 30 seconds with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname='job-worker'), schedule := '30 seconds');`.
+Then set `JOB_WORKER_MEMORY_MB: "1024"` and `JOB_WORKER_BUDGET_MS: "100000"` in the `functions` environment. They must match the router: without them the worker keeps 60 s batches and reports PDFs over 90 MB as not indexable. With them set but the router unchanged, every long run is killed. Give the `functions` service `ulimits: { nofile: 65536 }` as headroom: the container starts with 1024 descriptors and about half are in use. Run the worker every 30 seconds with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname='job-worker'), schedule := '30 seconds');`.
 
 Rollback: `docker tag textus-web:backup-<snapshot> textus-web:latest && docker compose up -d --no-build textus`, and extract `volumes/functions` from the snapshot's `configuration.tar.gz` before restarting the `functions` service.
 
