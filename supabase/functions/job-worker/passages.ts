@@ -14,7 +14,7 @@ const MAX_BUFFER = Math.min(200_000_000, Math.max(25_000_000, MEMORY_BYTES / 4))
 const WORK_MS = JOB_WORKER_MS / 2;
 // xmldom keeps every node in memory; 10,000 tags truncated real EPUB chapters at the default 150 MB.
 const MAX_XML_TAGS = Math.max(30_000, MEMORY_BYTES / 5_000);
-const MAX_PASSAGES = 128;
+const MAX_PASSAGES = 1024; // commit_passage_batch's per-batch limit
 class ParserLimit extends Error {}
 export function chunks(text: string): string[] {
   const clean = text.replaceAll('\u0000', '').replace(/\s+/gu, ' ').trim();
