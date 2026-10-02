@@ -27,6 +27,7 @@ import { meta } from '@/lib/metadataApply';
 import { isBookFormat, isViewable } from '@/lib/formats';
 import { useMetadataJobs } from '@/hooks/useJobs';
 import { MetadataProgress } from '@/components/metadata/MetadataProgress';
+import { WorkHistory } from '@/components/work/WorkHistory';
 
 const PdfViewer = lazy(() => import('@/components/reader/PdfViewer').then((module) => ({ default: module.PdfViewer })));
 const BookViewer = lazy(() => import('@/components/reader/BookViewer').then((module) => ({ default: module.BookViewer })));
@@ -104,6 +105,7 @@ export function WorkDetail() {
         {record.record_assets.filter(({ role }) => role !== 'cover').map(({ role, assets }) => assets && <div key={`${assets.id}:${role}`} className="flex flex-wrap items-center gap-3 text-small text-muted"><span>{role} · {assets.file_format.toUpperCase()}</span>{isViewable(assets.file_format) ? <Link to={`/library/${data.id}/records/${record.id}/assets/${assets.id}/read`} className="text-green underline">Read {assets.file_format.toUpperCase()}</Link> : <DownloadButton bucket={assets.bucket} storagePath={assets.storage_path} />}</div>)}
         <div className="border-t border-border pt-4"><h3 className="mb-3 text-label text-fg">Tags & collections</h3><RecordOrganizer recordId={record.id} /></div>
       </section>)}
+      <WorkHistory workId={data.id} />
       <ExportButton recordIds={data.records.map((record) => record.id)} />
     </div>
   );

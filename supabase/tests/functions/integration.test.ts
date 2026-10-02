@@ -59,6 +59,10 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
       method: 'POST', headers: headers(accessToken), body: JSON.stringify({ uploadId, recordId, role: 'primary', filename: 'fixture.pdf' }),
     });
     if (!complete.ok || (await complete.json()).status !== 'created') throw new Error(`upload completion failed (${complete.status})`);
+    // The upload function writes with the service role on the owner's behalf; history must credit the owner.
+    const uploadHistory = await fetch(`${api}/rest/v1/work_events?work_id=eq.${work.id}&event=eq.file.added&select=actor`, { headers: headers(accessToken) });
+    const uploadEvents = await uploadHistory.json();
+    if (uploadEvents.length !== 1 || uploadEvents[0].actor !== 'user') throw new Error(`upload missing from book history as the owner's: ${JSON.stringify(uploadEvents)}`);
 
     // Real Edge runtime: extraction queues full indexing, then resumable batches expose page nine.
     let indexed = false;
@@ -69,6 +73,11 @@ Deno.test('upload, export and OPDS work through the local function gateway', asy
       const passages = await fetch(`${api}/rest/v1/rpc/search_passages`, { method: 'POST', headers: headers(accessToken), body: JSON.stringify({ p_query: 'Photovoltaic', p_work_ids: [work.id] }) });
       if (!passages.ok) throw new Error(`passage search failed (${passages.status})`);
       if ((await passages.json()).some((p: {page: number}) => p.page === 9)) { indexed = true; break; }
+    }
+    if (indexed) {
+      const indexHistory = await fetch(`${api}/rest/v1/work_events?work_id=eq.${work.id}&event=like.index.*&select=actor,actor_detail,event`, { headers: headers(accessToken) });
+      const indexEvents = await indexHistory.json();
+      if (!indexEvents.some((e: { actor: string; actor_detail: string }) => e.actor === 'textus' && e.actor_detail === 'index_passages')) throw new Error(`indexing missing from book history: ${JSON.stringify(indexEvents)}`);
     }
     if (!indexed) {
       const jobs = await fetch(`${api}/rest/v1/jobs?user_id=eq.${userId}&select=job_type,status,last_error,payload,result`, { headers: headers(service, service) });

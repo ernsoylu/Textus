@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobLabel, metadataJobMessages, statusText } from './jobLabels';
+import { jobLabel, metadataJobMessages } from './jobLabels';
 import type { JobItem } from '@/hooks/useJobs';
 
 const job = (over: Partial<JobItem>): JobItem => ({ id: '1', job_type: 'cleanup', status: 'queued', attempts: 0, max_attempts: 3, last_error: null, payload: {}, created_at: null, completed_at: null, ...over });
@@ -10,10 +10,8 @@ describe('jobLabel', () => {
     expect(jobLabel(job({ job_type: 'fetch_metadata', payload: { scheme: 'doi', value: '10.1/x' } }))).toBe('Looking up DOI 10.1/x');
     expect(jobLabel(job({ job_type: 'process_cover' }))).toBe('Fetching a cover');
   });
-  it('falls back to the raw type and status', () => {
+  it('falls back to the raw type', () => {
     expect(jobLabel(job({ job_type: 'mystery' }))).toBe('mystery');
-    expect(statusText('succeeded')).toBe('Done');
-    expect(statusText('weird')).toBe('weird');
   });
   it('shows only active identifier jobs on their related records, including records without files', () => {
     const jobs = [

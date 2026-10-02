@@ -201,3 +201,9 @@ The library is mostly English with German, French and Turkish works, and questio
 
 `embeddinggemma` by direction: en→en 0.93, tr→tr 0.66, de→de 0.68, tr→en 0.77, de→en 0.90, en→tr 0.58, en→de 0.61 (nomic tr→en 0.00). It is better on every measure, faster, keeps the 768-dimension schema and leaves room for a chat model on the 4 GB GPU, so it replaced nomic; `bge-m3` and `snowflake-arctic-embed2` were not completed once the decision was clear. The whole library re-embeds automatically under the new digest.
 
+### Book history, activity and direct agent writes (2026-10-02)
+
+- **Book history:** every change to a book and everything attached to it is kept forever with who made it (you, an agent token, the local AI model or a Textus job) and the old and new values (`work_events`, migration 037). Credit saves log net changes only. The book page shows it with actor filters. 25 pgTAP assertions plus gateway tests prove attribution for owner sessions, agent JWTs, service calls on the owner's behalf, jobs, AI suggestions and direct SQL.
+- **Activity:** one card per book with its read, metadata, full-text and AI-search steps, a progress bar, queue position and a plain explanation; grouped into needs attention, in progress, waiting and done (`activity_overview()`, migration 038).
+- **Agent writes:** per-action approval was removed at the owner's request; a `read_write` token writes directly (migration 039) and the Settings approval list is gone. Scope, replay, revocation and history remain the controls.
+

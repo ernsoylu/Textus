@@ -9,7 +9,7 @@ CREATE FUNCTION pg_temp.action_id(n INT) RETURNS UUID LANGUAGE sql SECURITY DEFI
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT throws_ok($$SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000002',gen_random_uuid(),'tag_work','{}')$$,'42501',NULL,'read token cannot propose writes');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000001','tag_work','{"workId": "cccccccc-1000-0000-0000-000000000001", "tagId": "cccccccc-6000-0000-0000-000000000001"}'::jsonb,NULL);
-SELECT throws_ok($$SELECT public.execute_agent_action(pg_temp.action_id(1),'cccccccc-4000-0000-0000-000000000001')$$,'42501',NULL,'pending request cannot execute');
+SELECT is((SELECT status FROM public.agent_actions WHERE id=pg_temp.action_id(1)),'approved','a read_write token''s request is approved on request');
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated", "textus_agent": true}';
 SELECT throws_ok($$SELECT public.review_agent_action(pg_temp.action_id(1),true)$$,'42501',NULL,'agent JWT cannot self-approve');
 SELECT is_empty('SELECT id FROM public.agent_actions','agent JWT cannot read approval vault');
@@ -18,7 +18,6 @@ RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": 
 SELECT is_empty('SELECT id FROM public.agent_actions','second owner cannot read approvals');
 SELECT throws_ok($$SELECT public.review_agent_action(pg_temp.action_id(1),true)$$,'42501',NULL,'second owner cannot approve action');
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(1),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT is((public.execute_agent_action(pg_temp.action_id(1),'cccccccc-4000-0000-0000-000000000001')->>'status'),'applied','approved tag action executes');
 SELECT is((public.execute_agent_action(pg_temp.action_id(1),'cccccccc-4000-0000-0000-000000000001')->>'status'),'applied','completed action replays stored result');
@@ -26,13 +25,11 @@ SELECT is((SELECT count(*)::int FROM public.record_tags WHERE tag_id='cccccccc-6
 SELECT throws_ok($$SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000001','tag_work','{}')$$,'23514',NULL,'request cannot change approved arguments');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000002','add_to_collection','{"workId": "cccccccc-1000-0000-0000-000000000001", "collectionId": "cccccccc-7000-0000-0000-000000000001"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(2),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT is((public.execute_agent_action(pg_temp.action_id(2),'cccccccc-4000-0000-0000-000000000001')->>'status'),'applied','approved collection action executes');
 SELECT is((SELECT count(*)::int FROM public.collection_records WHERE collection_id='cccccccc-7000-0000-0000-000000000001'),1,'collection membership is atomic');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000003','create_work_from_identifier','{"scheme": "arxiv", "value": "2301.12345"}'::jsonb,'{"work": {"title": "Provider-created fixture", "work_type": "article"}, "record": {"record_type": "article_version", "metadata_source": "fixture", "edition": "Second", "metadata": {"container_title": "Fixture proceedings"}}, "identifiers": [{"scheme": "arxiv", "value": "2301.12345"}], "credits": [], "tags": []}'::jsonb);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(3),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT is((public.execute_agent_action(pg_temp.action_id(3),'cccccccc-4000-0000-0000-000000000001')->>'status'),'created','catalog transaction accepts approved validated identifier');
 SELECT is((public.execute_agent_action(pg_temp.action_id(3),'cccccccc-4000-0000-0000-000000000001')->>'status'),'created','catalog response loss replays without creating another work');
@@ -41,7 +38,6 @@ SELECT is((SELECT r.edition FROM public.records r JOIN public.works w ON w.id=r.
 SELECT is((SELECT r.metadata->>'container_title' FROM public.records r JOIN public.works w ON w.id=r.work_id WHERE w.title='Provider-created fixture'),'Fixture proceedings','catalog preserves approved container metadata');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000004','tag_work','{"workId": "cccccccc-1000-0000-0000-000000000001", "tagId": "cccccccc-6000-0000-0000-000000000001"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(4),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
 SELECT public.review_agent_action(pg_temp.action_id(4),false);
@@ -49,18 +45,15 @@ RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"
 SELECT throws_ok($$SELECT public.execute_agent_action(pg_temp.action_id(4),'cccccccc-4000-0000-0000-000000000001')$$,'42501',NULL,'withdrawn approval cannot execute');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000005','tag_work','{"workId": "cccccccc-1000-0000-0000-000000000001", "tagId": "cccccccc-6000-0000-0000-000000000001"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(5),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 UPDATE public.agent_actions SET expires_at=now()-interval '1 second' WHERE id=pg_temp.action_id(5);
 SELECT throws_ok($$SELECT public.execute_agent_action(pg_temp.action_id(5),'cccccccc-4000-0000-0000-000000000001')$$,'42501',NULL,'expired approval cannot execute');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000006','tag_work','{"workId": "cccccccc-1000-0000-0000-000000000001", "tagId": "cccccccc-6000-0000-0000-000000000099"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(6),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT throws_ok($$SELECT public.execute_agent_action(pg_temp.action_id(6),'cccccccc-4000-0000-0000-000000000001')$$,'42501',NULL,'unowned target cannot execute after approval');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000007','add_file_from_url','{"recordId": "cccccccc-2000-0000-0000-000000000001", "url": "https://example.com/fixture.pdf", "role": "primary"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(7),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 SELECT public.begin_upload('cccccccc-0000-0000-0000-000000000001',pg_temp.action_id(7),'cccccccc-2000-0000-0000-000000000001','{"url":"https://example.com/fixture.pdf","role":"primary","source":"url"}');
 SELECT throws_ok($$SELECT public.complete_agent_upload(pg_temp.action_id(7),'cccccccc-4000-0000-0000-000000000001','{"role":"cover"}','{"bucket": "documents", "storage_path": "cccccccc-0000-0000-0000-000000000001/fixture.pdf", "file_size": 100, "checksum_sha256": "approved-upload-fixture", "mime_type": "application/pdf", "file_format": "pdf", "processing_state": "pending"}'::jsonb)$$,'42501',NULL,'URL finalization must match approved role');
@@ -68,7 +61,6 @@ SELECT is((public.complete_agent_upload(pg_temp.action_id(7),'cccccccc-4000-0000
 SELECT is((public.complete_agent_upload(pg_temp.action_id(7),'cccccccc-4000-0000-0000-000000000001','{"role":"primary"}','{"bucket": "documents", "storage_path": "cccccccc-0000-0000-0000-000000000001/fixture.pdf", "file_size": 100, "checksum_sha256": "approved-upload-fixture", "mime_type": "application/pdf", "file_format": "pdf", "processing_state": "pending"}'::jsonb)->>'status'),'created','upload replay returns stored result');
 SELECT public.request_agent_action('cccccccc-4000-0000-0000-000000000001','cccccccc-5000-0000-0000-000000000008','tag_work','{"workId": "cccccccc-1000-0000-0000-000000000001", "tagId": "cccccccc-6000-0000-0000-000000000001"}'::jsonb,NULL);
 RESET ROLE; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{"sub": "cccccccc-0000-0000-0000-000000000001", "role": "authenticated"}';
-SELECT public.review_agent_action(pg_temp.action_id(8),true);
 RESET ROLE; SET LOCAL ROLE service_role; SET LOCAL request.jwt.claims='{"role":"service_role"}';
 DELETE FROM public.agent_tokens WHERE id='cccccccc-4000-0000-0000-000000000001';
 SELECT throws_ok($$SELECT public.execute_agent_action(pg_temp.action_id(8),'cccccccc-4000-0000-0000-000000000001')$$,'42501',NULL,'revoked token cannot execute an approved action');

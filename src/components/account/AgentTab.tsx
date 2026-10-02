@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase, supabaseUrl } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AgentApprovals } from './AgentApprovals';
 export function AgentTab() {
   const { session } = useAuth();
   const client = useQueryClient();
@@ -38,12 +37,12 @@ export function AgentTab() {
     await client.invalidateQueries({ queryKey: ['agent-tokens'] });
   } });
   return <div className="flex flex-col gap-4">
-    <p className="text-body text-muted">Connect Hermes or another MCP client to your private library. Read access is the default. Every write requires your separate approval here.</p>
+    <p className="text-body text-muted">Connect Hermes or another MCP client to your private library. Read access is the default. A read and write token changes your library directly; every change appears in that book’s history under the token’s name, and revoking the token stops it at once.</p>
     {status.data && !status.data.agentsEnabled && <p role="status">Agent access is disabled by the administrator. You can prepare a token before it is enabled.</p>}
-    {status.data?.agentsEnabled && scope === 'read_write' && !status.data.agentWritesEnabled && <p role="status">Write tools are disabled by the administrator. You can prepare an approval-required token before they are enabled.</p>}
+    {status.data?.agentsEnabled && scope === 'read_write' && !status.data.agentWritesEnabled && <p role="status">Write tools are disabled by the administrator. You can prepare a write token before they are enabled.</p>}
     <label className="text-small text-fg">MCP URL<Input value={`${supabaseUrl}/functions/v1/mcp`} readOnly /></label>
     <label className="text-small text-fg">Token name<Input value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
-    <label className="text-small text-fg">Access<select aria-label="Agent token access" value={scope} onChange={(e) => setScope(e.target.value as 'read' | 'read_write')} className="mt-2 w-full rounded-8 border border-border bg-dim p-3"><option value="read">Read only</option><option value="read_write">Read and propose owner-approved writes</option></select></label>
+    <label className="text-small text-fg">Access<select aria-label="Agent token access" value={scope} onChange={(e) => setScope(e.target.value as 'read' | 'read_write')} className="mt-2 w-full rounded-8 border border-border bg-dim p-3"><option value="read">Read only</option><option value="read_write">Read and write</option></select></label>
     <label className="text-small text-fg">Expires<select aria-label="Token expiration" value={days} onChange={(e) => setDays(Number(e.target.value))} className="mt-2 w-full rounded-8 border border-border bg-dim p-3">
       <option value={7}>In 7 days</option><option value={30}>In 30 days</option><option value={90}>In 90 days</option><option value={0}>No expiry</option>
     </select></label>
@@ -61,6 +60,5 @@ export function AgentTab() {
       <p className="text-small text-muted">{token.expires_at ? `Expires ${new Date(token.expires_at).toLocaleDateString()}` : 'No expiry'} · Last used: {token.last_used_at ? new Date(token.last_used_at).toLocaleString() : 'Never'}</p>
       <Button variant="ghost" disabled={revoke.isPending} aria-label={`Revoke ${token.name}`} onClick={() => revoke.mutate(token.id)}>Revoke</Button>
     </li>)}</ul>
-    <AgentApprovals />
   </div>;
 }
