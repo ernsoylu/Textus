@@ -207,3 +207,7 @@ The library is mostly English with German, French and Turkish works, and questio
 - **Activity:** one card per book with its read, metadata, full-text and AI-search steps, a progress bar, queue position and a plain explanation; grouped into needs attention, in progress, waiting and done (`activity_overview()`, migration 038).
 - **Agent writes:** per-action approval was removed at the owner's request; a `read_write` token writes directly (migration 039) and the Settings approval list is gone. Scope, replay, revocation and history remain the controls.
 
+### Embedding batch size (2026-10-02)
+
+With indexing finished, re-embedding ran at only ~107 passages/min (1.8/s). Measured on monster's GTX 1050 Ti with synthetic 1,900-character passages: 1.05 passages/s at 1 per Ollama call, 3.27 at 4 (previous), 4.72 at 8, 5.28 at 16, 6.16 at 32. Calls now take up to 16 passages within 32 KB. Overlapping embedding runs also deferred whole books for 5 minutes when the GPU was briefly busy; background runs now wait up to 5 s for the GPU lease and retry after 30 s.
+

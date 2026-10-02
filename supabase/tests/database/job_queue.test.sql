@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(9);
+SELECT plan(11);
 INSERT INTO auth.users(id,email) VALUES('fafafafa-0000-0000-0000-000000000001','fairness@test.local');
 UPDATE public.jobs SET available_at=now()+interval '1 day';
 -- An older, continuously re-queued indexing job must not starve a newer embedding job.
@@ -51,6 +51,13 @@ INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,leas
 SELECT is(public.commit_passage_batch('fafafafa-1000-0000-0000-000000000004',1,
   (SELECT jsonb_agg(jsonb_build_object('ordinal',100+n,'section',0,'content','Large section passage '||n)) FROM generate_series(1,300) n),1,2),
   true,'a 300-passage section commits in one batch');
+-- A busy GPU is retried soon; unavailable AI pauses longer.
+INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,lease_expires_at) VALUES
+  ('fafafafa-1000-0000-0000-000000000006','fafafafa-0000-0000-0000-000000000001','embed_passages','{}','running',1,now()+interval '1 minute'),
+  ('fafafafa-1000-0000-0000-000000000007','fafafafa-0000-0000-0000-000000000001','embed_passages','{}','running',1,now()+interval '1 minute');
+SELECT public.defer_ai_job('fafafafa-1000-0000-0000-000000000006',1,'ai_busy'), public.defer_ai_job('fafafafa-1000-0000-0000-000000000007',1,'ai_unreachable');
+SELECT ok((SELECT available_at FROM public.jobs WHERE id='fafafafa-1000-0000-0000-000000000006') <= now()+interval '30 seconds','a busy GPU retries within 30 seconds');
+SELECT ok((SELECT available_at FROM public.jobs WHERE id='fafafafa-1000-0000-0000-000000000007') >= now()+interval '5 minutes','unreachable AI still pauses for 5 minutes');
 -- The daily cleanup runs as service_role, which cannot read auth.users itself.
 SET LOCAL ROLE service_role;
 SELECT lives_ok('SELECT count(*) FROM public.claim_storage_cleanup(10)','service_role can claim storage cleanup');
