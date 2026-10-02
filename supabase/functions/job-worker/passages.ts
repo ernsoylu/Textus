@@ -11,7 +11,6 @@ interface IndexJob { id: string; user_id: string | null; claim_generation: numbe
 const MEMORY_BYTES = (Number(Deno.env.get('JOB_WORKER_MEMORY_MB')) || 150) * 1_000_000;
 const MAX_PDF_BYTES = MEMORY_BYTES * 0.6;
 const MAX_BUFFER = Math.min(200_000_000, Math.max(25_000_000, MEMORY_BYTES / 4));
-const MAX_RANGE_BYTES = 24_000_000;
 const WORK_MS = JOB_WORKER_MS / 2;
 const MAX_PASSAGES = 128;
 class ParserLimit extends Error {}
@@ -28,13 +27,15 @@ export function chunks(text: string): string[] {
   }
   return result;
 }
-function xml(markup: string) {
-  if (/<!DOCTYPE|<!ENTITY/i.test(markup)) throw new ParserLimit('EPUB declarations require a different parser');
+function xml(markup: string, mime: 'application/xml' | 'application/xhtml+xml' = 'application/xml') {
+  // xmldom never expands DTD entities; internal subsets are still refused. The plain XHTML DOCTYPE that
+  // EPUB 2 content documents carry is allowed, and the XHTML MIME type resolves its named entities.
+  if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(markup)) throw new ParserLimit('EPUB entity declarations are not supported');
   let tags = 0;
   for (let at = markup.indexOf('<'); at >= 0; at = markup.indexOf('<', at + 1)) {
     if (++tags > 10000) throw new ParserLimit('EPUB markup exceeds the node limit');
   }
-  return new DOMParser({ onError: (level) => { if (level !== 'warning') throw new Error('Malformed EPUB XML'); } }).parseFromString(markup, 'application/xml');
+  return new DOMParser({ onError: (level) => { if (level !== 'warning') throw new Error('Malformed EPUB XML'); } }).parseFromString(markup, mime);
 }
 function elements(node: Node): Element[] { return Array.from(node.childNodes).filter((n): n is Element => n.nodeType === 1); }
 function cfiPath(element: Element): string {
@@ -71,7 +72,7 @@ export function epubSections(bytes: Uint8Array) {
     const url = new URL(href, new URL(path, 'https://epub.invalid/'));
     if (url.origin !== 'https://epub.invalid') throw new Error('External EPUB spine item');
     return { section, read: () => {
-      const document = xml(read(decodeURIComponent(url.pathname.slice(1))));
+      const document = xml(read(decodeURIComponent(url.pathname.slice(1))), 'application/xhtml+xml');
       const body = document.getElementsByTagName('body')[0];
       if (!body) throw new Error('EPUB body missing');
       // Section-start CFIs use the actual OPF/body paths, rather than assuming /6 or /4.
@@ -80,16 +81,35 @@ export function epubSections(bytes: Uint8Array) {
   });
 }
 
+// Runs at most `max` tasks at once, in arrival order.
+export function concurrencyLimit(max: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active < max) active++; else await new Promise<void>((resolve) => waiting.push(resolve));
+    try { return await task(); } finally {
+      const next = waiting.shift();
+      if (next) next(); else active--;
+    }
+  };
+}
+
 async function pdfDocument(url: string) {
-  let received = 0;
+  // Repairing a damaged xref makes pdf.js request every missing chunk at once. Hundreds of parallel
+  // fetches exhausted the Edge container's file descriptors, so at most four ranges are in flight, and
+  // the byte budget allows reading the whole (memory-bounded) file once.
+  let reserved = 0;
+  const limit = concurrencyLimit(4);
   const readRange = async (begin: number, end: number) => {
-    if (received + end - begin > MAX_RANGE_BYTES) throw new ParserLimit('PDF range budget exceeded; partial text retained');
-    const response = await boundedFetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, signal: AbortSignal.timeout(15_000) });
-    if (response.status !== 206 || !response.headers.get('content-range')?.startsWith(`bytes ${begin}-`)) { await response.body?.cancel(); throw new ParserLimit('Storage does not support bounded PDF ranges'); }
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > end - begin) throw new ParserLimit('Oversized PDF range');
-    received += buffer.byteLength;
-    return new Uint8Array(buffer);
+    reserved += end - begin;
+    if (reserved > MAX_PDF_BYTES) throw new ParserLimit('PDF range budget exceeded; partial text retained');
+    return await limit(async () => {
+      const response = await boundedFetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, signal: AbortSignal.timeout(15_000) });
+      if (response.status !== 206 || !response.headers.get('content-range')?.startsWith(`bytes ${begin}-`)) { await response.body?.cancel(); throw new ParserLimit('Storage does not support bounded PDF ranges'); }
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > end - begin) throw new ParserLimit('Oversized PDF range');
+      return new Uint8Array(buffer);
+    });
   };
   // HEAD yields the immutable object's length without downloading its bytes.
   const head = await boundedFetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
