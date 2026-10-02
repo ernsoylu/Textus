@@ -51,8 +51,8 @@ IDs are stable; reference them in issues and commits. Milestones are defined in 
 | FR-CAT-2 | A work has one or more records; a record belongs to exactly one work. |
 | FR-CAT-3 | Records carry ordered contributor credits with roles — see [Contributors](#contributors). |
 | FR-CAT-4 | Identifiers are validated and normalized on entry (see [§6.2](#62-identifier-rules)); invalid identifiers are rejected with a reason. |
-| FR-CAT-5 | Adding a record whose identifier already exists in the user's library warns about the duplicate. |
-| FR-CAT-7 | Adding files warns about duplicates of existing works: identical bytes (SHA-256) are caught before upload and reuse the existing work instead of creating a second one; after metadata import, works sharing a file, a non-ISSN identifier, or a similar title + subtitle with the same author `match_key` are listed as possible duplicates (`find_duplicate_works()`), never merged automatically. |
+| FR-CAT-5 | An identifier (except ISSN) belongs to one work per user: adding it to another work is rejected (`identifiers_one_work` trigger, `PT409`/HTTP 409 with the existing work id). An upload whose file reveals a catalogued ISBN/DOI folds into that work, keeping the file on the record that holds the identifier. |
+| FR-CAT-7 | Identical bytes (SHA-256) never become a second work: the SPA checks before upload, and `complete_upload` refuses to link a file already attached (not as a cover) to another work, answering `{status: 'duplicate', workId}` on every path (upload page, link, MCP). Works sharing a file, a non-ISSN identifier, or a similar title + subtitle with the same author `match_key` are listed as possible duplicates (`find_duplicate_works()`); the owner may merge one into another (`merge_works()`), never automatically except the FR-CAT-5 upload fold. |
 | FR-CAT-6 | Books have an optional personal rating from 0.5 to 5 stars in half-star steps, persisted on the work, editable from library covers and work editing, and clearable in the work editor. |
 
 ### Contributors
@@ -1116,7 +1116,7 @@ $$;
 -- same_file (a shared non-cover asset, i.e. identical bytes), identifier (a shared ISBN/DOI/arXiv/PMID/standard
 -- number; ISSN is skipped because it names a serial, not one item), title_author (similar folded title + subtitle,
 -- so a subtitle split off or kept in the title still matches while sequels like Dune / Dune Messiah do not, and a
--- shared contributor match_key). Warnings only: works are never merged automatically.
+-- shared contributor match_key). Warnings only; the owner merges with merge_works() (below).
 -- SECURITY INVOKER, so RLS limits every joined table to the caller's rows.
 CREATE OR REPLACE FUNCTION public.find_duplicate_works(p_work_id UUID)
 RETURNS TABLE (work_id UUID, title TEXT, reason TEXT)
@@ -1635,8 +1635,10 @@ Validate allowed `Origin` values (reject invalid supplied origins; permit authen
 | `search_passages` | read | `search_passages()` without the LLM step; quotes with references |
 | `find_sources` | read | Same contract as `ai` `find-sources` |
 | `lookup_identifier` | read | `metadata-lookup` logic; returns the normalized preview |
-| `create_work_from_identifier` | read_write | Looks up, creates work + record + identifiers + credits (contributor matching as in §9.2, uncertain → provisional) |
-| `add_file_from_url` | read_write | Call the hardened upload path as the token owner (§8.2, SEC-02/SYS-01); its narrowly privileged asset finalization remains server-owned. Public destinations only, size cap, sniffing, dedup, jobs and durable replay |
+| `check_duplicates` | read | Exactly one of `sha256`, `scheme` + `value`, or `workId` (`find_duplicate_works()`); returns owned matching works with links |
+| `list_tags` / `list_collections` | read | Owned tags and collections (ids for filters and writes), paginated |
+| `create_work_from_identifier` | read_write | Looks up, creates work + record + identifiers + credits (contributor matching as in §9.2, uncertain → provisional); an identifier already in the library returns `{status: 'existing', workId, recordId}` before any provider call |
+| `add_file_from_url` | read_write | Call the hardened upload path as the token owner (§8.2, SEC-02/SYS-01); its narrowly privileged asset finalization remains server-owned. Public destinations only, size cap, sniffing, dedup (a file already in another work returns `duplicate` and is not linked), jobs and durable replay |
 | `tag_work` / `add_to_collection` | read_write | Existing tables under RLS |
 
 Tool results carry passages as untrusted data with server-resolved references; the agent's own model writes the answer (FR-AI-8). `get_work` and list tools cap/paginate nested data. `create_work_from_identifier` uses an atomic, owner-scoped catalog transaction after provider fetches; all writes use a request key bound to owner, tool and arguments. Do not copy the current multi-request browser import sequence into the MCP handler.
@@ -1669,7 +1671,8 @@ Properties:
 - **Idempotent:** same `uploadId` → same staging path; content-addressed destination; `ON CONFLICT` on asset, link, and jobs. Retrying `complete` at any point is safe.
 - **No dangling rows:** the file is copied to its final path *before* the asset row is inserted.
 - **Orphans:** interrupted uploads leave only staging files, removed by `cleanup`.
-- **Duplicate works (FR-CAT-7):** before creating a work for a chosen file, the SPA hashes it with Web Crypto and looks the checksum up in `assets` (RLS-scoped); a hit linked to an existing work skips the upload. Links can't be hashed in advance, so a `deduplicated` result whose asset already belongs to another work deletes the just-created work. After metadata import, `find_duplicate_works()` reports likely-same works on the upload page and the work page.
+- **Duplicate works (FR-CAT-5/7):** before creating a work for a chosen file, the SPA hashes it with Web Crypto and looks the checksum up in `assets` (RLS-scoped); a hit linked to an existing work skips the upload. The server is the authority: under the per-checksum lock, `complete_upload` does not link bytes already attached (except as a cover) to another work and stores `{status: 'duplicate', workId, asset}` as the attempt's result, so retries, links and MCP `add_file_from_url` get the same answer; the SPA then deletes its just-created placeholder work. Identifiers are unique per user across works (`identifiers_one_work`, ISSN exempt); when autofill finds an ISBN/DOI another work already holds, the SPA calls `merge_works(existing, new, record_with_identifier)` and opens the existing work. After metadata import, `find_duplicate_works()` reports likely-same works on the upload page and the work page.
+- **Merging works:** `merge_works(p_keep, p_drop, p_into DEFAULT NULL)` is SECURITY DEFINER, owner sessions only (not agent tokens). It moves p_drop's records to p_keep; a record sharing a file or a non-ISSN identifier with one of p_keep's records (or every record, into `p_into`) is folded into it — files, identifiers, tags, collections, notes and the newer reading state move, credits only when the target has none, a second cover is dropped — and the rest stay as editions. Empty subtitle/abstract/rating are filled from p_drop, which is then deleted; book history logs the moves.
 
 ### 9.2 Metadata lookup and apply
 

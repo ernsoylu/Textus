@@ -13,6 +13,12 @@ Deno.test('MCP gateway validates transport, isolates owners and rejects revoked 
     for (let i = 0; i < 2; i++) users.push((await body(await fetch(`${api}/auth/v1/admin/users`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ email: `m6-mcp-${crypto.randomUUID()}@example.test`, email_confirm: true }) }))).id);
     const work = (await body(await fetch(`${api}/rest/v1/works`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ user_id: users[0], title: 'Agent owned fixture', work_type: 'book' }) })))[0];
     const foreign = (await body(await fetch(`${api}/rest/v1/works`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ user_id: users[1], title: 'Another owner secret', work_type: 'book' }) })))[0];
+    // Both owners hold the same ISBN; check_duplicates must report only the caller's work.
+    for (const owned of [work, foreign]) {
+      const record = (await body(await fetch(`${api}/rest/v1/records`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ work_id: owned.id, record_type: 'edition' }) })))[0];
+      await body(await fetch(`${api}/rest/v1/identifiers`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ record_id: record.id, scheme: 'isbn', normalized_value: '9780306406157', original_value: '9780306406157' }) }));
+    }
+    await body(await fetch(`${api}/rest/v1/tags`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ user_id: users[1], name: 'Another owner tag' }) }));
     const row = (await body(await fetch(`${api}/rest/v1/agent_tokens`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ user_id: users[0], name: 'MCP fixture', token_hash: await hash(token), token_prefix: token.slice(0, 9), scope: 'read' }) })))[0];
     const initialized = await body(await call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'Textus fixture', version: '1' } }));
     if (!initialized.result?.serverInfo || initialized.result.protocolVersion !== '2025-11-25') throw new Error('initialize failed');
@@ -22,6 +28,13 @@ Deno.test('MCP gateway validates transport, isolates owners and rejects revoked 
     if (own.result?.isError || !JSON.stringify(own).includes('Agent owned fixture')) throw new Error(`own RLS read failed: ${JSON.stringify(own)}`);
     const denied = await body(await call('tools/call', { name: 'get_work', arguments: { workId: foreign.id } }));
     if (!denied.result?.isError || JSON.stringify(denied).includes('Another owner secret')) throw new Error('foreign work leaked');
+    const data = (response: { result: { content: { text: string }[] } }) => JSON.parse(response.result.content[0].text).data;
+    const duplicates = data(await body(await call('tools/call', { name: 'check_duplicates', arguments: { scheme: 'isbn', value: '978-0-306-40615-7' } })));
+    if (duplicates.matches.length !== 1 || duplicates.matches[0].workId !== work.id || duplicates.matches[0].reason !== 'identifier') throw new Error(`check_duplicates failed: ${JSON.stringify(duplicates)}`);
+    const ambiguous = await body(await call('tools/call', { name: 'check_duplicates', arguments: { scheme: 'isbn', value: '9780306406157', workId: work.id } }));
+    if (!ambiguous.result?.isError) throw new Error('check_duplicates accepted two lookups at once');
+    const tags = data(await body(await call('tools/call', { name: 'list_tags', arguments: {} })));
+    if (!Array.isArray(tags) || JSON.stringify(tags).includes('Another owner tag')) throw new Error('list_tags leaked another owner\'s tags');
     for (const [extra, expected] of [[{ Origin: 'https://evil.example' }, 403], [{ 'MCP-Protocol-Version': '1999-01-01' }, 400]] as const) {
       const response = await call('tools/list', {}, extra); await response.text(); if (response.status !== expected) throw new Error(`transport accepted invalid headers (${response.status})`);
     }
@@ -57,6 +70,11 @@ Deno.test('MCP read_write tokens write directly, reject confirmation flags, repl
     if (history.length !== 1 || history[0].actor !== 'agent' || history[0].actor_detail !== 'Writer fixture') throw new Error(`Agent write missing from book history: ${JSON.stringify(history)}`);
     const changed = await call('tag_work', { ...args, tagId: crypto.randomUUID() });
     if (!changed.result?.isError) throw new Error('Changed request arguments accepted');
+    // A known identifier returns the catalogued work instead of creating a second one, before any provider lookup.
+    await body(await fetch(`${api}/rest/v1/identifiers`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ record_id: record.id, scheme: 'isbn', normalized_value: '9780306406157', original_value: '9780306406157' }) }));
+    const existing = await call('create_work_from_identifier', { requestId: crypto.randomUUID(), scheme: 'isbn', value: '9780306406157' });
+    const existingData = existing.result?.content?.[0] ? JSON.parse(existing.result.content[0].text).data : null;
+    if (existingData?.status !== 'existing' || existingData.workId !== work.id) throw new Error(`Known identifier created a duplicate: ${JSON.stringify(existing)}`);
     const downloadArgs = { requestId: crypto.randomUUID(), recordId: record.id, url: 'https://example.com/', role: 'supplement' };
     if (Deno.env.get('TEXTUS_LIVE_URL_TEST') === 'true') {
       const fetched = await call('add_file_from_url', downloadArgs);

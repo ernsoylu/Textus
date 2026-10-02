@@ -30,6 +30,8 @@ export interface UploadIntentResponse {
 
 export type UploadCompleteResponse =
   | { status: 'created' | 'deduplicated'; asset: import('@/types').AssetRow }
+  // FR-CAT-7: these bytes are already a file of another work; nothing was linked.
+  | { status: 'duplicate'; workId: string; asset: import('@/types').AssetRow }
   | { status: 'rejected'; reason: 'missing' | 'size_mismatch' | 'unsupported_type' | 'unreachable' };
 
 export function uploadIntent(body: { uploadId: string; recordId: string; filename: string; size: number }) {

@@ -107,16 +107,25 @@ describe('duplicate detection', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('removes the new work when a linked file turns out to be already in the library', async () => {
-    vi.mocked(uploadUrl).mockResolvedValue({ status: 'deduplicated', asset: { checksum_sha256: 'hash' } as never });
-    vi.mocked(workWithFile).mockResolvedValueOnce('existing-work');
+  it('removes the new work when the server reports a linked file already in the library', async () => {
+    vi.mocked(uploadUrl).mockResolvedValue({ status: 'duplicate', workId: 'existing-work', asset: {} as never });
     render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><NewWork /></QueryClientProvider></MemoryRouter>);
     fireEvent.change(screen.getByRole('textbox', { name: 'Link to a file' }), { target: { value: 'https://example.org/book.pdf' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
     fireEvent.click(screen.getByRole('button', { name: 'Upload and add to library' }));
     expect(await screen.findByText('This file is already in your library.')).toBeInTheDocument();
-    expect(workWithFile).toHaveBeenCalledWith('hash', 'works-1');
+    expect(screen.getByRole('link', { name: 'View details' })).toHaveAttribute('href', '/library/existing-work');
     expect(deleted).toEqual(['works-1']);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('reports a book whose ISBN is already in the library as folded into it', async () => {
+    vi.mocked(uploadFile).mockResolvedValue({ status: 'created', asset: {} as never });
+    vi.mocked(importMetadata).mockResolvedValueOnce({ mergedInto: 'existing-work' });
+    setup([new File(['a'], 'scan.pdf'), new File(['b'], 'other.pdf')]);
+    expect(await screen.findByText('This book is already in your library; the file was added to it.')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'View details' })[0]).toHaveAttribute('href', '/library/existing-work');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Upload and add to library' })).toBeDisabled());
     expect(navigate).not.toHaveBeenCalled();
   });
 

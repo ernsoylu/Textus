@@ -699,6 +699,9 @@ isOneToOne: false
 "merge_extraction_metadata":
 { Args: { "p_asset": string,"p_owner": string,"p_patch": Json }; Returns: Json
                            },
+"merge_works":
+{ Args: { "p_drop": string,"p_into"?: string,"p_keep": string }; Returns: string
+                           },
 "passage_coverage":
 { Args: { "p_work_ids"?: (string)[] }; Returns: Json
                            },

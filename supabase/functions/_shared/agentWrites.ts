@@ -38,6 +38,10 @@ export async function agentWrite(principal: AgentPrincipal, client: SupabaseClie
     args.value = id.normalized;
     const previous = await checked(admin.from('agent_actions').select('id').eq('user_id', principal.user_id).eq('token_id', principal.token_id).eq('request_id', requestId).maybeSingle());
     if (!previous) {
+      // Already catalogued: answer like create_catalog would, without spending a provider lookup.
+      const known = await checked(client.from('identifiers').select('record_id,records(work_id)').eq('scheme', parsed.scheme).eq('normalized_value', id.normalized).limit(1).maybeSingle());
+      const knownRecord = Array.isArray(known?.records) ? known.records[0] : known?.records;
+      if (known && knownRecord) return { status: 'existing', workId: knownRecord.work_id, recordId: known.record_id };
       const response = await lookupAcrossProviders({ supabase: client, supabaseAdmin: admin }, parsed.scheme, id.normalized);
       const metadata = await response.json();
       if (metadata.status !== 'success') return metadata;

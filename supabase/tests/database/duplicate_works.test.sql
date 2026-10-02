@@ -31,12 +31,15 @@ INSERT INTO record_assets (record_id, asset_id, role) VALUES
     ('e0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-000000000002', 'cover'),
     ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000002', 'cover');
 
+-- Legacy duplicates from before identifiers_one_work (20261002000001) must still be reported.
+ALTER TABLE identifiers DISABLE TRIGGER identifiers_one_work;
 INSERT INTO identifiers (record_id, scheme, normalized_value) VALUES
     ('e0000000-0000-0000-0000-000000000001', 'isbn', '9780261102217'),
     ('e0000000-0000-0000-0000-000000000003', 'isbn', '9780261102217'),
     ('e0000000-0000-0000-0000-000000000007', 'isbn', '9780261102217'),
     ('e0000000-0000-0000-0000-000000000001', 'issn', '0146-9339'),
     ('e0000000-0000-0000-0000-000000000006', 'issn', '0146-9339');
+ALTER TABLE identifiers ENABLE TRIGGER identifiers_one_work;
 
 INSERT INTO contributors (id, user_id, display_name, family_name, sort_name, match_key) VALUES
     ('c0000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000000', 'J. R. R. Tolkien', 'Tolkien', 'Tolkien, J. R. R.', 'tolkien'),
