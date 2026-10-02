@@ -54,13 +54,15 @@ export async function agentWrite(principal: AgentPrincipal, client: SupabaseClie
     const parent = z.union([z.object({ title: z.string() }),z.array(z.object({ title: z.string() }))]).parse(record.works);
     preview = { recordTitle: record.title ?? (Array.isArray(parent) ? parent[0]?.title : parent.title) };
   }
-  const action = await checked(admin.rpc('request_agent_action', { p_token: principal.token_id, p_request: requestId, p_tool: tool, p_arguments: args, p_preview: preview }));
+  const actor = `agent:${principal.token_id}`; // book history attributes these writes to the agent token
+  const action = await checked(admin.rpc('request_agent_action', { p_token: principal.token_id, p_request: requestId, p_tool: tool, p_arguments: args, p_preview: preview }).setHeader('x-textus-actor', actor));
   if (action.status === 'done') return action.result;
-  if (action.status !== 'approved' || new Date(action.expires_at).getTime() <= Date.now()) return { status: action.status === 'approved' ? 'expired' : action.status, actionId: action.id, arguments: action.arguments, preview: action.preview, approvalUrl: `${Deno.env.get('TEXTUS_SITE_URL') ?? ''}/settings?tab=agents`, message: 'The owner must review this exact action in Textus. After approval, repeat this tool with the same requestId and arguments. An agent-supplied confirmation cannot approve it.' };
-  if (tool !== 'add_file_from_url') return await checked(admin.rpc('execute_agent_action', { p_action: action.id, p_token: principal.token_id }));
+  // read_write requests are approved on request; only a withdrawn, expired or pre-existing pending request stops here.
+  if (action.status !== 'approved' || new Date(action.expires_at).getTime() <= Date.now()) return { status: action.status === 'approved' ? 'expired' : action.status, actionId: action.id, arguments: action.arguments, preview: action.preview, message: 'This request was withdrawn or expired and will not run. Use a new requestId to try again.' };
+  if (tool !== 'add_file_from_url') return await checked(admin.rpc('execute_agent_action', { p_action: action.id, p_token: principal.token_id }).setHeader('x-textus-actor', actor));
   // Reuse the pinned public-address downloader and immutable/replayable upload pipeline.
   const response = await handleFromUrl(new Request('https://internal/upload/from-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...action.arguments, uploadId: action.id }) }), { supabase: client, supabaseAdmin: admin, userId: principal.user_id, agentAction: { id: action.id, tokenId: principal.token_id } }, deadline());
   const result = await response.json();
-  // Storage/public-fetch failures leave approval intact, allowing the same action to retry safely.
+  // Storage/public-fetch failures leave the request approved, so repeating the same requestId retries safely.
   return result;
 }

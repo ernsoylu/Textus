@@ -201,7 +201,7 @@ export async function completeStaged(ctx: UploadContext, { uploadId, recordId, r
     ...(ctx.agentAction ? { p_action: ctx.agentAction.id, p_token: ctx.agentAction.tokenId } : { p_user: userId, p_id: uploadId }), p_request: request,
     p_asset: { bucket, storage_path: destPath, file_size: staged.size, checksum_sha256: staged.checksum,
       mime_type: staged.mimeType, file_format: isCover ? 'image' : ext, processing_state: isCover ? 'ready' : 'pending' },
-  }));
+  }).setHeader('x-textus-actor', ctx.agentAction ? `agent:${ctx.agentAction.tokenId}` : 'user')); // book history: whose upload this is
   // Completion is durable before staging is removed; failures here are handled by cleanup.
   await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath, `${folder}/upload`]);
   return Response.json(result);

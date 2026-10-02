@@ -11,6 +11,7 @@
 // client-side on first read instead (Reader.tsx's onFirstPageRendered), per §15 open
 // question 2's own proposed resolution — Deno's edge runtime has no canvas to rasterize a
 // PDF page into an image. upload/complete no longer enqueues that job type.
+import { createClient } from '@supabase/supabase-js';
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { extractEpub, identifierSuggestions } from './epub.ts';
@@ -287,6 +288,14 @@ const HANDLERS: Record<string, (admin: any, job: Job) => Promise<unknown>> = {
   cleanup: (admin) => runCleanup(admin),
 };
 
+// A job's writes carry its type, so book history credits them to that Textus step (private.event_actor()).
+function jobClient(jobType: string) {
+  return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+    global: { headers: { 'x-textus-actor': `job:${jobType}` }, fetch },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
 export default {
   fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
     await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
@@ -304,7 +313,7 @@ export default {
       try {
         const handler = HANDLERS[job.job_type];
         if (!handler) throw new Error('unsupported job type');
-        const result = await handler(ctx.supabaseAdmin, job);
+        const result = await handler(jobClient(job.job_type), job);
         if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
           const committed = result.committed || await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
           results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });

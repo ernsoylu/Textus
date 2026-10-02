@@ -26,9 +26,6 @@ export function jobLabel(job: JobItem): string {
   }
 }
 
-const STATUS_TEXT: Record<string, string> = { queued: 'Queued', running: 'Running', succeeded: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
-export const statusText = (status: string) => STATUS_TEXT[status] ?? status;
-
 export function metadataJobMessages(jobs: JobItem[], links: { record_id: string; asset_id: string }[], recordIds: string[]): Record<string, string> {
   const messages: Record<string, string> = {};
   for (const job of jobs) {
