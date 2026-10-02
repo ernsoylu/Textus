@@ -1,9 +1,11 @@
 """Write benchmark questions for sampled Textus passages with the local chat model (private, on monster)."""
-import json, random, urllib.request
+import hashlib, json, urllib.request
 OLLAMA = 'http://localhost:11434'
 rows = [json.loads(l) for l in open('corpus.jsonl')]
-random.seed(7)
-targets = random.sample([r for r in rows if r['lang'] == 'en'], 30) + random.sample([r for r in rows if r['lang'] == 'tr'], 15) + random.sample([r for r in rows if r['lang'] == 'de'], 15)
+# Reproducible spread-out picks: order passages by a hash of their ID (no PRNG needed).
+def pick(lang, n):
+    return sorted((r for r in rows if r['lang'] == lang), key=lambda r: hashlib.sha256(str(r['id']).encode()).hexdigest())[:n]
+targets = pick('en', 30) + pick('tr', 15) + pick('de', 15)
 NAMES = {'en': 'English', 'tr': 'Turkish', 'de': 'German'}
 def ask(prompt):
     body = json.dumps({'model': 'qwen3.5:4b', 'prompt': prompt, 'format': 'json', 'stream': False, 'think': False, 'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 300}}).encode()
