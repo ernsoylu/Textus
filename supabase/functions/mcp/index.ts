@@ -8,7 +8,7 @@ import { checked, withBudget } from '../_shared/budget.ts';
 import { HttpError } from '../_shared/http.ts';
 import { rateLimit } from '../_shared/limits.ts';
 import { readerLink } from '../_shared/sourceLinks.ts';
-import { findSources, SourceRequest } from '../_shared/sources.ts';
+import { anyTermsQuery, findSources, SourceRequest } from '../_shared/sources.ts';
 import { agentWrite, CreateFromIdentifier, AddFileFromUrl, TagWork, AddToCollection } from '../_shared/agentWrites.ts';
 import { lookupAcrossProviders } from '../metadata-lookup/index.ts';
 import { IDENTIFIER_SCHEMES, parseIdentifier } from '../_shared/identifier.ts';
@@ -49,7 +49,7 @@ export function createAgentServer(principal: AgentPrincipal, client: SupabaseCli
   }, async (input: z.infer<typeof SearchLibraryInput>) => {
     console.info(JSON.stringify({ event: 'mcp_tool', tokenId: principal.token_id, tool: 'search_library' }));
     requireAgentScope(principal, 'read');
-    return toolResult(await checked(client.rpc('library_page', { p_q: input.query || undefined, p_work_type: input.type, p_tag: input.tagId, p_collection: input.collectionId, p_format: input.format, p_language: input.language, p_status: input.status, p_limit: input.limit, p_offset: input.offset })));
+    return toolResult(await checked(client.rpc('library_page', { p_q: input.query || undefined, p_work_type: input.type, p_tag: input.tagId, p_collection: input.collectionId, p_format: input.format, p_language: input.language, p_status: input.status, p_sort: input.query ? 'relevance' : undefined, p_limit: input.limit, p_offset: input.offset })));
   });
   server.registerTool('get_work', { description: 'Get owned work details, with paginated records/notes and bounded nested data.', annotations, inputSchema: GetWorkInput }, async (input: z.infer<typeof GetWorkInput>) => {
     console.info(JSON.stringify({ event: 'mcp_tool', tokenId: principal.token_id, tool: 'get_work' }));
@@ -60,8 +60,12 @@ export function createAgentServer(principal: AgentPrincipal, client: SupabaseCli
   }, async (input: z.infer<typeof SearchPassagesInput>) => {
     console.info(JSON.stringify({ event: 'mcp_tool', tokenId: principal.token_id, tool: 'search_passages' }));
     requireAgentScope(principal, 'read');
-    const [passages, coverage] = await Promise.all([checked(client.rpc('search_passages', { p_query: input.query, p_limit: input.limit, p_work_ids: input.workIds })), checked(client.rpc('passage_coverage', { p_work_ids: input.workIds }))]);
-    return toolResult({ passages: (passages ?? []).map((p: {work_id: string; record_id: string; asset_id: string; page?: number; cfi?: string}) => ({ ...p, link: readerLink(p.work_id, p.record_id, p.asset_id, p.page, p.cfi, Deno.env.get('TEXTUS_SITE_URL')) })), coverage, mode: 'fts', warning: 'Quotes are retrieved text, not model-verified answers.' });
+    const search = (query: string) => checked(client.rpc('search_passages', { p_query: query, p_limit: input.limit, p_work_ids: input.workIds }));
+    const [allTerms, coverage] = await Promise.all([search(input.query), checked(client.rpc('passage_coverage', { p_work_ids: input.workIds }))]);
+    // Agents send whole questions; requiring every word usually matches nothing, so fall back to any term.
+    const anyTerms = allTerms?.length ? null : anyTermsQuery(input.query);
+    const passages = anyTerms && anyTerms !== input.query ? await search(anyTerms) : allTerms;
+    return toolResult({ match: anyTerms ? 'any_term' : 'all_terms', passages: (passages ?? []).map((p: {work_id: string; record_id: string; asset_id: string; page?: number; cfi?: string}) => ({ ...p, link: readerLink(p.work_id, p.record_id, p.asset_id, p.page, p.cfi, Deno.env.get('TEXTUS_SITE_URL')) })), coverage, mode: 'fts', warning: 'Quotes are retrieved text, not model-verified answers.' });
   });
   server.registerTool('find_sources', { description: 'Find private passages supporting a question, with verified quotes and owned citations. Reports partial coverage and unverified FTS fallback during AI outages.', annotations, inputSchema: SourceRequest }, async (input: z.infer<typeof SourceRequest>) => {
     console.info(JSON.stringify({ event: 'mcp_tool', tokenId: principal.token_id, tool: 'find_sources' }));

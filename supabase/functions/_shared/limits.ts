@@ -23,8 +23,14 @@ export async function jsonBody(req: Request, maxBytes = 32_000): Promise<unknown
 export async function rateLimit(admin: SupabaseClient, key: string, limit = 30, period = 60) {
   if (!await checked(admin.rpc('check_request_limit', { p_key: key, p_limit: limit, p_period: period }))) throw new HttpError('rate_limited', 429);
 }
-export async function withAiLease<T>(admin: SupabaseClient, action: () => Promise<T>): Promise<T> {
-  const holder = await checked(admin.rpc('acquire_ai_lease'));
+// Interactive callers wait briefly for the shared GPU lease; background jobs pass 0 and defer instead.
+export async function withAiLease<T>(admin: SupabaseClient, action: () => Promise<T>, waitMs = 0): Promise<T> {
+  const until = Date.now() + waitMs;
+  let holder = await checked(admin.rpc('acquire_ai_lease'));
+  while (!holder && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    holder = await checked(admin.rpc('acquire_ai_lease'));
+  }
   if (!holder) throw new HttpError('ai_busy', 429);
   try { return await action(); }
   finally { await checked(admin.rpc('release_ai_lease', { p_holder: holder })); }
