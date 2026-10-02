@@ -45,8 +45,8 @@ Deno.test('EPUB follows the OPF spine and produces real element CFIs; chunks ret
   const text = '😀 güneş energy '.repeat(600);
   if (chunks(text).join(' ').replace(/\s+/g, ' ').trim() !== text.trim()) throw new Error('chunking lost words or Unicode');
 });
-Deno.test('PDF batches resume across all thirty pages through bounded signed ranges', async () => {
-  const bytes = textPdf(30);
+Deno.test('PDF batches resume across all 120 pages through bounded signed ranges', async () => {
+  const bytes = textPdf(120);
   const asset = { id: crypto.randomUUID(), user_id: crypto.randomUUID(), file_format: 'pdf', file_size: bytes.length, bucket: 'documents', storage_path: 'book.pdf', metadata: { passage_index: { version: 'test', done: 0, passages: 0, reason: null } } };
   const saved: { page: number; content: string }[] = [];
   let done = 0, status = '', ranges = 0;
@@ -70,10 +70,10 @@ Deno.test('PDF batches resume across all thirty pages through bounded signed ran
     const admin = createClient(`http://127.0.0.1:${server.addr.port}`, 'test-key');
     const job = { id: crypto.randomUUID(), user_id: asset.user_id, claim_generation: 1, payload: { asset_id: asset.id, index_version: 'test', from: 0, ordinal: 0 } };
     await indexPassages(admin, job);
-    if (done !== 24 || status !== 'indexing') throw new Error(`first batch ${done}/${status}`);
+    if (done !== 96 || status !== 'indexing') throw new Error(`first batch ${done}/${status}`);
     job.payload.from = done; job.payload.ordinal = saved.length;
     await indexPassages(admin, job);
-    if (Number(done) !== 30 || String(status) !== 'complete' || !saved.some((p) => p.page === 9 && p.content.includes('page 9')) || ranges < 2) throw new Error('resume or page-nine extraction failed');
+    if (Number(done) !== 120 || String(status) !== 'complete' || !saved.some((p) => p.page === 9 && p.content.includes('page 9')) || ranges < 2) throw new Error('resume or page-nine extraction failed');
   } finally { await server.shutdown(); }
 });
 
