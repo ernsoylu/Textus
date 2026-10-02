@@ -144,8 +144,8 @@ export function NewWork() {
         const recordId = (work.records as { id: string }[])[0].id;
         patchUpload(index, { recordId, message: `${item.file ? 'Uploading file' : 'Downloading link'} ${index + 1} of ${uploads.length}` });
         const result = item.file ? await uploadFile(recordId, 'primary', item.file, (progress) => patchUpload(index, { progress })) : await uploadUrl(recordId, 'primary', item.url!);
-        // Links can't be hashed before download, and a file can race another upload: the server's checksum settles it.
-        const existing = result.status === 'deduplicated' ? await workWithFile(result.asset.checksum_sha256, workId) : undefined;
+        // Links can't be hashed before download, and a file can race another upload: the server refuses the second work.
+        const existing = result.status === 'duplicate' ? result.workId : undefined;
         if (existing) {
           const { error: deleteError } = await supabase.from('works').delete().eq('id', workId);
           if (deleteError) throw deleteError;
@@ -164,7 +164,13 @@ export function NewWork() {
           { id: workId, title: titleFromFile, metadata: { locked_fields: [] } },
           { id: recordId, title: null, metadata: {}, metadata_fetched_at: null, publisher: null, publication_date: null, record_contributors: [], record_assets: [] },
           (message) => patchUpload(index, { message }),
-        ).then(() => findDuplicateWorks(workId).catch(() => [])).then((similar) => {
+        ).then(async (outcome) => {
+          if (outcome?.mergedInto) {
+            duplicates = true;
+            patchUpload(index, { status: 'duplicate', workId: outcome.mergedInto, progress: 1, message: 'This book is already in your library; the file was added to it.' });
+            return;
+          }
+          const similar = await findDuplicateWorks(workId).catch(() => []);
           if (similar.length) duplicates = true;
           patchUpload(index, { status: 'done', similar });
         }));

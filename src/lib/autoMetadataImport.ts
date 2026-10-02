@@ -2,6 +2,7 @@ import { parseIdentifier } from 'shared/identifier';
 import { applyMetadata, defaultSelection, loadCandidates, locks, suggestContributor } from '@/lib/metadataApply';
 import { metadataLookup, type NormalizedMetadata } from '@/lib/functions';
 import { supabase } from '@/lib/supabase';
+import { mergeWorks, workWithIdentifier } from '@/lib/duplicates';
 import { FIRST_RECORD_TYPE, type WorkType } from '@/lib/recordTypes';
 
 type RecordValue = {
@@ -18,7 +19,17 @@ type RecordValue = {
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
-export async function importMetadata(work: { id: string; title: string; metadata: unknown }, record: RecordValue, onMessage: (message: string) => void) {
+// FR-CAT-5: when the identifier already belongs to another work, this upload's work folds into it (keeping the file
+// on the record that holds the identifier) instead of becoming a duplicate. Returns that work's id.
+async function foldIntoExisting(workId: string, identifier: { scheme: string; value: string }, onMessage: (message: string) => void) {
+  const existing = await workWithIdentifier(identifier.scheme, identifier.value, workId);
+  if (!existing) return undefined;
+  await mergeWorks(existing.workId, workId, existing.recordId);
+  onMessage('This book is already in your library; the file was added to it.');
+  return { mergedInto: existing.workId };
+}
+
+export async function importMetadata(work: { id: string; title: string; metadata: unknown }, record: RecordValue, onMessage: (message: string) => void): Promise<{ mergedInto: string } | undefined> {
   try {
       const cleanTitle = (value: string) => value.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
       let metadata: NormalizedMetadata | undefined;
@@ -91,6 +102,10 @@ export async function importMetadata(work: { id: string; title: string; metadata
           return;
         }
 
+        if (identifier) {
+          const folded = await foldIntoExisting(work.id, identifier, onMessage);
+          if (folded) return folded;
+        }
         if (!metadata && identifier) {
           onMessage(`Found ${identifier.scheme.toUpperCase()} ${identifier.value}; looking up details…`);
           const response = await metadataLookup(identifier.scheme, identifier.value);
@@ -124,6 +139,8 @@ export async function importMetadata(work: { id: string; title: string; metadata
         }
         if (identifier) {
           const { error: identifierError } = await supabase.from('identifiers').upsert({ record_id: record.id, scheme: identifier.scheme, normalized_value: identifier.value, original_value: identifier.value }, { onConflict: 'record_id,scheme,normalized_value', ignoreDuplicates: true });
+          // Another upload of this book may have claimed the identifier meanwhile.
+          if (identifierError?.code === 'PT409') return await foldIntoExisting(work.id, identifier, onMessage);
           if (identifierError) throw identifierError;
         }
       onMessage(`Added metadata from ${data.source_provider}${data.cover_url ? ' and queued a cover image' : ''}.`);

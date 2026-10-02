@@ -32,7 +32,8 @@ export function UploadForm({ recordId }: Readonly<{ recordId: string }>) {
     patch(item.id, { status: 'uploading', progress: 0, message: undefined });
     chain.current = chain.current.then(async () => {
       try {
-        await uploadFile(recordId, item.role, item.file, (progress) => patch(item.id, { progress }));
+        const result = await uploadFile(recordId, item.role, item.file, (progress) => patch(item.id, { progress }));
+        if (result.status === 'duplicate') throw new Error('This file already belongs to another book in your library.');
         patch(item.id, { status: 'done', progress: 1 });
         await queryClient.invalidateQueries({ queryKey: ['works'] });
       } catch (e) {

@@ -27,3 +27,16 @@ export async function findDuplicateWorks(workId: string) {
   if (error) throw error;
   return data;
 }
+
+// The other work (and its record) that already holds this identifier; the server allows only one (FR-CAT-5).
+export async function workWithIdentifier(scheme: string, value: string, exceptWorkId: string) {
+  const { data, error } = await supabase.from('identifiers').select('record_id, records!inner(work_id)').eq('scheme', scheme).eq('normalized_value', value).neq('records.work_id', exceptWorkId).limit(1).maybeSingle();
+  if (error) throw error;
+  return data ? { workId: data.records.work_id, recordId: data.record_id } : undefined;
+}
+
+// Folds dropWorkId into keepWorkId (see merge_works): same file or identifier joins that record, others become editions.
+export async function mergeWorks(keepWorkId: string, dropWorkId: string, intoRecordId?: string) {
+  const { error } = await supabase.rpc('merge_works', { p_keep: keepWorkId, p_drop: dropWorkId, p_into: intoRecordId });
+  if (error) throw error;
+}
