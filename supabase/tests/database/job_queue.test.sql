@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(8);
+SELECT plan(9);
 INSERT INTO auth.users(id,email) VALUES('fafafafa-0000-0000-0000-000000000001','fairness@test.local');
 UPDATE public.jobs SET available_at=now()+interval '1 day';
 -- An older, continuously re-queued indexing job must not starve a newer embedding job.
@@ -32,6 +32,17 @@ INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,leas
 SELECT is(public.commit_embedding_batch('fafafafa-1000-0000-0000-000000000003',1,
   (SELECT jsonb_agg(jsonb_build_object('id',id,'embedding',array_prepend(1::real,array_fill(0::real,ARRAY[767]))::extensions.vector::text)) FROM public.asset_passages WHERE asset_id='fafafafa-4000-0000-0000-000000000001')),
   true,'ten vectors commit in one checkpoint');
+-- Up to 256 vectors fit one embedding checkpoint.
+INSERT INTO public.asset_passages(asset_id,user_id,index_version,ordinal,content)
+  SELECT 'fafafafa-4000-0000-0000-000000000001','fafafafa-0000-0000-0000-000000000001',metadata->'passage_index'->>'version',1000+n,'Bulk checkpoint passage '||n
+  FROM public.assets, generate_series(1,200) n WHERE id='fafafafa-4000-0000-0000-000000000001';
+INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,lease_expires_at)
+  SELECT 'fafafafa-1000-0000-0000-000000000005','fafafafa-0000-0000-0000-000000000001','embed_passages',
+    jsonb_build_object('asset_id',id,'index_version',metadata->'passage_index'->>'version','digest',repeat('c',64)),'running',1,now()+interval '1 minute'
+  FROM public.assets WHERE id='fafafafa-4000-0000-0000-000000000001';
+SELECT is(public.commit_embedding_batch('fafafafa-1000-0000-0000-000000000005',1,
+  (SELECT jsonb_agg(jsonb_build_object('id',id,'embedding',array_prepend(1::real,array_fill(0::real,ARRAY[767]))::extensions.vector::text)) FROM public.asset_passages WHERE ordinal>=1000 AND asset_id='fafafafa-4000-0000-0000-000000000001')),
+  true,'200 vectors commit in one checkpoint');
 -- One large EPUB content document can produce more than 128 passages in a single batch.
 INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,lease_expires_at)
   SELECT 'fafafafa-1000-0000-0000-000000000004','fafafafa-0000-0000-0000-000000000001','index_passages',

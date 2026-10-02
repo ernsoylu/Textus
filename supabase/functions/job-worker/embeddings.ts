@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { checked, JOB_WORKER_MS } from '../_shared/budget.ts';
 import { embeddingModel, embedText } from '../_shared/ollama.ts';
 import { HttpError, withAiLease } from '../_shared/limits.ts';
-const CHECKPOINT = 64; // commit_embedding_batch's per-checkpoint limit
+const CHECKPOINT = 256; // commit_embedding_batch's per-checkpoint limit
 export async function embedPassages(admin: SupabaseClient, job: { id: string; user_id: string | null; claim_generation: number; payload: Record<string, unknown> }) {
   const asset = await checked(admin.from('assets').select('id,metadata').eq('id', job.payload.asset_id).eq('user_id', job.user_id).is('deleting_at', null).maybeSingle());
   if (!asset || asset.metadata?.passage_index?.version !== job.payload.index_version || asset.metadata?.passage_index?.status === 'cancelled') return { skipped: true };

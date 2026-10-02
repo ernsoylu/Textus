@@ -151,7 +151,7 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
       if (!file || file.size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser limit');
       const sections = epubSections(new Uint8Array(await file.arrayBuffer()));
       total = sections.length;
-      for (const section of sections.slice(from, from + 16)) {
+      for (const section of sections.slice(from, from + 48)) {
         const result = section.read();
         const parts = chunks(result.text);
         if (parts.length > MAX_PASSAGES) { reason = 'A section exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
@@ -166,7 +166,7 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
       try {
         total = task.doc.numPages;
         const labels = await task.wait(task.doc.getPageLabels()).catch(() => null);
-        for (let page = from + 1; page <= Math.min(total, from + 24); page++) {
+        for (let page = from + 1; page <= Math.min(total, from + 96); page++) {
           const pdfPage = await task.wait(task.doc.getPage(page));
           const text = await task.wait(pdfPage.getTextContent());
           const parts = chunks(text.items.map((item) => 'str' in item ? item.str : '').join(' '));
