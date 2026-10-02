@@ -67,11 +67,15 @@ export function embedPrompt(modelName: string, text: string, query: boolean) {
   const prompts = EMBED_PROMPTS.find((p) => p.model.test(modelName));
   return prompts ? (query ? prompts.query : prompts.document)(text) : text;
 }
+// Measured on monster's GTX 1050 Ti (2026-10-02): 3.3 passages/s in calls of 4, 5.3/s in calls of 16, 6.2/s in
+// calls of 32. 16 keeps one call near 3 s, so an interactive question never waits long for the GPU.
+export const EMBED_BATCH = { count: 16, bytes: 32_000, itemBytes: 8_000 };
 export async function embedText(model: LocalModel, text: string[], query = false) {
-  if (!text.length || text.length > 4 || text.some((t) => new TextEncoder().encode(t).length > 8000)) throw new HttpError('context_budget_exceeded');
-  const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(4) }).parse(await ollama('/api/embed', {
+  const sizes = text.map((t) => new TextEncoder().encode(t).length);
+  if (!text.length || text.length > EMBED_BATCH.count || sizes.some((n) => n > EMBED_BATCH.itemBytes) || sizes.reduce((a, b) => a + b, 0) > EMBED_BATCH.bytes) throw new HttpError('context_budget_exceeded');
+  const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(EMBED_BATCH.count) }).parse(await ollama('/api/embed', {
     model: model.name, input: text.map((t) => embedPrompt(model.name, t, query)), truncate: false, keep_alive: '5m', options: { num_ctx: 2048 },
-  }, 15_000));
+  }, 30_000)); // a batch right after a model swap includes loading the embedder
   if (data.embeddings.length !== text.length || data.embeddings.some((v) => !v.some((n) => n !== 0))) throw new HttpError('invalid_model_output', 502);
   // Tags may change while inference is running; never persist/query vectors under a stale digest.
   if ((await embeddingModel()).digest !== model.digest) throw new HttpError('model_changed', 503);
