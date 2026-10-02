@@ -6,7 +6,7 @@ import { HttpError } from './limits.ts';
 export function aiConfig() {
   const url = Deno.env.get('OLLAMA_URL') ?? '';
   const defaultModel = Deno.env.get('OLLAMA_DEFAULT_MODEL') ?? 'qwen3.5:4b';
-  const embedModel = Deno.env.get('OLLAMA_EMBED_MODEL') ?? 'nomic-embed-text:latest';
+  const embedModel = Deno.env.get('OLLAMA_EMBED_MODEL') ?? 'embeddinggemma:latest';
   const allowedModels = (Deno.env.get('OLLAMA_ALLOWED_MODELS') ?? defaultModel).split(',').map((v) => v.trim()).filter(Boolean);
   const contextTokens = Math.min(8192, Math.max(2048, Number(Deno.env.get('OLLAMA_CONTEXT_TOKENS')) || 4096));
   return { enabled: Deno.env.get('AI_ENABLED') === 'true' && !!url, url, defaultModel, embedModel, allowedModels, contextTokens };
@@ -57,10 +57,20 @@ export async function embeddingModel(): Promise<LocalModel> {
   if (!model) throw new HttpError('model_missing', 503);
   return model;
 }
+// Each embedding model was trained with its own query/document prompts; unknown models get raw text.
+// embeddinggemma won the 2026-10-02 multilingual benchmark (docs/ROADMAP.md); nomic stays for rollback.
+const EMBED_PROMPTS: { model: RegExp; query: (t: string) => string; document: (t: string) => string }[] = [
+  { model: /^embeddinggemma(:|$)/, query: (t) => `task: search result | query: ${t}`, document: (t) => `title: none | text: ${t}` },
+  { model: /^nomic-embed-text(:|$)/, query: (t) => `search_query: ${t}`, document: (t) => `search_document: ${t}` },
+];
+export function embedPrompt(modelName: string, text: string, query: boolean) {
+  const prompts = EMBED_PROMPTS.find((p) => p.model.test(modelName));
+  return prompts ? (query ? prompts.query : prompts.document)(text) : text;
+}
 export async function embedText(model: LocalModel, text: string[], query = false) {
   if (!text.length || text.length > 4 || text.some((t) => new TextEncoder().encode(t).length > 8000)) throw new HttpError('context_budget_exceeded');
   const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(4) }).parse(await ollama('/api/embed', {
-    model: model.name, input: text.map((t) => `${query ? 'search_query' : 'search_document'}: ${t}`), truncate: false, keep_alive: '5m', options: { num_ctx: 8192 },
+    model: model.name, input: text.map((t) => embedPrompt(model.name, t, query)), truncate: false, keep_alive: '5m', options: { num_ctx: 2048 },
   }, 15_000));
   if (data.embeddings.length !== text.length || data.embeddings.some((v) => !v.some((n) => n !== 0))) throw new HttpError('invalid_model_output', 502);
   // Tags may change while inference is running; never persist/query vectors under a stale digest.

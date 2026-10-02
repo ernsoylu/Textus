@@ -188,3 +188,16 @@ Complete. SMTP delivery is deferred to release planning.
 ### Post-M6 indexing at library scale (2026-10-02)
 
 Indexing the real app102 library exposed limits the fixtures did not: embedding starved behind re-queued indexing jobs; pdf.js's whole-file allocation and unbounded parallel range requests killed workers on large or damaged PDFs; EPUB 2 DOCTYPEs and large chapters were refused; the daily cleanup lacked `auth.users` access; and the ~85–90k-passage library would have exceeded the 50,000 ceiling. Fixes: job-type fairness, 64-passage embedding checkpoints, job-worker-only 1024 MB/115 s limits with retirement before the CPU hard limit, four-at-a-time ranges, a 250,000-passage ceiling and HNSW retrieval (top 20 identical to exact search on 20 production queries; 18 ms vs 158 ms).
+
+### Embedding model benchmark (2026-10-02)
+
+The library is mostly English with German, French and Turkish works, and questions arrive in several languages. 150 questions were written by the local chat model for 60 sampled passages (30 English, 15 Turkish, 15 German), each asked in its own language and cross-language, then ranked against 3,000 passages from 87 files on monster's GTX 1050 Ti (`deploy/embedding-bench/`). MRR is the mean reciprocal rank of the passage the question was written for.
+
+| Model | MRR | Same language | Cross-language | In top 10 | Passages/s | VRAM | Dims |
+|---|---|---|---|---|---|---|---|
+| `nomic-embed-text` (previous) | 0.27 | 0.62 | 0.03 | 33% | 2.9 | 0.30 GB | 768 |
+| **`embeddinggemma`** | **0.77** | **0.80** | **0.75** | **94%** | **3.9** | 0.63 GB | 768 |
+| `qwen3-embedding:0.6b` | 0.61 | 0.74 | 0.53 | 81% | 1.0 | 3.13 GB | 1024 |
+
+`embeddinggemma` by direction: en→en 0.93, tr→tr 0.66, de→de 0.68, tr→en 0.77, de→en 0.90, en→tr 0.58, en→de 0.61 (nomic tr→en 0.00). It is better on every measure, faster, keeps the 768-dimension schema and leaves room for a chat model on the 4 GB GPU, so it replaced nomic; `bge-m3` and `snowflake-arctic-embed2` were not completed once the decision was clear. The whole library re-embeds automatically under the new digest.
+

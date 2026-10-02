@@ -1,4 +1,5 @@
-import { HttpError, jsonBody } from './limits.ts';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { HttpError, jsonBody, withAiLease } from './limits.ts';
 Deno.test('body byte limits apply with and without Content-Length', async () => {
   for (const headers of [new Headers({ 'Content-Length': '10' }), new Headers()]) {
     let rejected = false;
@@ -7,4 +8,15 @@ Deno.test('body byte limits apply with and without Content-Length', async () => 
     if (!rejected) throw new Error('oversize body accepted');
   }
   if (await jsonBody(new Request('https://textus.invalid', { method: 'POST', body: 'broken' })) !== null) throw new Error('invalid JSON accepted');
+});
+
+Deno.test('interactive GPU lease waits for a background holder; background callers do not', async () => {
+  let free = false, calls = 0;
+  const admin = { rpc: (name: string) => Promise.resolve({ data: name === 'acquire_ai_lease' ? (calls++, free ? 'holder' : null) : null, error: null }) } as unknown as SupabaseClient;
+  setTimeout(() => { free = true; }, 600);
+  if (await withAiLease(admin, () => Promise.resolve('ran'), 5_000) !== 'ran' || calls < 2) throw new Error('waiting caller did not acquire the lease');
+  free = false;
+  let refused = false;
+  try { await withAiLease(admin, () => Promise.resolve('ran')); } catch (error) { refused = error instanceof HttpError && error.code === 'ai_busy'; }
+  if (!refused) throw new Error('background caller must not wait');
 });
