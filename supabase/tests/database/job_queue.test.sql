@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(5);
+SELECT plan(7);
 INSERT INTO auth.users(id,email) VALUES('fafafafa-0000-0000-0000-000000000001','fairness@test.local');
 UPDATE public.jobs SET available_at=now()+interval '1 day';
 -- An older, continuously re-queued indexing job must not starve a newer embedding job.
@@ -32,5 +32,12 @@ INSERT INTO public.jobs(id,user_id,job_type,payload,status,claim_generation,leas
 SELECT is(public.commit_embedding_batch('fafafafa-1000-0000-0000-000000000003',1,
   (SELECT jsonb_agg(jsonb_build_object('id',id,'embedding',array_prepend(1::real,array_fill(0::real,ARRAY[767]))::extensions.vector::text)) FROM public.asset_passages WHERE asset_id='fafafafa-4000-0000-0000-000000000001')),
   true,'ten vectors commit in one checkpoint');
+-- The daily cleanup runs as service_role, which cannot read auth.users itself.
+SET LOCAL ROLE service_role;
+SELECT lives_ok('SELECT count(*) FROM public.claim_storage_cleanup(10)','service_role can claim storage cleanup');
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+SELECT throws_ok('SELECT count(*) FROM public.claim_storage_cleanup(10)','42501',NULL,'users cannot claim storage cleanup');
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;

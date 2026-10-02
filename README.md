@@ -345,7 +345,12 @@ Before setting `AI_ENABLED=true`, run `ssh -t monster 'sudo sh -s' < deploy/olla
 const isJobWorker = service_name === 'job-worker'
 const memoryLimitMb = isJobWorker ? 1024 : 150
 const workerTimeoutMs = (isJobWorker ? 115 : 60) * 1000
+// Retire a reused isolate before its CPU is exhausted, so the job in flight can finish.
+const cpuTimeSoftLimitMs = isJobWorker ? 480_000 : undefined
+const cpuTimeHardLimitMs = isJobWorker ? 600_000 : undefined
 ```
+
+Pass `cpuTimeSoftLimitMs` and `cpuTimeHardLimitMs` to `EdgeRuntime.userWorkers.create`. Both default to 10 minutes, accumulated across the requests an isolate serves, so without the lower soft limit the in-flight job is killed at the moment of retirement.
 
 Then set `JOB_WORKER_MEMORY_MB: "1024"` and `JOB_WORKER_BUDGET_MS: "100000"` in the `functions` environment. They must match the router: without them the worker keeps 60 s batches and reports PDFs over 90 MB as not indexable. With them set but the router unchanged, every long run is killed. Give the `functions` service `ulimits: { nofile: 65536 }` as headroom: the container starts with 1024 descriptors and about half are in use. Run the worker every 30 seconds with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname='job-worker'), schedule := '30 seconds');`.
 

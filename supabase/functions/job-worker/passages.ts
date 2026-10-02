@@ -12,6 +12,8 @@ const MEMORY_BYTES = (Number(Deno.env.get('JOB_WORKER_MEMORY_MB')) || 150) * 1_0
 const MAX_PDF_BYTES = MEMORY_BYTES * 0.6;
 const MAX_BUFFER = Math.min(200_000_000, Math.max(25_000_000, MEMORY_BYTES / 4));
 const WORK_MS = JOB_WORKER_MS / 2;
+// xmldom keeps every node in memory; 10,000 tags truncated real EPUB chapters at the default 150 MB.
+const MAX_XML_TAGS = Math.max(30_000, MEMORY_BYTES / 5_000);
 const MAX_PASSAGES = 128;
 class ParserLimit extends Error {}
 export function chunks(text: string): string[] {
@@ -33,7 +35,7 @@ function xml(markup: string, mime: 'application/xml' | 'application/xhtml+xml' =
   if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(markup)) throw new ParserLimit('EPUB entity declarations are not supported');
   let tags = 0;
   for (let at = markup.indexOf('<'); at >= 0; at = markup.indexOf('<', at + 1)) {
-    if (++tags > 10000) throw new ParserLimit('EPUB markup exceeds the node limit');
+    if (++tags > MAX_XML_TAGS) throw new ParserLimit('EPUB markup exceeds the node limit');
   }
   return new DOMParser({ onError: (level) => { if (level !== 'warning') throw new Error('Malformed EPUB XML'); } }).parseFromString(markup, mime);
 }
