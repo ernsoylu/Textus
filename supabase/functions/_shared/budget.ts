@@ -13,8 +13,10 @@ export async function checked<T>(result: PromiseLike<{ data: T; error: unknown }
 import { HttpError } from './http.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 const signals = new AsyncLocalStorage<AbortSignal>();
+// Runs fn with a deadline that boundedFetch honours; withBudget is the HTTP form.
+export function withDeadline<T>(ms: number, fn: () => Promise<T>) { return signals.run(deadline(ms), fn); }
 export function withBudget<T extends unknown[]>(handler: (...args: T) => Promise<Response>, ms = INVOCATION_MS) {
-  return (...args: T) => signals.run(deadline(ms), async () => {
+  return (...args: T) => withDeadline(ms, async () => {
     try { return await handler(...args); }
     catch (error) {
       const code = error instanceof HttpError ? error.code : 'request_failed';

@@ -297,6 +297,44 @@ function jobClient(jobType: string) {
   });
 }
 
+export const AI_JOB_TYPES = ['extract_metadata_ai', 'embed_passages'];
+
+// Claims one job and runs it. The Edge entry below and remote workers (standalone.ts) share this;
+// a remote worker passes its id and the job types it is configured for.
+// deno-lint-ignore no-explicit-any
+export async function processJobs(admin: any, clientFor: (jobType: string) => unknown, options: { types?: string[]; worker?: string } = {}) {
+  const jobs = await checked(admin.rpc('claim_jobs', { p_limit: 1, p_lease: `${JOB_WORKER_MS / 1000 + 20} seconds`,
+    ...(options.types ? { p_types: options.types } : {}), ...(options.worker ? { p_worker: options.worker } : {}) })) as Job[];
+  const results = [];
+  for (const job of jobs ?? []) {
+    try {
+      const handler = HANDLERS[job.job_type];
+      if (!handler) throw new Error('unsupported job type');
+      const result = await handler(clientFor(job.job_type), job);
+      if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
+        const committed = result.committed || await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
+        results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });
+        continue;
+      }
+      const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
+      results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
+    } catch (error) {
+      if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && AI_JOB_TYPES.includes(job.job_type)) {
+        await checked(admin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
+        results.push({ id: job.id, status: 'paused' });
+        continue;
+      }
+      // Log identifiers and error codes only: never file text, URLs or credentials.
+      console.error(JSON.stringify({ event: 'job_failure', id: job.id, type: job.job_type,
+        code: error instanceof HttpError ? error.code : error && typeof error === 'object' && 'code' in error ? String(error.code) : error instanceof Error ? error.name : 'unknown' }));
+      // Logs/results contain neither provider URLs, book text nor credentials.
+      const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
+      results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });
+    }
+  }
+  return { claimed: jobs?.length ?? 0, results };
+}
+
 export default {
   fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
     await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
@@ -312,34 +350,6 @@ export default {
       { user_id: null, job_type: 'cleanup', payload: {}, idempotency_key: `cleanup:${new Date().toISOString().slice(0, 10)}` },
       { onConflict: 'idempotency_key', ignoreDuplicates: true },
     ));
-    const jobs = await checked(ctx.supabaseAdmin.rpc('claim_jobs', { p_limit: 1, p_lease: `${JOB_WORKER_MS / 1000 + 20} seconds` })) as Job[];
-    const results = [];
-    for (const job of jobs ?? []) {
-      try {
-        const handler = HANDLERS[job.job_type];
-        if (!handler) throw new Error('unsupported job type');
-        const result = await handler(jobClient(job.job_type), job);
-        if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
-          const committed = result.committed || await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
-          results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });
-          continue;
-        }
-        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
-        results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
-      } catch (error) {
-        if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && ['extract_metadata_ai', 'embed_passages'].includes(job.job_type)) {
-          await checked(ctx.supabaseAdmin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
-          results.push({ id: job.id, status: 'paused' });
-          continue;
-        }
-        // Log identifiers and error codes only: never file text, URLs or credentials.
-        console.error(JSON.stringify({ event: 'job_failure', id: job.id, type: job.job_type,
-          code: error instanceof HttpError ? error.code : error && typeof error === 'object' && 'code' in error ? String(error.code) : error instanceof Error ? error.name : 'unknown' }));
-        // Logs/results contain neither provider URLs, book text nor credentials.
-        const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
-        results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });
-      }
-    }
-    return Response.json({ claimed: jobs?.length ?? 0, results });
+    return Response.json(await processJobs(ctx.supabaseAdmin, jobClient));
   }, JOB_WORKER_MS)),
 };

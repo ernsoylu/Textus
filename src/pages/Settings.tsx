@@ -6,6 +6,8 @@ import { PasswordForm } from '@/components/account/PasswordForm';
 import { AgentTab } from '@/components/account/AgentTab';
 import { AiTab } from '@/components/account/AiTab';
 import { AppearanceTab } from '@/components/account/AppearanceTab';
+import { WorkersTab } from '@/components/account/WorkersTab';
+import { useQuery } from '@tanstack/react-query';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { deleteAccount } from '@/lib/functions';
@@ -20,6 +22,7 @@ const TABS = [
   { id: 'opds', label: 'OPDS' },
   { id: 'ai', label: 'AI' },
   { id: 'agents', label: 'Agents' },
+  { id: 'workers', label: 'Workers' }, // instance admins only
 ] as const;
 
 function AccountTab() {
@@ -141,6 +144,12 @@ function OpdsTab({ onCreateToken }: Readonly<{ onCreateToken: () => void }>) {
 export function Settings() {
   const [params] = useSearchParams();
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>(() => TABS.find((t) => t.id === params.get('tab'))?.id ?? 'account');
+  const admin = useQuery({ queryKey: ['instance-admin'], queryFn: async () => {
+    const { data, error } = await supabase.rpc('is_instance_admin');
+    if (error) throw error;
+    return data;
+  } });
+  const tabs = TABS.filter((t) => t.id !== 'workers' || admin.data);
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -149,7 +158,7 @@ export function Settings() {
         <p className="text-body text-muted">Your account and private library.</p>
       </div>
       <div role="tablist" className="flex flex-wrap gap-2">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -165,6 +174,7 @@ export function Settings() {
       {tab === 'account' && <AccountTab />}
       {tab === 'ai' && <AiTab />}
       {tab === 'agents' && <AgentTab />}
+      {tab === 'workers' && admin.data && <WorkersTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'opds' && <OpdsTab onCreateToken={() => setTab('agents')} />}
     </div>

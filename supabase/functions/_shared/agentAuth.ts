@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SignJWT, importJWK } from 'jose';
+import { SignJWT, importJWK, type JWTPayload } from 'jose';
 import { readCapped } from './http.ts';
 import { boundedFetch, checked } from './budget.ts';
 import { HttpError } from './http.ts';
@@ -29,7 +29,8 @@ export async function agentPrincipal(admin: SupabaseClient, token: string | unde
 export function requireAgentScope(principal: AgentPrincipal, scope: 'read' | 'read_write') {
   if (scope === 'read_write' && principal.scope !== 'read_write') throw new HttpError('insufficient_scope', 403);
 }
-export async function agentClient(principal: AgentPrincipal) {
+// Signs a short-lived JWT with the instance's key: MCP_SIGNING_JWK when set, else JWT_SECRET.
+export async function signJwt(claims: JWTPayload, ttl: string) {
   const jwk = Deno.env.get('MCP_SIGNING_JWK');
   const secret = Deno.env.get('JWT_SECRET');
   let key, header: { alg: string; kid?: string };
@@ -41,8 +42,10 @@ export async function agentClient(principal: AgentPrincipal) {
     if (!secret || secret.length < 32) throw new HttpError('mcp_signing_misconfigured', 503);
     key = new TextEncoder().encode(secret); header = { alg: 'HS256' };
   }
-  const jwt = await new SignJWT({ role: 'authenticated', textus_agent: true, textus_scope: principal.scope, textus_token_id: principal.token_id })
-    .setProtectedHeader(header).setSubject(principal.user_id).setAudience('authenticated').setIssuedAt().setExpirationTime('5m').sign(key);
+  return await new SignJWT(claims).setProtectedHeader(header).setIssuedAt().setExpirationTime(ttl).sign(key);
+}
+export async function agentClient(principal: AgentPrincipal) {
+  const jwt = await signJwt({ role: 'authenticated', textus_agent: true, textus_scope: principal.scope, textus_token_id: principal.token_id, sub: principal.user_id, aud: 'authenticated' }, '5m');
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: `Bearer ${jwt}` }, fetch: async (input, init) => {
     const response = await boundedFetch(input, init);
     const body = await readCapped(response);

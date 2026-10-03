@@ -1,0 +1,30 @@
+import { webcrypto } from 'node:crypto';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, expect, it, vi } from 'vitest';
+import { WorkersTab } from './WorkersTab';
+const { insert } = vi.hoisted(() => ({ insert: vi.fn().mockResolvedValue({ error: null }) }));
+vi.mock('@/lib/supabase', () => ({ supabaseUrl: 'https://api.example', supabase: { from: () => {
+  const chain = { select: () => chain, order: () => chain, limit: () => Promise.resolve({ data: [], error: null }), insert };
+  return chain;
+} } }));
+afterEach(() => vi.unstubAllGlobals());
+it('stores only the token hash and prints a run command with the secret once', async () => {
+  vi.stubGlobal('crypto', webcrypto);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}><WorkersTab /></QueryClientProvider>);
+  fireEvent.change(screen.getByLabelText('Worker name'), { target: { value: 'app101' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Register worker' }));
+  const command = (await screen.findByLabelText('Worker command') as HTMLTextAreaElement).value;
+  const token = /TEXTUS_WORKER_TOKEN=(tw_[0-9a-f]{64})/.exec(command)?.[1];
+  expect(token).toBeDefined();
+  expect(command).toContain('TEXTUS_URL=https://api.example');
+  await waitFor(() => expect(insert).toHaveBeenCalledTimes(1));
+  const saved = insert.mock.calls[0][0];
+  expect(saved).toMatchObject({ name: 'app101', token_prefix: token!.slice(0, 9) });
+  expect(saved.token_hash).toMatch(/^[0-9a-f]{64}$/);
+  expect(JSON.stringify(saved)).not.toContain(token);
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss command' }));
+  expect(screen.queryByLabelText('Worker command')).not.toBeInTheDocument();
+  view.unmount(); client.clear();
+});
