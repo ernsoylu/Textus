@@ -20,3 +20,10 @@ Deno.test('interactive GPU lease waits for a background holder; background calle
   try { await withAiLease(admin, () => Promise.resolve('ran')); } catch (error) { refused = error instanceof HttpError && error.code === 'ai_busy'; }
   if (!refused) throw new Error('background caller must not wait');
 });
+
+Deno.test('a private-GPU worker skips the shared lease', async () => {
+  const admin = { rpc: () => { throw new Error('lease RPC called'); } } as unknown as SupabaseClient;
+  Deno.env.set('AI_PRIVATE_GPU', 'true');
+  try { if (await withAiLease(admin, () => Promise.resolve('ran')) !== 'ran') throw new Error('action did not run'); }
+  finally { Deno.env.delete('AI_PRIVATE_GPU'); }
+});

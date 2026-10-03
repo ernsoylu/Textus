@@ -24,7 +24,9 @@ export async function rateLimit(admin: SupabaseClient, key: string, limit = 30, 
   if (!await checked(admin.rpc('check_request_limit', { p_key: key, p_limit: limit, p_period: period }))) throw new HttpError('rate_limited', 429);
 }
 // Interactive callers wait briefly for the shared GPU lease; background jobs pass 0 and defer instead.
+// AI_PRIVATE_GPU=true: this process has its own Ollama/GPU (a rented remote worker), so it shares nothing.
 export async function withAiLease<T>(admin: SupabaseClient, action: () => Promise<T>, waitMs = 0): Promise<T> {
+  if (Deno.env.get('AI_PRIVATE_GPU') === 'true') return await action();
   const until = Date.now() + waitMs;
   let holder = await checked(admin.rpc('acquire_ai_lease'));
   while (!holder && Date.now() < until) {

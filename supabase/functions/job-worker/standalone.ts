@@ -4,6 +4,7 @@
 //   WORKER_CONCURRENCY  parallel jobs (default 2, max 16)
 //   WORKER_JOB_TYPES    comma-separated job types; default: all, minus AI jobs unless AI_ENABLED/OLLAMA_URL are set
 //   JOB_WORKER_MEMORY_MB / JOB_WORKER_BUDGET_MS and provider/Ollama variables work as for the Edge worker.
+//   AI_PRIVATE_GPU=true with its own Ollama skips the shared GPU lease; EMBED_BATCH_COUNT (1–256) sizes embed calls.
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { AI_JOB_TYPES, processJobs } from './index.ts';
