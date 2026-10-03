@@ -55,7 +55,9 @@ async function queueMetadata(admin: any, asset: { id: string; user_id: string },
 
 // deno-lint-ignore no-explicit-any
 async function storeExtraction(admin: any, asset: { id: string; user_id: string }, patch: Record<string, unknown>) {
-  const metadata = await checked(admin.rpc('merge_extraction_metadata', { p_asset: asset.id, p_owner: asset.user_id, p_patch: patch })) as Record<string, unknown> | null;
+  // jsonb rejects NUL (22P05), which some PDFs carry in their text or Info dictionary.
+  const clean = JSON.parse(JSON.stringify(patch, (_key, value) => typeof value === 'string' ? value.replaceAll('\u0000', '') : value));
+  const metadata = await checked(admin.rpc('merge_extraction_metadata', { p_asset: asset.id, p_owner: asset.user_id, p_patch: clean })) as Record<string, unknown> | null;
   if (metadata && !metadata.passage_index) await checked(admin.rpc('queue_passage_index', { p_asset: asset.id, p_owner: asset.user_id }));
 }
 
