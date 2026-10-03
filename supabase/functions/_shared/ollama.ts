@@ -33,6 +33,8 @@ export async function ollama(path: '/api/version' | '/api/tags' | '/api/generate
       headers: { 'Content-Type': 'application/json', ...(Deno.env.get('OLLAMA_API_KEY') ? { Authorization: `Bearer ${Deno.env.get('OLLAMA_API_KEY')}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    // A 400 is the request itself, never transient: retrying it would defer a job forever.
+    if (response.status === 400) throw new HttpError(/exceeds the context length/i.test(await response.text()) ? 'input_too_long' : 'invalid_request', 400);
     if (!response.ok) throw new HttpError(response.status === 404 ? 'model_missing' : 'ai_unreachable', 503);
     return JSON.parse(await readCapped(response));
   } catch (e) {
@@ -73,9 +75,13 @@ export const EMBED_BATCH = { count: 16, bytes: 32_000, itemBytes: 8_000 };
 export async function embedText(model: LocalModel, text: string[], query = false) {
   const sizes = text.map((t) => new TextEncoder().encode(t).length);
   if (!text.length || text.length > EMBED_BATCH.count || sizes.some((n) => n > EMBED_BATCH.itemBytes) || sizes.reduce((a, b) => a + b, 0) > EMBED_BATCH.bytes) throw new HttpError('context_budget_exceeded');
-  const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(EMBED_BATCH.count) }).parse(await ollama('/api/embed', {
-    model: model.name, input: text.map((t) => embedPrompt(model.name, t, query)), truncate: false, keep_alive: '5m', options: { num_ctx: 2048 },
-  }, 30_000)); // a batch right after a model swap includes loading the embedder
+  const embed = (truncate: boolean) => ollama('/api/embed', {
+    model: model.name, input: text.map((t) => embedPrompt(model.name, t, query)), truncate, keep_alive: '5m', options: { num_ctx: 2048 },
+  }, 30_000); // a batch right after a model swap includes loading the embedder
+  // Formula-heavy text can exceed the embedder's 2048 tokens within the byte limits; truncate only then, so one
+  // passage loses its tail instead of its whole book never being embedded.
+  const raw = await embed(false).catch((error) => { if (error instanceof HttpError && error.code === 'input_too_long') return embed(true); throw error; });
+  const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(EMBED_BATCH.count) }).parse(raw);
   if (data.embeddings.length !== text.length || data.embeddings.some((v) => !v.some((n) => n !== 0))) throw new HttpError('invalid_model_output', 502);
   // Tags may change while inference is running; never persist/query vectors under a stale digest.
   if ((await embeddingModel()).digest !== model.digest) throw new HttpError('model_changed', 503);
