@@ -419,6 +419,14 @@ test('cover hover opens the reader directly and saves half-star ratings', async 
   await expect(page).toHaveURL(`/library/${workId}`);
 });
 
+test('a PDF opens with the two-page preference already saved', async ({ page }) => {
+  await mocks(page);
+  await page.addInitScript(() => localStorage.setItem('textus.reader', JSON.stringify({ twoPage: true })));
+  await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
+  await expect(page.getByText('Textus reader fixture')).toBeVisible();
+  await expect(page.locator('.spread')).toHaveCount(1);
+});
+
 
 test('tags get automatic colors from book details and Tags, and keep them when renamed', async ({ page }) => {
   await mocks(page);
