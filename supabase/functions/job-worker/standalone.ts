@@ -1,6 +1,6 @@
 // Remote job worker (§7.5): runs job-worker's handlers in a container on another host, in parallel
 // with the Edge worker. Settings → Workers registers it and prints TEXTUS_URL and TEXTUS_WORKER_TOKEN;
-// worker-session turns the token into a 10-minute service-role JWT, renewed before it expires.
+// worker-session turns the token into a 10-minute textus_worker JWT, renewed before it expires.
 //   WORKER_CONCURRENCY  parallel jobs (default 2, max 16)
 //   WORKER_JOB_TYPES    comma-separated job types; default: all, minus AI jobs unless AI_ENABLED/OLLAMA_URL are set
 //   JOB_WORKER_MEMORY_MB / JOB_WORKER_BUDGET_MS and provider/Ollama variables work as for the Edge worker.

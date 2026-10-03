@@ -44,7 +44,7 @@ Not allowed: Next.js/Remix, any separate backend service or language, direct S3 
 6. **Uploads follow §9.1:** signed upload URL to `staging/` → `upload/complete` verifies size, sniffs type from bytes, hashes → content-addressed copy to `documents/` → asset `ON CONFLICT` → link → enqueue jobs. Never trust client MIME types. Keep every step idempotent.
 7. **All buckets are private.** Read files through `createSignedUrl(path, 300)`. Never `getPublicUrl`.
 8. **Contributors are identities, not name strings** (§6.3). Never add a uniqueness constraint on names, and never auto-merge on name alone. Save credits with `set_record_contributors()`; merge and split only through `merge_contributors()` / `reassign_credits()`. Name parsing, folding, matching, and bylines live in `shared/names.ts`. When a record has no authors, bylines and sorting fall back to editors, then compilers, then translators. Container editors are never copied onto chapters.
-9. **Secrets stay server-side.** The SPA only has the anon key. Service role and provider keys exist only in Edge Functions and in registered remote job workers (§7.5), which run the same `job-worker` code and get a 10-minute service-role JWT from `worker-session`, never the service role key. External providers are called only from Edge Functions or those workers.
+9. **Secrets stay server-side.** The SPA only has the anon key. Service role and provider keys exist only in Edge Functions and in registered remote job workers (§7.5), which run the same `job-worker` code with a 10-minute `textus_worker` JWT from `worker-session` (job-scoped grants, never the service role). External providers are called only from Edge Functions or those workers.
 
 ## Conventions
 

@@ -32,7 +32,7 @@ export function WorkersTab() {
     await client.invalidateQueries({ queryKey: ['workers'] });
   } });
   return <div className="flex flex-col gap-4">
-    <p className="text-body text-muted">Run text extraction, indexing, metadata lookup and cover jobs on other servers in parallel. Each worker is a Docker container that connects to this server with its own token. A worker can read and change every library on this server, so register only machines you control; revoking stops it within minutes.</p>
+    <p className="text-body text-muted">Run text extraction, indexing, metadata lookup and cover jobs on other servers in parallel. Each worker is a Docker container that connects to this server with its own token. A worker can read every library’s files and catalog on this server and write processing results, but not accounts, tokens, notes or deletions. Register only machines you control; revoking stops it within minutes.</p>
     <label className="text-small text-fg">Server URL the worker can reach<Input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} /></label>
     <label className="text-small text-fg">Worker name<Input value={name} maxLength={100} placeholder="app101" onChange={(e) => setName(e.target.value)} /></label>
     <Button disabled={!name.trim() || !/^https?:\/\/\S+$/.test(serverUrl.trim()) || create.isPending} onClick={() => create.mutate()}>Register worker</Button>

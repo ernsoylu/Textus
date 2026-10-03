@@ -1,8 +1,9 @@
 // Edge Function: worker-session (§8.9). A remote job worker registered in Settings → Workers
-// exchanges its tw_ token for a 10-minute service-role JWT (renewed by the worker before expiry)
-// and the public anon key its gateway requests need. Revoking the worker deletes its row, so the
-// next renewal fails and claim_jobs() stops handing it jobs at once. Deployed with --no-verify-jwt:
-// the token is not a JWT.
+// exchanges its tw_ token for a 10-minute textus_worker JWT (renewed by the worker before expiry)
+// and the public anon key its gateway requests need. textus_worker (migration 20261003000003) runs
+// the queue functions and reads/writes only what jobs need — not the service role's full access.
+// Revoking the worker deletes its row, so the next renewal fails and claim_jobs() stops handing it
+// jobs at once. Deployed with --no-verify-jwt: the token is not a JWT.
 import { withSupabase, type SupabaseContext } from '@supabase/server';
 import { hashAgentToken, signJwt } from '../_shared/agentAuth.ts';
 import { checked, withBudget } from '../_shared/budget.ts';
@@ -18,7 +19,7 @@ export default {
     const worker = await checked(ctx.supabaseAdmin.from('workers').update({ last_seen_at: new Date().toISOString() })
       .eq('token_hash', await hashAgentToken(token)).select('id').maybeSingle()) as { id: string } | null;
     if (!worker) throw new HttpError('invalid_worker_token', 401);
-    const jwt = await signJwt({ role: 'service_role', textus_worker: worker.id }, `${SESSION_SECONDS}s`);
+    const jwt = await signJwt({ role: 'textus_worker', textus_worker: worker.id }, `${SESSION_SECONDS}s`);
     return Response.json({ worker_id: worker.id, jwt, anon_key: Deno.env.get('SUPABASE_ANON_KEY'), expires_in: SESSION_SECONDS },
       { headers: { 'Cache-Control': 'no-store' } });
   })),
