@@ -6,6 +6,6 @@ WORKDIR /app
 COPY supabase/functions ./functions
 USER deno
 RUN deno cache --config functions/deno.jsonc functions/job-worker/standalone.ts
-# Larger than the 150 MB Edge limit, so PDFs the Edge worker cannot index in one range fit here.
-ENV JOB_WORKER_MEMORY_MB=1024
+# No Edge limits here: more memory for large PDFs and the full 100 s job budget (capped by claim_jobs leases).
+ENV JOB_WORKER_MEMORY_MB=1024 JOB_WORKER_BUDGET_MS=100000
 CMD ["run", "--config", "functions/deno.jsonc", "--allow-net", "--allow-env", "--allow-read", "--cached-only", "functions/job-worker/standalone.ts"]
