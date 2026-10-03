@@ -19,10 +19,11 @@ export function WorkersTab() {
     return data;
   } });
   const create = useMutation({ mutationFn: async () => {
+    const origin = new URL(serverUrl.trim()).origin; // throws before anything is registered
     const { token, hash, prefix } = await newSecretToken('tw_');
     const { error } = await supabase.from('workers').insert({ name: name.trim(), token_hash: hash, token_prefix: prefix });
     if (error) throw error;
-    setCommand(`docker build -t textus-worker -f deploy/worker.Dockerfile https://github.com/ernsoylu/Textus.git#main\ndocker run -d --name textus-worker --restart unless-stopped \\\n  -e TEXTUS_URL=${serverUrl.trim().replace(/\/+$/, '')} \\\n  -e TEXTUS_WORKER_TOKEN=${token} \\\n  textus-worker`);
+    setCommand(`docker build -t textus-worker -f deploy/worker.Dockerfile https://github.com/ernsoylu/Textus.git#main\ndocker run -d --name textus-worker --restart unless-stopped \\\n  -e TEXTUS_URL=${origin} \\\n  -e TEXTUS_WORKER_TOKEN=${token} \\\n  textus-worker`);
     setCopyMessage(''); setName('');
     await client.invalidateQueries({ queryKey: ['workers'] });
   } });
@@ -35,13 +36,13 @@ export function WorkersTab() {
     <p className="text-body text-muted">Run text extraction, indexing, metadata lookup and cover jobs on other servers in parallel. Each worker is a Docker container that connects to this server with its own token. A worker can read every library’s files and catalog on this server and write processing results, but not accounts, tokens, notes or deletions. Register only machines you control; revoking stops it within minutes.</p>
     <label className="text-small text-fg">Server URL the worker can reach<Input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} /></label>
     <label className="text-small text-fg">Worker name<Input value={name} maxLength={100} placeholder="app101" onChange={(e) => setName(e.target.value)} /></label>
-    <Button disabled={!name.trim() || !/^https?:\/\/\S+$/.test(serverUrl.trim()) || create.isPending} onClick={() => create.mutate()}>Register worker</Button>
+    <Button disabled={!name.trim() || !/^https?:\/\/[^\s/]/.test(serverUrl.trim()) || create.isPending} onClick={() => create.mutate()}>Register worker</Button>
     {command && <div className="flex flex-col gap-2 rounded-8 border border-border p-3">
-      <p role="status" className="text-small text-fg">Run this on the worker host. The token is shown once and only its hash is stored. Add OLLAMA_URL and AI_ENABLED=true to let it run AI jobs, and WORKER_CONCURRENCY to run more than two jobs at once.</p>
+      <output className="text-small text-fg">Run this on the worker host. The token is shown once and only its hash is stored. Add OLLAMA_URL and AI_ENABLED=true to let it run AI jobs, and WORKER_CONCURRENCY to run more than two jobs at once.</output>
       <label className="text-small text-fg">Worker command<textarea aria-label="Worker command" readOnly value={command} rows={6} className="mt-2 w-full rounded-8 border border-border bg-dim p-3 font-mono text-small" /></label>
       <Button variant="secondary" onClick={async () => { try { await navigator.clipboard.writeText(command); setCopyMessage('Copied.'); } catch { setCopyMessage('Copy failed. Select and copy the command manually.'); } }}>Copy command</Button>
       <Button variant="ghost" onClick={() => setCommand(undefined)}>Dismiss command</Button>
-      {copyMessage && <p role="status">{copyMessage}</p>}
+      {copyMessage && <output>{copyMessage}</output>}
     </div>}
     {(workers.error || create.error || revoke.error) && <p role="alert">Could not load or change workers.</p>}
     <ul className="flex flex-col gap-2">{workers.data?.map((worker) => {
