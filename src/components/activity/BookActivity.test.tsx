@@ -20,3 +20,19 @@ it('shows the book, its steps, progress and a retry for a failed index', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(onControl).toHaveBeenCalledWith('retry', 'asset-1');
 });
+
+it('moves a waiting book to the top of the queue', () => {
+  const onControl = vi.fn();
+  const waiting = { ...row, passage_index: { status: 'complete', done: 10, total: 10, passages: 40 }, embed_job: 'queued', queue_ahead: 3 };
+  render(<MemoryRouter><ul><BookActivity row={waiting} busy={false} onControl={onControl} /></ul></MemoryRouter>);
+  expect(screen.getByText(/Waiting to be prepared for AI search — 3 books ahead/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Move to top' }));
+  expect(onControl).toHaveBeenCalledWith('top', 'asset-1');
+});
+
+it('offers Retry when reading failed before passage indexing started', () => {
+  const onControl = vi.fn();
+  render(<MemoryRouter><ul><BookActivity row={{ ...row, processing_state: 'failed', passage_index: null, processing_error: 'Text extraction failed. Retry from Activity.' }} busy={false} onControl={onControl} /></ul></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(onControl).toHaveBeenCalledWith('retry', 'asset-1');
+});

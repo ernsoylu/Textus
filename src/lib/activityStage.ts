@@ -19,6 +19,7 @@ export interface ActivityView {
   canRetry: boolean;
   canCancel: boolean;
   canReindex: boolean;
+  canMoveToTop: boolean;
 }
 interface PassageIndex { status?: string; done?: number; total?: number; passages?: number; reason?: string }
 interface EmbeddingIndex { status?: string; embedded?: number; total?: number }
@@ -61,10 +62,11 @@ export function activityView(row: ActivityRow): ActivityView {
   else if (index.status === 'cancelled') explanation = 'Indexing was cancelled. Retry to continue from the last checkpoint.';
   else if (read !== 'done') explanation = 'Reading the file to find its text and identifiers.';
   else if (metadata === 'active') explanation = `Looking up catalog details${row.pending_steps.includes('process_cover') ? ' and the cover' : ''}.`;
+  else if (indexing === 'waiting' && !row.passage_index) explanation = 'Waiting for space in the indexing queue.';
   else if (indexing === 'waiting') explanation = row.queue_ahead ? `Waiting for its turn to be indexed — ${plural(row.queue_ahead, 'book')} ahead.` : 'Next in line to be indexed.';
   else if (indexing === 'active') explanation = `Splitting the text into searchable passages: ${index.done ?? 0} of ${index.total || '?'} pages or sections.`;
   else if (ai === 'active') explanation = `Preparing passages for AI and cross-language search: ${embedding.embedded ?? 0} of ${embedding.total ?? index.passages ?? '?'}.`;
-  else if (ai === 'waiting') explanation = 'Full text is searchable. Waiting to be prepared for AI search.';
+  else if (ai === 'waiting') explanation = `Full text is searchable. Waiting to be prepared for AI search${row.queue_ahead ? ` — ${plural(row.queue_ahead, 'book')} ahead` : ''}.`;
   else if (!indexable) explanation = 'Ready to read. Full-text and AI search cover PDF and EPUB files.';
   else if (index.status === 'no_text') explanation = 'No text layer (likely a scan). It can’t be searched until OCR is added.';
   else if (index.status === 'not_indexable') explanation = `This file can’t be indexed${index.reason ? `: ${index.reason}` : '.'}`;
@@ -76,8 +78,9 @@ export function activityView(row: ActivityRow): ActivityView {
     : indexing === 'active' ? 'Indexing' : ai === 'active' ? 'Preparing AI search' : metadata === 'active' ? 'Looking up metadata' : 'Reading';
   return {
     group, status, progress, explanation, steps,
-    canRetry: index.status === 'failed' || index.status === 'cancelled',
+    canRetry: read === 'failed' || index.status === 'failed' || index.status === 'cancelled',
     canCancel: index.status === 'queued' || index.status === 'indexing',
     canReindex: indexable && finished,
+    canMoveToTop: (indexing === 'waiting' || ai === 'waiting') && !!row.queue_ahead,
   };
 }

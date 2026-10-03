@@ -22,6 +22,7 @@ import { embedPassages } from './embeddings.ts';
 import { HttpError } from '../_shared/http.ts';
 import { indexPassages } from './passages.ts';
 import { runCleanup } from './cleanup.ts';
+import { catalogPreview } from '../_shared/agentWrites.ts';
 import { checked, withBudget, boundedFetch as fetch, JOB_WORKER_MS } from '../_shared/budget.ts';
 
 // ponytail: buffer at most 25 MB inside the 150 MB edge worker; use PDF range requests for larger-file extraction.
@@ -167,15 +168,15 @@ async function providerSuggestion(admin: any, scheme: 'isbn' | 'doi', value: str
 async function fetchMetadata(admin: any, job: Job) {
   const { record_id: recordId, scheme, value } = job.payload;
   if (typeof recordId !== 'string' || (scheme !== 'isbn' && scheme !== 'doi') || typeof value !== 'string') throw new Error('invalid fetch_metadata payload');
-  const { data: record, error: recordError } = await admin.from('records').select('metadata').eq('id', recordId).single();
-  if (recordError || !record) throw new Error('record not found');
+  const { data: record, error: recordError } = await admin.from('records').select('id').eq('id', recordId).maybeSingle();
+  if (recordError) throw recordError;
+  if (!record) return { skipped: true, reason: 'Record no longer exists' };
   const suggestion = (await cachedSuggestion(admin, scheme, value)) ?? (await providerSuggestion(admin, scheme, value));
   if (!suggestion) return { found: false };
-  const metadata = (record.metadata ?? {}) as Record<string, unknown>;
-  const suggestions = (metadata.lookup_suggestions ?? {}) as Record<string, unknown>;
-  const { error } = await admin.from('records').update({ metadata: { ...metadata, lookup_suggestions: { ...suggestions, [`${scheme}:${value}`]: { data: suggestion, fetched_at: new Date().toISOString() } } } }).eq('id', recordId);
-  if (error) throw error;
-  return { found: true };
+  const payload = catalogPreview(suggestion, scheme, value);
+  if (/\uFFFD|\p{L}\?\p{L}/u.test(payload.work.title)) delete (payload.work as { title?: string }).title;
+  const applied = await checked(admin.rpc('apply_background_metadata', { p_user: job.user_id, p_record: recordId, p_payload: { ...payload, suggestion, record: { ...payload.record, metadata: { ...payload.record.metadata, source_url: suggestion.source_url, cover_url: suggestion.cover_url } } } }));
+  return { found: true, applied };
 }
 
 const MAX_COVER_BYTES = 5_000_000;
@@ -299,6 +300,10 @@ function jobClient(jobType: string) {
 export default {
   fetch: withSupabase({ auth: 'secret' }, withBudget(async (_req: Request, ctx: SupabaseContext) => {
     await checked(ctx.supabaseAdmin.rpc('expire_stale_jobs'));
+    // Retry automatic scheduling when queue pressure previously delayed a ready file.
+    const unindexed = await checked(ctx.supabaseAdmin.from('assets').select('id,user_id,record_assets!inner(record_id)')
+      .eq('processing_state', 'ready').in('file_format', ['pdf', 'epub']).is('deleting_at', null).is('metadata->passage_index', null).order('created_at').limit(20));
+    for (const asset of unindexed ?? []) await checked(ctx.supabaseAdmin.rpc('queue_passage_index', { p_asset: asset.id, p_owner: asset.user_id }));
     if (aiConfig().enabled) {
       try { const model = await embeddingModel(); await checked(ctx.supabaseAdmin.rpc('queue_embedding_jobs', { p_digest: model.digest })); }
       catch { /* An unavailable optional model must not stop other jobs. */ }
@@ -327,6 +332,9 @@ export default {
           results.push({ id: job.id, status: 'paused' });
           continue;
         }
+        // Log identifiers and error codes only: never file text, URLs or credentials.
+        console.error(JSON.stringify({ event: 'job_failure', id: job.id, type: job.job_type,
+          code: error instanceof HttpError ? error.code : error && typeof error === 'object' && 'code' in error ? String(error.code) : error instanceof Error ? error.name : 'unknown' }));
         // Logs/results contain neither provider URLs, book text nor credentials.
         const committed = await checked(ctx.supabaseAdmin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
         results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });

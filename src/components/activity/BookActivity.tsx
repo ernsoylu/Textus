@@ -9,7 +9,7 @@ const STEP: Record<StepState, { icon: string; color: string; label: string }> = 
 const STATUS_COLOR = { attention: 'text-red', progress: 'text-yellow', waiting: 'text-muted', done: 'text-green' };
 
 // One book's way through reading, metadata, full-text indexing and AI search.
-export function BookActivity({ row, busy, onControl }: Readonly<{ row: ActivityRow; busy: boolean; onControl: (action: 'retry' | 'cancel' | 'reindex', asset: string) => void }>) {
+export function BookActivity({ row, busy, onControl }: Readonly<{ row: ActivityRow; busy: boolean; onControl: (action: 'retry' | 'cancel' | 'reindex' | 'top', asset: string) => void }>) {
   const view = activityView(row);
   return (
     <li className="flex flex-col gap-2 rounded-8 border border-border p-4">
@@ -27,8 +27,9 @@ export function BookActivity({ row, busy, onControl }: Readonly<{ row: ActivityR
         <div className={`h-full ${view.group === 'attention' ? 'bg-red' : 'bg-green'}`} style={{ width: `${view.progress}%` }} />
       </div>
       <p className="text-small text-muted">{view.explanation}</p>
-      {(view.canRetry || view.canCancel || view.canReindex) && (
+      {(view.canRetry || view.canCancel || view.canReindex || view.canMoveToTop) && (
         <div className="flex gap-2">
+          {view.canMoveToTop && <Button variant="secondary" disabled={busy} onClick={() => onControl('top', row.asset_id)}>Move to top</Button>}
           {view.canRetry && <Button variant="secondary" disabled={busy} onClick={() => onControl('retry', row.asset_id)}>Retry</Button>}
           {view.canCancel && <Button variant="ghost" disabled={busy} onClick={() => onControl('cancel', row.asset_id)}>Cancel</Button>}
           {view.canReindex && (

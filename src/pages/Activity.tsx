@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { AiQueueControl } from '@/components/activity/AiQueueControl';
 import { BookActivity } from '@/components/activity/BookActivity';
 import { PassageSearch } from '@/components/activity/PassageSearch';
 import { SourceSearch } from '@/components/account/SourceSearch';
@@ -19,8 +20,9 @@ const GROUPS: { id: ActivityGroup; title: string; open: boolean }[] = [
 export function Activity() {
   const client = useQueryClient();
   const activity = useActivity();
-  const control = useMutation({ mutationFn: async ({ action, asset }: { action: 'retry' | 'cancel' | 'reindex' | 'backfill'; asset?: string }) => {
-    const { error } = await supabase.rpc('control_passage_index', { p_action: action, ...(asset ? { p_asset: asset } : {}) });
+  const control = useMutation({ mutationFn: async ({ action, asset }: { action: 'retry' | 'cancel' | 'reindex' | 'backfill' | 'top'; asset?: string }) => {
+    const { error } = action === 'top' ? await supabase.rpc('move_to_top', { p_asset: asset! })
+      : await supabase.rpc('control_passage_index', { p_action: action, ...(asset ? { p_asset: asset } : {}) });
     if (error) throw error;
     await Promise.all([client.invalidateQueries({ queryKey: ['activity'] }), client.invalidateQueries({ queryKey: ['jobs'] })]);
   } });
@@ -36,6 +38,7 @@ export function Activity() {
         <p className="font-serif text-title text-fg">Quietly at work.</p>
         <p className="text-body text-muted">Each book is read, catalogued, indexed for full-text search and prepared for AI search in the background.</p>
       </div>
+      <AiQueueControl />
       {activity.isLoading && <p className="text-body text-muted">Loading…</p>}
       {(activity.error || control.error) && <p role="alert" className="text-body text-red">Could not load or update activity.</p>}
       {activity.isSuccess && !rows.length && <p className="text-body text-muted">Nothing to process yet. Add a book and its progress shows up here.</p>}
@@ -49,7 +52,8 @@ export function Activity() {
         </div>
       )}
       {GROUPS.map((group) => {
-        const members = rows.filter(({ view }) => view.group === group.id);
+        // Queued books in the order the worker takes them; the rest keep newest first.
+        const members = rows.filter(({ view }) => view.group === group.id).sort((a, b) => (a.row.queue_ahead ?? Number.MAX_SAFE_INTEGER) - (b.row.queue_ahead ?? Number.MAX_SAFE_INTEGER));
         return members.length > 0 && (
           <details key={group.id} open={group.open} className="flex flex-col gap-2">
             <summary className="cursor-pointer text-heading text-fg">{group.title} <span className="text-muted">({members.length})</span></summary>

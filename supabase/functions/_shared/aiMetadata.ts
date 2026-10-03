@@ -15,7 +15,12 @@ const OUTPUT_SCHEMA = {
   properties: { title: { type: 'string' }, authors: { type: 'array', items: { type: 'string' }, maxItems: 12 }, year: { type: ['integer', 'null'] }, publisher: { type: ['string', 'null'] }, language: { type: ['string', 'null'] }, work_type: { type: 'string', enum: ['book', 'article', 'chapter', 'report', 'thesis', 'other'] }, evidence: { type: 'string' } },
 };
 export function validateAiMetadata(raw: unknown, frontMatter: string, model: { name: string; digest: string }) {
-  const result = Suggestion.parse(raw);
+  const parsed = Suggestion.safeParse(raw);
+  if (!parsed.success) {
+    console.error(JSON.stringify({ event: 'invalid_ai_metadata', issues: parsed.error.issues.map(({ path, code }) => ({ path, code })) }));
+    throw parsed.error;
+  }
+  const result = parsed.data;
   if (!frontMatter.includes(result.evidence)) throw new Error('Unverifiable metadata evidence');
   return { title: result.title, contributors: result.authors.map((name) => ({ name, role: 'author' as const })),
     ...(result.year ? { publication_date: `${result.year}-01-01`, publication_date_precision: 'year' as const } : {}),

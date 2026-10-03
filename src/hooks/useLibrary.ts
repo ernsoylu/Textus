@@ -80,6 +80,7 @@ async function fetchPage({ filters = {}, ids, limit, offset }: PageParams): Prom
 export function useLibrary(filters: LibraryFilters) {
   return useInfiniteQuery({
     queryKey: ['works', 'library', filters],
+    refetchInterval: 10_000,
     initialPageParam: 0,
     placeholderData: keepPreviousData,
     queryFn: ({ pageParam }) => fetchPage({ filters, limit: PAGE_SIZE, offset: pageParam }),
@@ -94,6 +95,7 @@ export function useLibrary(filters: LibraryFilters) {
 export function useLibraryItems(opts: { limit: number; ids?: string[]; enabled?: boolean; filters?: Partial<LibraryFilters> }) {
   return useQuery({
     queryKey: ['works', 'library', 'items', opts.limit, opts.ids, opts.filters],
+    refetchInterval: 10_000,
     enabled: opts.enabled ?? true,
     queryFn: async () => (await fetchPage({ ids: opts.ids, filters: opts.filters, limit: opts.limit, offset: 0 })).items,
   });

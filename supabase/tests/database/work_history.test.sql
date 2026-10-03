@@ -92,7 +92,7 @@ INSERT INTO public.record_assets(record_id,asset_id,role) VALUES('b1b1b1b1-2000-
 SELECT is((SELECT summary FROM public.work_events WHERE event='file.added' ORDER BY id DESC LIMIT 1),'Added file (PDF, 2048 bytes)','adding a file is logged');
 UPDATE public.assets SET metadata=jsonb_set(metadata,'{passage_index}','{"version":"v","status":"indexing","done":2,"total":3,"passages":4}') WHERE id='b1b1b1b1-3000-0000-0000-000000000001';
 UPDATE public.assets SET metadata=jsonb_set(metadata,'{passage_index}','{"version":"v","status":"complete","done":3,"total":3,"passages":6}') WHERE id='b1b1b1b1-3000-0000-0000-000000000001';
-SELECT is((SELECT string_agg(summary,' / ' ORDER BY id) FROM public.work_events WHERE event LIKE 'index.%'),'Full text indexed: 3 pages or sections, 6 passages','checkpoints are progress; completion is history');
+SELECT is((SELECT string_agg(summary,' / ' ORDER BY id) FROM public.work_events WHERE event LIKE 'index.%' AND asset_id='b1b1b1b1-3000-0000-0000-000000000001'),'Full text indexed: 3 pages or sections, 6 passages','checkpoints are progress; completion is history');
 -- History outlives the book; it goes only with the account.
 DELETE FROM public.works WHERE id='b1b1b1b1-1000-0000-0000-000000000001';
 SELECT ok((SELECT count(*) FROM public.work_events WHERE work_id='b1b1b1b1-1000-0000-0000-000000000001' AND event='work.deleted')=1

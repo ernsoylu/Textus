@@ -1392,7 +1392,7 @@ const { data, error } = await supabase.storage.from('documents').createSignedUrl
 
 ### 7.5 Worker schedule (environment-specific, not in migrations)
 
-The job worker is triggered by `pg_cron` through `pg_net` every minute by default; app102 runs it every 15 seconds (`cron.alter_job(<id>, schedule := '15 seconds')`) so up to eight claims overlap; embedding checkpoints hold up to 256 vectors (migration `20261001000036`). `claim_jobs()` hands overlapping workers different jobs, and same-priority job types take turns (migration `20261001000031`), so passage indexing cannot starve embedding. The service role key is read from Supabase Vault, never hard-coded:
+The job worker is triggered by `pg_cron` through `pg_net` every minute by default; app102 runs it every 15 seconds (`cron.alter_job(<id>, schedule := '15 seconds')`) so up to eight claims overlap; embedding checkpoints hold up to 256 vectors (migration `20261001000036`). `claim_jobs()` caps live worker leases at 16 across the instance (migration `20261002000005`), leaving the backlog queued, and hands overlapping workers different jobs, and all non-cleanup job types take turns (migration `20261002000006`), so an upload backlog cannot starve indexing or embedding. An owner who pauses the AI queue on Activity (`ai_settings.ai_queue_paused`, migration `20261002000002`) has their `embed_passages` and `extract_metadata_ai` jobs skipped until they start it again, so their questions get the GPU lease during a large re-embedding; a run already holding the lease finishes its batch. The cron HTTP timeout on app102 is 110 seconds (`timeout_milliseconds := 110000`), exceeding the worker's 100-second budget so long batches return their completion status. The service role key is read from Supabase Vault, never hard-coded:
 
 ```sql
 SELECT cron.schedule('job-worker', '* * * * *', $$
@@ -1400,7 +1400,8 @@ SELECT cron.schedule('job-worker', '* * * * *', $$
         url := '<SUPABASE_URL>/functions/v1/job-worker',
         headers := jsonb_build_object(
             'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')
-        )
+        ),
+        timeout_milliseconds := 110000
     );
 $$);
 ```
@@ -1423,6 +1424,8 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
 CREATE TABLE ai_settings (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     generation_model TEXT CHECK (generation_model IS NULL OR length(generation_model) BETWEEN 1 AND 200),
+    -- Activity's Pause AI queue: claim_jobs() leaves this owner's embed_passages/extract_metadata_ai queued (migration 20261002000002).
+    ai_queue_paused BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 -- RLS: SELECT/INSERT/UPDATE/DELETE own ((SELECT auth.uid()) = user_id).
@@ -1504,7 +1507,7 @@ Rows come only from `SECURITY DEFINER` triggers on works, records (including AI 
 
 `private.event_actor()` attributes each change: owner and agent JWTs identify themselves; service-role requests from Edge Functions state whom they act for in `x-textus-actor` (`user`, `agent:<token id>`, `job:<type>`), which owner and agent JWTs cannot override; direct SQL is recorded as `textus`/`database`. Uploads send `user` or the agent, agent writes send the token, and `job-worker` gives each job a client labelled with its type.
 
-`activity_overview()` (migration `20261001000038`, invoker rights) returns one row per primary book file: catalog title and byline, read/metadata/index/embedding state, indexing queue position and pending or failed metadata steps. Embedding checkpoints record `embedded`/`total` per file. The Activity page groups books into needs attention, in progress, waiting and done, with per-step progress and explanations; the book page shows the history with actor filters and old/new values.
+`activity_overview()` (migration `20261001000038`, invoker rights) returns one row per primary book file: catalog title and byline, read/metadata/index/embedding state, queue position and pending or failed metadata steps. Since migration `20261002000003`, `queue_ahead` counts books ahead across indexing and AI work in claim order, and owners can call `move_to_top(asset)` (owner sessions only): it stamps the book's queued or running jobs with `jobs.prioritized_at`, which `claim_jobs()` serves first after cleanup, newest stamp first; continuations keep the stamp. The Waiting list is sorted by queue position. Embedding checkpoints record `embedded`/`total` per file. The Activity page groups books into needs attention, in progress, waiting and done, with per-step progress and explanations; the book page shows the history with actor filters and old/new values.
 
 ## 8. Edge Functions
 
@@ -1595,7 +1598,7 @@ Invoked by `pg_cron` ([§7.5](#75-worker-schedule-environment-specific-not-in-mi
 |----------|------|
 | `extract_text` | Extracts text from PDF/EPUB, stores stats in `assets.metadata`, and feeds search. Scans the first 8 pages for ISBN/DOI and the file's own metadata (PDF Info, EPUB OPF) for credit suggestions (§6.3), then queues `fetch_metadata` when an identifier is found |
 | `generate_thumbnail` | Worker records a client-rendering deferral. On first PDF/DjVu page render without an existing cover, the reader uploads a PNG through the normal upload flow with role `cover`. |
-| `fetch_metadata` | Runs a lookup for a record's primary identifier and stores the result as a suggestion |
+| `fetch_metadata` | Looks up a record's primary identifier, stores a provider suggestion and imports unlocked catalog fields, credits, identifier and cover in the background; no book page is needed (migration `20261003000001`). |
 | `process_cover` | Downloads a provider cover URL (allowlisted host), stores it as a `cover` asset |
 | `export_data` | Produces a bulk export file |
 | `cleanup` | Deletes staging files older than 24 h and assets no longer referenced by any `record_assets` row (row + object) |
@@ -1981,13 +1984,13 @@ The source definition was adopted with these corrections. Each fixes an inconsis
 
 ### M6.2 implemented index contract
 
-`asset_passages` and the owner/asset composite foreign key are live in migrations. FTS uses `simple` to retain non-English words; embeddings follow in M6.5. `search_passages(query, limit, work_ids)` and `passage_coverage(work_ids)` are security-invoker RPCs. `control_passage_index(action, asset)` requires an owner session and supports backfill (100 files), retry from the last checkpoint, cancellation and a fresh-version reindex. The service-only `commit_passage_batch` atomically inserts deterministic ordinals, writes progress and continues/finishes the current fenced job. Automatic extraction scheduling is replay-safe; extraction metadata merges preserve newer checkpoints. Controls and checkpoints acquire owner locks before job/asset locks.
+`asset_passages` and the owner/asset composite foreign key are live in migrations. FTS uses `simple` to retain non-English words; embeddings follow in M6.5. `search_passages(query, limit, work_ids)` and `passage_coverage(work_ids)` are security-invoker RPCs. `control_passage_index(action, asset)` requires an owner session and supports backfill (100 files), retry from the last checkpoint, cancellation and a fresh-version reindex. The service-only `commit_passage_batch` atomically inserts deterministic ordinals, writes progress and continues/finishes the current fenced job. Automatic extraction scheduling is replay-safe; extraction metadata merges preserve newer checkpoints. Controls and checkpoints acquire owner locks before job/asset locks. Automatic passage scheduling waits at the 500-job limit without failing extraction; the worker schedules ready unindexed files as capacity returns. Activity retry also requeues failed extraction jobs without discarding existing passage checkpoints (migration `20261002000004`).
 
 PDF indexing uses signed HEAD/range requests with automatic fetching/streaming disabled and at most four ranges in flight: up to 96 pages and 1,024 passages per invocation within half the run budget, reading at most the (memory-bounded) file once so damaged xrefs can be repaired. EPUB indexing follows the container/OPF spine, up to 48 sections per batch, actual OPF/body section-start CFIs, 2 MB per inflated entry, and input/markup limits that scale with `JOB_WORKER_MEMORY_MB`; plain XHTML DOCTYPEs are accepted, entity declarations are refused. Oversized/encrypted or limited input reports not-indexable/partial coverage, retaining any completed passages; no text is distinct from parsing failure. Chunks preserve word/Unicode boundaries at approximately 2,000 characters. Per-owner quota: 250,000 passages and 500 active jobs. Section CFIs locate the section start; they do not pretend to identify an exact quoted character. Activity shows coverage, progress, reasons and controls, with FTS results linked to the actual `/library/:workId/records/:recordId/assets/:assetId/read` route.
 
 ### M6.3 implemented metadata and catalog contracts
 
-`extract_metadata_ai` is queued only when AI is enabled and file front matter has no identifier. It uses the owner’s approved model, the global GPU lease, a UTF-8 context budget and a strict schema. Evidence is constrained to actual short front-matter substrings and checked again after generation; URLs and identifiers are excluded from model output. The service-only `store_ai_metadata_suggestion` rechecks owner/record/asset links and merges a private `llm:<model>` suggestion with model digest and warning. Disabled, unreachable, missing/busy models and timeouts defer AI jobs five minutes without spending an attempt. Stored AI suggestions are explicitly excluded from automatic metadata import. Review starts with every field/credit unselected.
+`extract_metadata_ai` is queued only when AI is enabled and file front matter has no identifier. It uses the owner’s approved model, the global GPU lease, a UTF-8 context budget and a strict schema. Evidence is constrained to actual short front-matter substrings and checked again after generation; URLs and identifiers are excluded from model output. The service-only `store_ai_metadata_suggestion` rechecks owner/record/asset links and merges a private `llm:<model>` suggestion with model digest and warning. Disabled, unreachable, missing/busy models and timeouts defer AI jobs five minutes without spending an attempt. Stored AI suggestions are explicitly excluded from automatic metadata import. Provider imports run server-side through service-only `apply_background_metadata`: owner checks, filename placeholders, live field/credit locks, authority IDs and same-identifier upload folding are preserved; the catalog transaction is replay-safe and library/detail queries refresh every ten seconds. Review starts with every field/credit unselected.
 
 `metadata-lookup` also accepts `{action:'search-title',recordId,title,author,consent:true}` (200-character title/author limits). It checks the owned record before sending only those two fields to fixed Open Library/Crossref endpoints, with at most three candidates each. Nothing is applied or disclosed automatically; provider identifiers are only offered for explicit saving. Bounded bodies and per-owner rates apply to all metadata actions.
 
