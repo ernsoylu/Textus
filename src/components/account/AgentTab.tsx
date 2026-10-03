@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase, supabaseUrl } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { newSecretToken } from '@/lib/tokens';
 export function AgentTab() {
   const { session } = useAuth();
   const client = useQueryClient();
@@ -20,11 +21,8 @@ export function AgentTab() {
     return data;
   } });
   const create = useMutation({ mutationFn: async () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const token = 'tx_' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-    const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-    const { error } = await supabase.from('agent_tokens').insert({ user_id: session!.user.id, name: name.trim(), token_hash: hash, token_prefix: token.slice(0, 9), scope, expires_at: days ? new Date(Date.now() + days * 86400000).toISOString() : null });
+    const { token, hash, prefix } = await newSecretToken('tx_');
+    const { error } = await supabase.from('agent_tokens').insert({ user_id: session!.user.id, name: name.trim(), token_hash: hash, token_prefix: prefix, scope, expires_at: days ? new Date(Date.now() + days * 86400000).toISOString() : null });
     if (error) throw error;
     setSecret(token); setCopyMessage('');
     await client.invalidateQueries({ queryKey: ['agent-tokens'] });

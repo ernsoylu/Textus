@@ -271,6 +271,18 @@ Functions use [`@supabase/server`](https://github.com/supabase/server)'s `withSu
 
 Provider configuration (`CROSSREF_MAILTO`, `SEMANTIC_SCHOLAR_API_KEY`, `GOOGLE_BOOKS_API_KEY`, `FIRECRAWL_API_KEY`) goes in the Supabase project's `.env` and the functions service environment.
 
+### 3a. Remote job workers (optional)
+
+Text extraction, passage indexing, metadata lookup and cover jobs can run on other hosts in parallel. Deploy `worker-session` with the other functions and exempt it from JWT verification in `volumes/functions/main/index.ts` as for `opds` and `mcp`. Then, signed in as an instance admin (the oldest account; add others with `INSERT INTO private.instance_admins(user_id) VALUES ('<uuid>')`), open Settings → Workers, register a worker and run the printed command on the worker host:
+
+```bash
+docker build -t textus-worker -f deploy/worker.Dockerfile https://github.com/ernsoylu/Textus.git#main
+docker run -d --name textus-worker --restart unless-stopped \
+  -e TEXTUS_URL=https://<api-host> -e TEXTUS_WORKER_TOKEN=tw_... textus-worker
+```
+
+`TEXTUS_URL` must reach the API gateway (`/functions`, `/rest`, `/storage`). Optional: `WORKER_CONCURRENCY` (default 2), `WORKER_JOB_TYPES` (comma-separated), `AI_ENABLED=true` + `OLLAMA_URL` (and the other `OLLAMA_*` variables) to run AI jobs, and provider keys as for Edge Functions. Revoking the worker in Settings stops it within 10 minutes.
+
 ### 4. Frontend
 
 Vite inlines `VITE_*` variables at **build time**, so they are build arguments, not runtime environment. The provided image serves the SPA with nginx and **proxies `/auth`, `/rest`, `/storage` and `/functions` to the Supabase gateway over Docker's internal network**, so the browser only talks to one origin and API calls skip the public gateway. Run it on the same host as Supabase and join Supabase's compose network:

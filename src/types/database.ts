@@ -11,7 +11,7 @@ export type Database = {
     Tables: {
       agent_actions: {
         Row: {
-          arguments: Json
+          arguments: NonNullable<Json>
           created_at: string
           expires_at: string
           id: string
@@ -24,7 +24,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          arguments: Json
+          arguments: NonNullable<Json>
           created_at?: string
           expires_at?: string
           id?: string
@@ -37,7 +37,7 @@ export type Database = {
           user_id: string
         }
         Update: {
-          arguments?: Json
+          arguments?: NonNullable<Json>
           created_at?: string
           expires_at?: string
           id?: string
@@ -53,6 +53,7 @@ export type Database = {
           {
             foreignKeyName: "agent_actions_token_id_fkey"
             columns: ["token_id"]
+            isOneToOne: false
             referencedRelation: "agent_tokens"
             referencedColumns: ["id"]
           },
@@ -132,12 +133,14 @@ export type Database = {
           {
             foreignKeyName: "annotation_tags_annotation_id_fkey"
             columns: ["annotation_id"]
+            isOneToOne: false
             referencedRelation: "annotations"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "annotation_tags_tag_id_fkey"
             columns: ["tag_id"]
+            isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
@@ -145,7 +148,7 @@ export type Database = {
       }
       annotations: {
         Row: {
-          anchor_data: Json
+          anchor_data: NonNullable<Json>
           anchor_type: string
           asset_id: string
           color: string | null
@@ -158,7 +161,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          anchor_data: Json
+          anchor_data: NonNullable<Json>
           anchor_type: string
           asset_id: string
           color?: string | null
@@ -171,7 +174,7 @@ export type Database = {
           user_id: string
         }
         Update: {
-          anchor_data?: Json
+          anchor_data?: NonNullable<Json>
           anchor_type?: string
           asset_id?: string
           color?: string | null
@@ -187,12 +190,14 @@ export type Database = {
           {
             foreignKeyName: "annotations_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "annotations_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -225,7 +230,7 @@ export type Database = {
           ordinal: number
           page?: number | null
           page_label?: string | null
-          search_vector?: unknown
+          search_vector?: never
           section?: number | null
           user_id: string
         }
@@ -240,7 +245,7 @@ export type Database = {
           ordinal?: number
           page?: number | null
           page_label?: string | null
-          search_vector?: unknown
+          search_vector?: never
           section?: number | null
           user_id?: string
         }
@@ -248,6 +253,7 @@ export type Database = {
           {
             foreignKeyName: "asset_passages_asset_id_user_id_fkey"
             columns: ["asset_id", "user_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id", "user_id"]
           },
@@ -265,20 +271,21 @@ export type Database = {
           asset_id: string
           content: string
           created_at?: string | null
-          search_vector?: unknown
+          search_vector?: never
           user_id: string
         }
         Update: {
           asset_id?: string
           content?: string
           created_at?: string | null
-          search_vector?: unknown
+          search_vector?: never
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "asset_texts_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: true
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
@@ -339,22 +346,22 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          payload: Json
-          result: Json
+          payload: NonNullable<Json>
+          result: NonNullable<Json>
           user_id: string
         }
         Insert: {
           created_at?: string
           id: string
-          payload: Json
-          result: Json
+          payload: NonNullable<Json>
+          result: NonNullable<Json>
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          payload?: Json
-          result?: Json
+          payload?: NonNullable<Json>
+          result?: NonNullable<Json>
           user_id?: string
         }
         Relationships: []
@@ -382,12 +389,14 @@ export type Database = {
           {
             foreignKeyName: "collection_records_collection_id_fkey"
             columns: ["collection_id"]
+            isOneToOne: false
             referencedRelation: "collections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "collection_records_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -410,12 +419,14 @@ export type Database = {
           {
             foreignKeyName: "collection_tags_collection_id_fkey"
             columns: ["collection_id"]
+            isOneToOne: false
             referencedRelation: "collections"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "collection_tags_tag_id_fkey"
             columns: ["tag_id"]
+            isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
@@ -453,6 +464,7 @@ export type Database = {
           {
             foreignKeyName: "collections_cover_asset_id_fkey"
             columns: ["cover_asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
@@ -481,12 +493,14 @@ export type Database = {
           {
             foreignKeyName: "contributor_distinctions_contributor_a_fkey"
             columns: ["contributor_a"]
+            isOneToOne: false
             referencedRelation: "contributors"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contributor_distinctions_contributor_b_fkey"
             columns: ["contributor_b"]
+            isOneToOne: false
             referencedRelation: "contributors"
             referencedColumns: ["id"]
           },
@@ -518,6 +532,7 @@ export type Database = {
           {
             foreignKeyName: "contributor_identifiers_contributor_id_fkey"
             columns: ["contributor_id"]
+            isOneToOne: false
             referencedRelation: "contributors"
             referencedColumns: ["id"]
           },
@@ -552,6 +567,7 @@ export type Database = {
           {
             foreignKeyName: "contributor_names_contributor_id_fkey"
             columns: ["contributor_id"]
+            isOneToOne: false
             referencedRelation: "contributors"
             referencedColumns: ["id"]
           },
@@ -646,6 +662,7 @@ export type Database = {
           {
             foreignKeyName: "identifiers_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -664,12 +681,13 @@ export type Database = {
           last_error: string | null
           lease_expires_at: string | null
           max_attempts: number | null
-          payload: Json
+          payload: NonNullable<Json>
           prioritized_at: string | null
           result: Json | null
           started_at: string | null
           status: string
           user_id: string | null
+          worker_id: string | null
         }
         Insert: {
           attempts?: number | null
@@ -683,12 +701,13 @@ export type Database = {
           last_error?: string | null
           lease_expires_at?: string | null
           max_attempts?: number | null
-          payload: Json
+          payload: NonNullable<Json>
           prioritized_at?: string | null
           result?: Json | null
           started_at?: string | null
           status?: string
           user_id?: string | null
+          worker_id?: string | null
         }
         Update: {
           attempts?: number | null
@@ -702,14 +721,23 @@ export type Database = {
           last_error?: string | null
           lease_expires_at?: string | null
           max_attempts?: number | null
-          payload?: Json
+          payload?: NonNullable<Json>
           prioritized_at?: string | null
           result?: Json | null
           started_at?: string | null
           status?: string
           user_id?: string | null
+          worker_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "jobs_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       metadata_cache: {
         Row: {
@@ -719,7 +747,7 @@ export type Database = {
           identifier_scheme: string
           identifier_value: string
           provider: string
-          response_data: Json
+          response_data: NonNullable<Json>
         }
         Insert: {
           expires_at?: string | null
@@ -728,7 +756,7 @@ export type Database = {
           identifier_scheme: string
           identifier_value: string
           provider: string
-          response_data: Json
+          response_data: NonNullable<Json>
         }
         Update: {
           expires_at?: string | null
@@ -737,7 +765,7 @@ export type Database = {
           identifier_scheme?: string
           identifier_value?: string
           provider?: string
-          response_data?: Json
+          response_data?: NonNullable<Json>
         }
         Relationships: []
       }
@@ -785,12 +813,14 @@ export type Database = {
           {
             foreignKeyName: "reading_states_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "reading_states_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -819,12 +849,14 @@ export type Database = {
           {
             foreignKeyName: "record_assets_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "record_assets_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -862,12 +894,14 @@ export type Database = {
           {
             foreignKeyName: "record_contributors_contributor_id_fkey"
             columns: ["contributor_id"]
+            isOneToOne: false
             referencedRelation: "contributors"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "record_contributors_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -890,12 +924,14 @@ export type Database = {
           {
             foreignKeyName: "record_tags_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "record_tags_tag_id_fkey"
             columns: ["tag_id"]
+            isOneToOne: false
             referencedRelation: "tags"
             referencedColumns: ["id"]
           },
@@ -936,7 +972,7 @@ export type Database = {
           publication_date_precision?: string | null
           publisher?: string | null
           record_type: string
-          search_vector?: unknown
+          search_vector?: never
           title?: string | null
           updated_at?: string | null
           volume?: string | null
@@ -956,7 +992,7 @@ export type Database = {
           publication_date_precision?: string | null
           publisher?: string | null
           record_type?: string
-          search_vector?: unknown
+          search_vector?: never
           title?: string | null
           updated_at?: string | null
           volume?: string | null
@@ -966,12 +1002,14 @@ export type Database = {
           {
             foreignKeyName: "records_container_record_id_fkey"
             columns: ["container_record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "records_work_id_fkey"
             columns: ["work_id"]
+            isOneToOne: false
             referencedRelation: "works"
             referencedColumns: ["id"]
           },
@@ -980,21 +1018,21 @@ export type Database = {
       saved_searches: {
         Row: {
           created_at: string | null
-          filters: Json
+          filters: NonNullable<Json>
           id: string
           name: string
           user_id: string
         }
         Insert: {
           created_at?: string | null
-          filters?: Json
+          filters?: NonNullable<Json>
           id?: string
           name: string
           user_id: string
         }
         Update: {
           created_at?: string | null
-          filters?: Json
+          filters?: NonNullable<Json>
           id?: string
           name?: string
           user_id?: string
@@ -1030,6 +1068,7 @@ export type Database = {
           {
             foreignKeyName: "storage_deletions_asset_id_fkey"
             columns: ["asset_id"]
+            isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
@@ -1062,7 +1101,7 @@ export type Database = {
       upload_attempts: {
         Row: {
           id: string
-          intent: Json
+          intent: NonNullable<Json>
           record_id: string
           request: Json | null
           result: Json | null
@@ -1071,7 +1110,7 @@ export type Database = {
         }
         Insert: {
           id: string
-          intent: Json
+          intent: NonNullable<Json>
           record_id: string
           request?: Json | null
           result?: Json | null
@@ -1080,7 +1119,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          intent?: Json
+          intent?: NonNullable<Json>
           record_id?: string
           request?: Json | null
           result?: Json | null
@@ -1091,6 +1130,7 @@ export type Database = {
           {
             foreignKeyName: "upload_attempts_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
             referencedRelation: "records"
             referencedColumns: ["id"]
           },
@@ -1138,13 +1178,43 @@ export type Database = {
         }
         Relationships: []
       }
+      workers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          last_seen_at: string | null
+          name: string
+          token_hash: string
+          token_prefix: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_seen_at?: string | null
+          name: string
+          token_hash: string
+          token_prefix: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_seen_at?: string | null
+          name?: string
+          token_hash?: string
+          token_prefix?: string
+        }
+        Relationships: []
+      }
       works: {
         Row: {
           abstract: string | null
           created_at: string | null
           id: string
           language: string | null
-          metadata: Json
+          metadata: NonNullable<Json>
           search_vector: unknown
           subtitle: string | null
           title: string
@@ -1158,8 +1228,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           language?: string | null
-          metadata?: Json
-          search_vector?: unknown
+          metadata?: NonNullable<Json>
+          search_vector?: never
           subtitle?: string | null
           title: string
           updated_at?: string | null
@@ -1172,8 +1242,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           language?: string | null
-          metadata?: Json
-          search_vector?: unknown
+          metadata?: NonNullable<Json>
+          search_vector?: never
           subtitle?: string | null
           title?: string
           updated_at?: string | null
@@ -1188,10 +1258,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      acquire_ai_lease: { Args: never; Returns: string }
-      active_job_count: { Args: never; Returns: number }
+      acquire_ai_lease: { Args: Record<PropertyKey, never>; Returns: string }
+      active_job_count: { Args: Record<PropertyKey, never>; Returns: number }
       activity_overview: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
           added_at: string
           asset_id: string
@@ -1235,7 +1305,12 @@ export type Database = {
         Returns: boolean
       }
       claim_jobs: {
-        Args: { p_lease?: string; p_limit?: number }
+        Args: {
+          p_lease?: string
+          p_limit?: number
+          p_types?: string[]
+          p_worker?: string
+        }
         Returns: {
           attempts: number | null
           available_at: string
@@ -1248,12 +1323,13 @@ export type Database = {
           last_error: string | null
           lease_expires_at: string | null
           max_attempts: number | null
-          payload: Json
+          payload: NonNullable<Json>
           prioritized_at: string | null
           result: Json | null
           started_at: string | null
           status: string
           user_id: string | null
+          worker_id: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -1341,7 +1417,7 @@ export type Database = {
         Args: { p_action: string; p_token: string }
         Returns: Json
       }
-      expire_stale_jobs: { Args: never; Returns: number }
+      expire_stale_jobs: { Args: Record<PropertyKey, never>; Returns: number }
       find_duplicate_works: {
         Args: { p_work_id: string }
         Returns: {
@@ -1388,8 +1464,9 @@ export type Database = {
           year: number
         }[]
       }
+      is_instance_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       library_languages: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
           language: string
         }[]
@@ -1450,13 +1527,16 @@ export type Database = {
         Returns: Json
       }
       possible_duplicate_contributors: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
           contributor_a: string
           contributor_b: string
         }[]
       }
-      prune_operational_history: { Args: never; Returns: undefined }
+      prune_operational_history: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       queue_embedding_jobs: { Args: { p_digest: string }; Returns: number }
       queue_passage_index: {
         Args: { p_asset: string; p_owner: string }
@@ -1520,7 +1600,7 @@ export type Database = {
         Args: { p_credits: Json; p_record_id: string }
         Returns: undefined
       }
-      show_limit: { Args: never; Returns: number }
+      show_limit: { Args: Record<PropertyKey, never>; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       store_ai_metadata_suggestion: {
         Args: {
@@ -1586,8 +1666,7 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1611,8 +1690,7 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1636,8 +1714,7 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
   EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }

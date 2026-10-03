@@ -421,3 +421,6 @@ verify_jwt = false
 
 [functions.mcp]
 verify_jwt = false
+
+[functions.worker-session]
+verify_jwt = false
