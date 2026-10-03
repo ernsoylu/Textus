@@ -50,6 +50,7 @@ export function useWork(workId: string | undefined) {
   return useQuery({
     queryKey: ['works', workId],
     enabled: !!workId,
+    refetchInterval: 10_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('works')

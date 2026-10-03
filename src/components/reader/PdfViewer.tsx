@@ -59,6 +59,8 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, onS
   cb.current = { onProgress, onFirstPageRendered, initialPage };
   const [prefs, updatePrefs] = useReaderPrefs();
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
+  // Page views exist only after pagesinit; pdf.js layout setters (spread mode) crash on a document without them.
+  const [pagesReady, setPagesReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(initialPage);
   const [pageLabel, setPageLabel] = useState<string | null>(null);
@@ -92,6 +94,7 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, onS
       cb.current.onProgress?.({ percentage: (pageNumber / viewer.pagesCount) * 100, page: pageNumber, position: { page: pageNumber } });
     };
     bus.on('pagesinit', () => {
+      setPagesReady(true);
       viewer.currentScaleValue = 'page-width';
       if (cb.current.initialPage > 1) viewer.currentPageNumber = cb.current.initialPage;
       // pdf.js only announces page changes, so the page the document opens on is reported here.
@@ -160,13 +163,14 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, onS
       void task?.destroy();
       pdf.current = null;
       setDoc(null);
+      setPagesReady(false);
       setOverlays(new Map());
     };
   }, [storagePath]);
 
   useEffect(() => {
-    if (doc && pdf.current) pdf.current.viewer.spreadMode = prefs.twoPage ? SpreadMode.ODD : SpreadMode.NONE;
-  }, [doc, prefs.twoPage]);
+    if (pagesReady && pdf.current) pdf.current.viewer.spreadMode = prefs.twoPage ? SpreadMode.ODD : SpreadMode.NONE;
+  }, [pagesReady, prefs.twoPage]);
 
   useEffect(() => setPageDraft(pageLabel ?? String(page)), [page, pageLabel]);
 
