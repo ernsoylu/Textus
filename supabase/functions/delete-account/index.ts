@@ -6,6 +6,7 @@
 // The service role is needed for auth.admin.deleteUser() and to remove other users' storage prefixes.
 import { withSupabase } from '@supabase/server';
 import { z } from 'zod';
+import { jsonBody } from '../_shared/limits.ts';
 import { removeUserObjects } from '../job-worker/cleanup.ts';
 
 const RequestSchema = z.object({ confirm: z.literal('DELETE') });
@@ -13,7 +14,7 @@ const RequestSchema = z.object({ confirm: z.literal('DELETE') });
 export default {
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
     if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-    const parsed = RequestSchema.safeParse(await req.json().catch(() => null));
+    const parsed = RequestSchema.safeParse(await jsonBody(req).catch(() => null));
     if (!parsed.success) return Response.json({ error: 'confirmation_required' }, { status: 400 });
 
     const userId = ctx.userClaims!.id;

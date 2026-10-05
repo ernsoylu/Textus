@@ -3,6 +3,7 @@
 // come back missing — no separate ownership check, and no service-role access at all.
 import { withSupabase } from '@supabase/server';
 import { z } from 'zod';
+import { jsonBody } from '../_shared/limits.ts';
 import { buildSource, EXPORT_FORMATS, type RecordRowForCitation } from '../_shared/citations.ts';
 
 const MAX_RECORDS = 500;
@@ -20,7 +21,7 @@ const SELECT = `id, title, record_type, publication_date, publication_date_preci
 
 export default {
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
-    const parsed = RequestSchema.safeParse(await req.json().catch(() => null));
+    const parsed = RequestSchema.safeParse(await jsonBody(req).catch(() => null));
     if (!parsed.success) return Response.json({ error: 'invalid_request' }, { status: 400 });
     const { recordIds, format } = parsed.data;
 
