@@ -69,7 +69,9 @@ export function embedPrompt(modelName: string, text: string, query: boolean) {
 }
 // Measured on monster's GTX 1050 Ti (2026-10-02): 3.3 passages/s in calls of 4, 5.3/s in calls of 16, 6.2/s in
 // calls of 32. 16 keeps one call near 3 s, so an interactive question never waits long for the GPU.
-export const EMBED_BATCH = { count: 16, bytes: 32_000, itemBytes: 8_000 };
+// A private-GPU worker sets EMBED_BATCH_COUNT (A6000, 2026-10-03: 34/s at 16, 74/s at 128, 86/s at 256).
+const EMBED_COUNT = Math.min(256, Math.max(1, Number(Deno.env.get('EMBED_BATCH_COUNT')) || 16));
+export const EMBED_BATCH = { count: EMBED_COUNT, bytes: EMBED_COUNT * 2_000, itemBytes: 8_000 };
 export async function embedText(model: LocalModel, text: string[], query = false) {
   const sizes = text.map((t) => new TextEncoder().encode(t).length);
   if (!text.length || text.length > EMBED_BATCH.count || sizes.some((n) => n > EMBED_BATCH.itemBytes) || sizes.reduce((a, b) => a + b, 0) > EMBED_BATCH.bytes) throw new HttpError('context_budget_exceeded');
