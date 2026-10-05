@@ -1,0 +1,12 @@
+# Snyk policy. https://docs.snyk.io/manage-risk/policies/the-.snyk-file
+version: v1.25.1
+ignore:
+  SNYK-JS-ZOD-20510278:
+    - '*':
+        reason: >-
+          No fixed zod release exists (CVE-2023-54404, all versions). Every Edge Function reads
+          request bodies through jsonBody()'s 32 KB cap and request array schemas set .max(),
+          so untrusted arrays stay small. Remove when zod ships a fix.
+        expires: 2026-11-05T00:00:00.000Z
+        created: 2026-10-05T21:30:00.000Z
+patch: {}
