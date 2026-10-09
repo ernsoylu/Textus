@@ -2,15 +2,15 @@
 
 [Figma design file](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3) · [Complete screen index](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=29-2)
 
-Designed from `ARCHITECTURE_AND_REQUIREMENTS.md`, `README.md`, and `CLAUDE.md` on 2026-09-28. This document indexes the original editable Figma design. Textus now has a working frontend; implementation notes below reflect the 2026-09-30 reader and library changes. The linked Figma frames have not been updated to match those changes.
+Updated from the implemented frontend on 2026-10-09 (code revision `a12d152`). All original desktop/mobile frames have been refreshed, with their IDs preserved, and missing implemented states added. The frontend is the source of truth for behavior; Figma uses editable layers and illustrative content.
 
-**210 screen states:** 44 pages and 61 dialogs, each in desktop and mobile layouts. Three Figma pages organize the guide/components, desktop designs, and mobile designs. Main journeys have prototype links; the index links to every state.
+**252 screen states:** 126 desktop/mobile pairs, comprising 246 active states and six retired references. The original 210 states are retained, with 42 additional states. Public signup, duplicate confirmation and add-edition flows are marked retired. Former dialog states now show inline forms where the code implements them. Three Figma pages organize the guide/components, desktop designs, and mobile designs. Main journeys have prototype links; the index links to every state.
 
 ## Visual system
 
-- **Default:** [Everforest Dark Medium](https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim), using the upstream palette.
+- **Default:** [Everforest Dark Medium](https://github.com/sainnhe/everforest/blob/master/autoload/everforest.vim), using the upstream palette with the frontend’s action-color override.
 - Background `#2D353B`; navigation `#232A2E`; surface `#343F44`; elevated surface `#3D484D`.
-- Text `#D3C6AA`; secondary text `#9DA9A0` where contrast permits; action `#A7C080`; warning `#DBBC7F`; destructive `#E67E80`.
+- Text `#D3C6AA`; secondary text `#9DA9A0` where contrast permits; action `#B4CA92`; warning `#DBBC7F`; destructive `#E67E80`.
 - Lora for editorial headings and reading; Inter for forms, navigation, and metadata.
 - 57 Figma variables in three collections, eight text styles, and 16 reusable components. Fills and spacing/radii use variable bindings.
 - Desktop frames are 1440px wide; mobile frames are 390px wide. Long frames show full scrollable content. Below 768px, forms stack, tables become cards, navigation moves to the bottom, and dialogs become focused sheets.
@@ -20,7 +20,7 @@ Designed from `ARCHITECTURE_AND_REQUIREMENTS.md`, `README.md`, and `CLAUDE.md` o
 
 | Requirements | Designed surfaces |
 | --- | --- |
-| FR-AUTH-1–2 | Sign in, sign up, magic-link confirmation, password recovery, account settings, privacy messaging |
+| FR-AUTH-1–2 | Sign in, closed public signup, magic-link confirmation, password recovery, account settings, privacy messaging |
 | FR-CAT-1–5 | Work and edition details/editors, identifiers, duplicate warning, delete confirmations |
 | FR-CONTRIB-1–4 | Person/organization forms, pasted-name preview, ordered role credits, printed names, editor fallback |
 | FR-CONTRIB-5–9 | Names and authority identifiers, evidence review, merge/conflict/forced merge, split, distinction, duplicate queue |
@@ -35,19 +35,20 @@ Designed from `ARCHITECTURE_AND_REQUIREMENTS.md`, `README.md`, and `CLAUDE.md` o
 
 ## Validation and boundaries
 
-All desktop/mobile states were checked structurally for horizontal overflow, duplicate frame names, and undersized action buttons. Text contrast was checked against its nearest solid background, using 4.5:1 for text. Representative full-size renders were visually inspected, including library, reader, metadata preview, contributor review and serial completeness. This does not certify WCAG compliance of a future implementation: keyboard semantics, focus trapping, screen readers, zoom/reflow and device behavior still need implementation tests.
+All 252 desktop/mobile frames were checked for horizontal overflow, duplicate names, editable text and local component instances. Fonts are Inter and Lora. Frames are arranged without canvas overlap. Representative renders were visually inspected for library, work details, readers, notes, authentication, workers and account deletion. This is a code-informed design sync, not a pixel-perfect capture or a WCAG certification. Keyboard semantics, focus trapping, screen readers, zoom/reflow and device behavior still need implementation tests.
 
 The prototype illustrates navigation and decisions. Inputs, provider requests, downloads, persistence and export generation are design states rather than working application behavior. Book covers and bibliographic examples are illustrative.
 
 Implementation decisions and changes since the design:
 
-- OAuth is deferred; the implementation offers email/password and magic links.
-- OPDS uses HTTP Basic with the account email/password (§8.5); accounts using only magic links need a password for OPDS.
+- The implementation offers email/password and magic links. Public signup is closed; administrators create accounts.
+- OPDS uses HTTP Basic with any username and a read-only agent token as the password. Account passwords are not accepted. The endpoint is `/functions/v1/opds` on the Supabase host.
 - Expected issue ranges persist in `works.metadata.expected_issues` (FR-SER-2).
 - Readers use pdf.js, foliate-js (EPUB/MOBI/AZW3/CBZ) and DjVu.js. They support fullscreen, selection-based highlights, comment markers and note deep links. PDF has continuous scrolling, fit modes, spreads and search; reflowable books have layout, font, spacing and theme controls.
 - Library covers expose Read, View details and half-star ratings on hover/focus/touch. Search displays cover ribbons and supports keyboard navigation; metadata search accepts partial Unicode and accent-insensitive matches.
 - Catalog editors expose fields for the selected work/record type, including standards references and journal metadata. Tags get automatic colors and also label collections and notes. Mobile More opens all secondary pages.
-- The Notes page groups notes by book and filters by text, tag, color and comment. A full Figma-to-code reconciliation remains open in [ROADMAP.md](ROADMAP.md).
+- The Notes page groups notes by book and filters by text, tag, color and comment.
+- Settings include AI model/status controls, scoped agent tokens with one-time secret display, and administrator-only Workers registration/revocation. Activity includes grouped jobs, AI queue pause/start and full-text passage search.
 - Privacy is owner-only. There are no public shelves, shared-library flows, DRM removal, conversion tools or native-app assumptions.
 
 ## Pages
@@ -55,7 +56,7 @@ Implementation decisions and changes since the design:
 | Page | Desktop | Mobile |
 | --- | --- | --- |
 | signin | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-165) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-2947) |
-| signup | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-204) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-2973) |
+| signup (retired) | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-204) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-2973) |
 | magic | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-237) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-2993) |
 | forgot | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-264) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-3007) |
 | reset | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-292) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-3022) |
@@ -99,7 +100,9 @@ Implementation decisions and changes since the design:
 | loading | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-2783) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-4914) |
 | organization | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=32-1559) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=32-2608) |
 
-## Dialogs and sheets
+## Forms, inline states, dialogs and sheets
+
+These retain their original frame links; their presentation follows the implemented frontend.
 
 | Dialog | Desktop | Mobile |
 | --- | --- | --- |
@@ -115,9 +118,9 @@ Implementation decisions and changes since the design:
 | lookup rate limit | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5150) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6493) |
 | lookup provider | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5167) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6509) |
 | duplicate | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5184) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6525) |
-| duplicate confirm | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5202) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6542) |
+| duplicate confirm (retired) | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5202) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6542) |
 | identifier | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5217) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6556) |
-| add edition | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5241) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6579) |
+| add edition (retired) | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5241) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6579) |
 | record menu | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5264) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6601) |
 | reading status | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5285) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6621) |
 | filters | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-5302) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6637) |
@@ -164,3 +167,29 @@ Implementation decisions and changes since the design:
 | change password | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6249) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=17-1584) |
 | signout | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6270) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=17-1604) |
 | unsaved | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=13-6283) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=17-1616) |
+
+## Additional implemented states
+
+| State | Desktop | Mobile |
+| --- | --- | --- |
+| ai | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1609) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2629) |
+| agents | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1610) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2630) |
+| workers | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1611) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2631) |
+| tag detail | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1612) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2632) |
+| djvu | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1613) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2633) |
+| manual add | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1614) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2634) |
+| selection menu | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1615) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2635) |
+| history | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1616) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2636) |
+| source results | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1617) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2637) |
+| ai unavailable | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1618) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2638) |
+| agent token | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1619) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2639) |
+| worker command | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1620) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2640) |
+| ai queue paused | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1621) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2641) |
+| standard | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1622) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2642) |
+| thesis | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1623) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2643) |
+| report | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1624) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2644) |
+| remove identifier | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1625) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2645) |
+| bulk delete | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1626) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2646) |
+| csv import | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1627) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2647) |
+| metadata public search | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1628) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2648) |
+| cover controls | [Desktop](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-1629) | [Mobile](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=48-2649) |

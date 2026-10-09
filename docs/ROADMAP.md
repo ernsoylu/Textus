@@ -1,10 +1,10 @@
 # Textus roadmap
 
-Updated 2026-10-01 against the M6 draft, existing investigations in §14–15, the FR/NFR requirements in
+Updated 2026-10-05 against `main` (through PR #20), the FR/NFR requirements in
 [ARCHITECTURE_AND_REQUIREMENTS.md](../ARCHITECTURE_AND_REQUIREMENTS.md), and the code.
-M1–M5 are implemented except OAuth, which is deferred until release planning.
-The original Figma inventory is retained in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md);
-a full reconciliation of those frames with the implementation remains open.
+M1–M6 are implemented. OAuth and SMTP are deferred until release planning.
+The Figma inventory was synced with the frontend on 2026-10-09 and is documented
+in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md); live device and accessibility testing remains open.
 
 Status legend: **[ ]** open · **[x]** done
 
@@ -15,6 +15,26 @@ metadata, reader isolation, CI and the proposed AI/MCP flow. Existing uncommitte
 was preserved and amended. This is a source review with local reproductions and a dependency
 audit, not a penetration test of app102/monster or verification of their deployed configuration.
 Implementation is tracked by milestone in the log below; open gates remain explicit.
+
+**Status 2026-10-05:** every finding and gap below is fixed on `main`. The tables keep the original
+evidence; the fixing commits are:
+
+| Finding | Fixed in |
+|---|---|
+| SEC-01 auth cache isolation | `3f52643` (M6.0) — `useAuth` cancels and clears the QueryClient on identity change |
+| SEC-02 URL import SSRF | `3f52643` — `_shared/fetchPublic.ts` connects to the validated IP through an Undici connector |
+| SYS-01 upload integrity/replay | `3f52643` — migration `20261001000002_m6_integrity` |
+| SYS-02 cleanup starvation/races | `3f52643` — migrations `…0002`/`…0003`: SQL-side candidates, `deleting_at` claims checked by `guard_asset_link`, retry backoff; owner privileges in `bd56010` |
+| SYS-03 worker scheduling | `3f52643` — deadline budget, `claim_generation` fencing |
+| SEC-03 dependency advisories | `3f52643` (Vite 7, Vitest 4); `98255f3` CI gates high-severity runtime audit |
+| SYS-04 LLM review bypass | `fc9ec48` (M6.3) — `llm:` suggestions never auto-apply; `create_catalog()` is atomic |
+| SEC-04 reader isolation | `90f15ad` (M6.7) — DOM-parsed transforms, `e2e/reader-security.spec.ts` with `hostile.epub` |
+| M6-SEC-01 agent auth/scope | `fd8d264` (M6.4) |
+| M6-SEC-02 prompt injection | `fd8d264`/`099f16b` — server-built citations; per-action write approval (`1497725`) was removed at the owner's request in `dd636dd`. **Residual:** no hostile-book test drives the agent's subsequent tool calls |
+| M6-SEC-03 Ollama/GPU limits | `31bdbae` (M6.1), `deploy/ollama-hardening.sh`; Ollama stays LAN-reachable by choice (`1111b10`) |
+| M6-SYS-01 bounded, versioned indexing | `9ebc3d6` (M6.2), then `6673e83`, `0a49a39` at library scale |
+| M6-SYS-02 retrieval budget | `099f16b` (M6.5), `41827de` (multilingual `embeddinggemma`) |
+| OPS-01 deployment evidence | `90f15ad`, `86bb422`, `bf0bb94`, `8c29604` |
 
 **P0** = fix current privacy/integrity weaknesses before widening access or enabling agent writes.
 **P1** = high-priority prerequisite for the affected M6 feature or deployment.
@@ -55,7 +75,7 @@ Existing product polish follows these gates. Priority describes delivery order, 
 | **M6.4 — read-only agent access** | [x] Token settings, MCP read tools and Hermes skill (FR-AI-6/7/8). | M6-SEC-01/02; actual Hermes/gateway interoperability, revocation, Origin and cross-user tests pass. `find_sources` advertises unavailable until M6.5. |
 | **M6.5 — hybrid retrieval and cited sources** | [x] Embedding batches, hybrid ranking and source selection (FR-AI-4/5). | M6-SYS-02; relevance/citation fixtures, measured GPU budgets and FTS degradation pass. |
 | **M6.6 — authorized, retry-safe writes** | [x] Identifier creation, URL import, tags and collections (FR-AI-7). | Shared atomic creation/upload paths, server-checked owner approval, scope enforcement, quotas and replay tests pass. |
-| **M6.7 — deployment sign-off** | [ ] OPS-01 restore/rollback drill, reader security fixtures, accessibility/device tests and staged enablement. | SEC-04 and all P0/P1 checks above pass on the target deployment; no inherited “done” claim substitutes for evidence. |
+| **M6.7 — deployment sign-off** | [x] OPS-01 restore/rollback drill, reader security fixtures and staged enablement. Manual accessibility/device testing moved to remaining work. | SEC-04 and all P0/P1 checks above pass on the target deployment; no inherited “done” claim substitutes for evidence. |
 
 Validation performed for this review: full and production-only npm audits; isolated QueryClient
 and cleanup reproductions against installed/source code. The existing integration/browser suite
@@ -99,7 +119,7 @@ documents network binding and concurrency controls.
 - [ ] Reader regression fixtures for EPUB/MOBI/AZW3/CBZ/DjVu, including OCR-less scans, malformed files and existing EPUB CFIs.
 - [ ] Repeat the 10,000-record search benchmark after the Unicode substring-search migration. The earlier local warm-cache PostgreSQL p95 was 11.56 ms for listing and 94.56 ms for search; it predates migration `20260930000004` and excludes network/cold-cache latency. Use `supabase/tests/database/library_perf.sql`.
 - [ ] Measure large-file background extraction; upload streaming is implemented, but PDF/EPUB parsing still reads the file into memory (§15 #1).
-- [ ] Reconcile remaining Figma states with the implemented frontend.
+- [x] Sync all desktop/mobile Figma states with the implemented frontend (2026-10-09: 252 states, including six retired references).
 - [ ] Review nonblocking SonarCloud maintainability findings (including complexity, JSX spacing and repeated SQL literals) as the affected code changes. The earlier quality gate passed; current security priorities are tracked above and require fresh validation.
 
 ## Review and CI
@@ -110,12 +130,12 @@ documents network binding and concurrency controls.
 
 ## Operations requiring deployment verification
 
-The following are carried forward from the 2026-09-29 deployment notes; this review did not recheck app02/app102. The M6 draft reports HTTPS routes, so reconcile these notes against deployment evidence under OPS-01:
+The reference deployment is app102 (app02 is retired). Evidence for the closed items is in M6.7 below.
 
-- [ ] Configure working SMTP for magic-link and recovery emails.
-- [ ] Provide a public HTTPS route; the recorded app URL is `http://192.168.1.102:8080`.
-- [ ] Verify export and OPDS on app02; local integration tests pass.
-- [ ] Apply the latest ordered migrations and deploy/rebuild the updated functions/frontend on app02, then smoke-test standards lookup, all reader formats, annotations/tags and ratings.
+- [ ] Configure working SMTP for magic-link and recovery emails — deferred to release planning.
+- [x] Public HTTPS route: `textus.bff.bz` → app102:8080, invite-only sign-in behind Turnstile.
+- [x] Export and OPDS verified with production HTTP fixtures (M6.7).
+- [ ] Confirm app102 runs every migration through `20261003000004_passage_quota_raise` and the current `job-worker`/`worker-session` functions (PRs #16–#20 postdate the M6.7 evidence), then smoke-test remote workers and indexing.
 
 ## M6 implementation log
 
