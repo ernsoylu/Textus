@@ -3,8 +3,8 @@
 Updated 2026-10-05 against `main` (through PR #20), the FR/NFR requirements in
 [ARCHITECTURE_AND_REQUIREMENTS.md](../ARCHITECTURE_AND_REQUIREMENTS.md), and the code.
 M1–M6 are implemented. OAuth and SMTP are deferred until release planning.
-The original Figma inventory is retained in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md);
-a full reconciliation of those frames with the implementation remains open.
+The Figma inventory was synced with the frontend on 2026-10-09 and is documented
+in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md); live device and accessibility testing remains open.
 
 Status legend: **[ ]** open · **[x]** done
 
@@ -119,7 +119,7 @@ documents network binding and concurrency controls.
 - [ ] Reader regression fixtures for EPUB/MOBI/AZW3/CBZ/DjVu, including OCR-less scans, malformed files and existing EPUB CFIs.
 - [ ] Repeat the 10,000-record search benchmark after the Unicode substring-search migration. The earlier local warm-cache PostgreSQL p95 was 11.56 ms for listing and 94.56 ms for search; it predates migration `20260930000004` and excludes network/cold-cache latency. Use `supabase/tests/database/library_perf.sql`.
 - [ ] Measure large-file background extraction; upload streaming is implemented, but PDF/EPUB parsing still reads the file into memory (§15 #1).
-- [ ] Reconcile remaining Figma states with the implemented frontend.
+- [x] Sync all desktop/mobile Figma states with the implemented frontend (2026-10-09: 252 states, including six retired references).
 - [ ] Review nonblocking SonarCloud maintainability findings (including complexity, JSX spacing and repeated SQL literals) as the affected code changes. The earlier quality gate passed; current security priorities are tracked above and require fresh validation.
 
 ## Review and CI
