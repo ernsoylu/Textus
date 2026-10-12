@@ -4,7 +4,7 @@ import type { AnnotationItem } from '@/hooks/useAnnotations';
 
 const note = (id: string, over: Partial<AnnotationItem> = {}): AnnotationItem => ({
   id, record_id: 'r1', asset_id: 'a1', anchor_type: 'pdf_page', anchor_data: { page: 1 }, highlighted_text: null, note: null, color: 'yellow',
-  created_at: '2026-09-01T00:00:00Z', records: { title: 'Style Guide', work_id: 'w1', works: null }, annotation_tags: [], ...over,
+  created_at: '2026-09-01T00:00:00Z', updated_at: null, records: { title: 'Style Guide', work_id: 'w1', works: null }, annotation_tags: [], ...over,
 });
 const all: NoteFilters = { q: '', tagId: '', color: '', commentsOnly: false, sort: 'newest' };
 const tags = new Map([['t1', 'Grammar']]);

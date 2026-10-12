@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import 'foliate-js/view.js';
 import { Overlayer } from 'foliate-js/overlayer.js';
 import type { FoliateLocation, FoliateTocItem, FoliateView } from 'foliate-js/view.js';
@@ -6,7 +6,10 @@ import { supabase } from '@/lib/supabase';
 import { isTypingTarget } from '@/lib/keyboard';
 import { inertBookHtml } from '@/lib/inertBookHtml';
 import { useReaderPrefs, type ReaderPrefs } from '@/hooks/useReaderPrefs';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/button';
+import { ReturnButton } from './ReturnButton';
+import { Sheet } from './Sheet';
 import { TocList } from './TocList';
 import { COMMENT_ICON_PATH } from './pageGeometry';
 import type { Point, TocItem, ViewerProps } from './types';
@@ -32,6 +35,8 @@ const bookCss = (prefs: ReaderPrefs) => {
 };
 
 const SVG = 'http://www.w3.org/2000/svg';
+const BTN = 'min-h-11 min-w-11 px-2 py-1';
+const FIELD = 'min-h-11 rounded-4 border border-muted bg-dim pl-2 text-small text-fg';
 
 // A highlight plus, when it has a comment, a small bubble after its last line (like an inline comment in Word).
 // The overlay is an SVG over the book's iframe in this document, so the marker gets ordinary click events.
@@ -80,7 +85,7 @@ export interface BookViewerProps extends ViewerProps {
   initialCfi?: string;
 }
 
-export function BookViewer({ storagePath, format, initialCfi, annotations, goTo, onSelect, onContextMenu, onOpenAnnotation, onProgress }: Readonly<BookViewerProps>) {
+export function BookViewer({ storagePath, format, initialCfi, annotations, goTo, focus, onSelect, onContextMenu, onOpenAnnotation, onProgress }: Readonly<BookViewerProps>) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
   const annotationsRef = useRef(annotations);
@@ -100,6 +105,12 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // FR-READ-11: where reading was before a contents/search/note jump.
+  const [returnTo, setReturnTo] = useState<{ cfi: string; label: string } | null>(null);
+  const locationRef = useRef<FoliateLocation | null>(null);
+  locationRef.current = location;
+  const wide = useMediaQuery('(min-width: 768px)');
 
   useEffect(() => {
     const host = hostRef.current;
@@ -140,6 +151,15 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
       const report = () => cb.current.onSelect?.(selectionIn());
       doc.addEventListener('pointerup', report);
       doc.addEventListener('keyup', report);
+      // FR-READ-9: a finger selection is adjusted with handles, without a pointer-up; report it once it settles.
+      let settle: ReturnType<typeof setTimeout> | undefined;
+      doc.addEventListener('selectionchange', () => {
+        clearTimeout(settle);
+        settle = setTimeout(() => {
+          const s = selectionIn();
+          if (s) cb.current.onSelect?.(s);
+        }, 300);
+      });
       doc.addEventListener('contextmenu', (ev) => {
         const selection = selectionIn();
         if (!selection) return;
@@ -256,8 +276,18 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
     if (added) view.deselect();
   }, [annotations, ready]);
 
+  // Jumps remember the current position so one tap returns to it.
+  const jump = (target: string) => {
+    const at = locationRef.current;
+    if (at?.cfi) setReturnTo({ cfi: at.cfi, label: at.tocItem?.label?.trim() || 'where you were' });
+    void viewRef.current?.goTo(target);
+    if (!wide) setPanel(null);
+  };
+  const jumpRef = useRef(jump);
+  jumpRef.current = jump;
+
   useEffect(() => {
-    if (goTo && ready && viewRef.current?.renderer && goTo.anchor.anchor_type === 'epub_cfi') void viewRef.current.goTo(goTo.anchor.anchor_data.cfi);
+    if (goTo && ready && viewRef.current?.renderer && goTo.anchor.anchor_type === 'epub_cfi') jumpRef.current(goTo.anchor.anchor_data.cfi);
   }, [goTo, ready]);
 
   useEffect(() => {
@@ -301,74 +331,20 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   const togglePanel = (p: 'contents' | 'search') => setPanel((cur) => (cur === p ? null : p));
   const where = location?.pageItem?.label ? `Page ${location.pageItem.label}` : location?.location ? `Location ${location.location.current + 1} of ${location.location.total}` : '';
 
-  if (error) return <p className="text-body text-red">Could not load this file: {error}</p>;
-
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div role="toolbar" aria-label="Book controls" className="flex flex-wrap items-center gap-1">
-        <Button variant={panel === 'contents' ? 'secondary' : 'ghost'} className="min-h-9 px-2 py-1" aria-pressed={panel === 'contents'} disabled={!toc.length} onClick={() => togglePanel('contents')}>☰ Contents</Button>
-        <Button variant={panel === 'search' ? 'secondary' : 'ghost'} className="min-h-9 px-2 py-1" aria-pressed={panel === 'search'} disabled={!ready} onClick={() => togglePanel('search')}>Search</Button>
-        <Button variant="ghost" className="min-h-9 px-2 py-1" aria-label="Previous page" disabled={!ready} onClick={() => void viewRef.current?.goLeft()}>‹</Button>
-        <Button variant="ghost" className="min-h-9 px-2 py-1" aria-label="Next page" disabled={!ready} onClick={() => void viewRef.current?.goRight()}>›</Button>
-        <p className="min-w-0 truncate px-1 text-small text-muted">{location?.tocItem?.label ?? ''}</p>
-        {!fixedLayout && (
-          <details className="relative ml-auto">
-            <summary className="flex min-h-9 cursor-pointer list-none items-center rounded-8 px-3 text-label text-fg hover:bg-raised/60" aria-label="Text and layout settings">Aa</summary>
-            <div className="absolute right-0 z-20 mt-1 flex w-64 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">
-              <div className="flex items-center justify-between text-small text-fg">
-                Text size
-                <span className="flex items-center gap-1">
-                  <Button variant="ghost" className="min-h-8 px-2 py-0" aria-label="Smaller text" onClick={() => setFontSize(-10)}>A−</Button>
-                  <span className="w-10 text-center text-muted">{prefs.fontSize}%</span>
-                  <Button variant="ghost" className="min-h-8 px-2 py-0" aria-label="Larger text" onClick={() => setFontSize(10)}>A+</Button>
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-small text-fg">
-                Line spacing
-                <span className="flex items-center gap-1">
-                  <Button variant="ghost" className="min-h-8 px-2 py-0" aria-label="Tighter lines" onClick={() => setLineHeight(-0.1)}>−</Button>
-                  <span className="w-10 text-center text-muted">{prefs.lineHeight.toFixed(1)}</span>
-                  <Button variant="ghost" className="min-h-8 px-2 py-0" aria-label="Looser lines" onClick={() => setLineHeight(0.1)}>+</Button>
-                </span>
-              </div>
-              <label className="flex items-center justify-between text-small text-fg">
-                Theme
-                <select className="rounded-4 border border-muted bg-dim py-1 pl-2 text-small text-fg" value={prefs.theme} onChange={(e) => updatePrefs({ theme: e.target.value as ReaderPrefs['theme'] })}>
-                  <option value="light">Light</option>
-                  <option value="sepia">Sepia</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </label>
-              <label className="flex items-center justify-between text-small text-fg">
-                Layout
-                <select className="rounded-4 border border-muted bg-dim py-1 pl-2 text-small text-fg" value={prefs.flow} onChange={(e) => updatePrefs({ flow: e.target.value as ReaderPrefs['flow'] })}>
-                  <option value="paginated">Pages</option>
-                  <option value="scrolled">Scrolling</option>
-                </select>
-              </label>
-              <label className="flex items-center justify-between text-small text-fg">
-                Two columns on wide screens
-                <input type="checkbox" checked={prefs.twoPage} onChange={(e) => updatePrefs({ twoPage: e.target.checked })} />
-              </label>
-            </div>
-          </details>
-        )}
-      </div>
-      <div className="flex min-h-0 flex-1 gap-2">
-        {panel && (
-          <nav aria-label={panel === 'contents' ? 'Contents' : 'Search results'} className="flex w-72 shrink-0 flex-col gap-2 overflow-auto rounded-8 border border-border bg-dim p-2">
-            {panel === 'contents' && <TocList items={toc} active={location?.tocItem?.href} onSelect={(href) => void viewRef.current?.goTo(href)} />}
+  const panelBody: ReactNode = (
+    <>
+            {panel === 'contents' && <TocList items={toc} active={location?.tocItem?.href} onSelect={jump} />}
             {panel === 'search' && (
               <>
                 <form role="search" onSubmit={(e) => void search(e)} className="flex gap-1">
-                  <input type="search" aria-label="Search in book" placeholder="Search the book…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 rounded-4 border border-muted bg-bg px-2 py-1 text-small text-fg" />
-                  <Button type="submit" variant="secondary" className="min-h-8 px-2 py-0">Find</Button>
+                  <input type="search" aria-label="Search in book" placeholder="Search the book…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-4 border border-muted bg-bg px-2 py-1 text-small text-fg" />
+                  <Button type="submit" variant="secondary" className={BTN}>Find</Button>
                 </form>
                 <p className="text-small text-muted" aria-live="polite">{searching !== null ? `Searching… ${Math.round(searching * 100)}%` : query.trim() && `${hits.length} ${hits.length === 1 ? 'result' : 'results'}`}</p>
                 <ul className="flex flex-col gap-1">
                   {hits.map((h) => (
                     <li key={h.cfi}>
-                      <button type="button" onClick={() => void viewRef.current?.goTo(h.cfi)} className="w-full rounded-4 p-2 text-left text-small text-muted hover:bg-raised">
+                      <button type="button" onClick={() => jump(h.cfi)} className="min-h-11 w-full rounded-4 p-2 text-left text-small text-muted hover:bg-raised">
                         {h.label && <span className="block text-fg">{h.label}</span>}
                         {h.pre}<mark className="bg-yellow-bg text-yellow">{h.match}</mark>{h.post}
                       </button>
@@ -377,15 +353,85 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
                 </ul>
               </>
             )}
-          </nav>
+    </>
+  );
+
+  // Figma R10: text size, spacing, theme and layout — a popover on wide screens, a bottom sheet on phones.
+  const settings: ReactNode = (
+    <>
+              <div className="flex items-center justify-between text-small text-fg">
+                Text size
+                <span className="flex items-center gap-1">
+                  <Button variant="ghost" className={BTN} aria-label="Smaller text" onClick={() => setFontSize(-10)}>A−</Button>
+                  <span className="w-10 text-center text-muted">{prefs.fontSize}%</span>
+                  <Button variant="ghost" className={BTN} aria-label="Larger text" onClick={() => setFontSize(10)}>A+</Button>
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-small text-fg">
+                Line spacing
+                <span className="flex items-center gap-1">
+                  <Button variant="ghost" className={BTN} aria-label="Tighter lines" onClick={() => setLineHeight(-0.1)}>−</Button>
+                  <span className="w-10 text-center text-muted">{prefs.lineHeight.toFixed(1)}</span>
+                  <Button variant="ghost" className={BTN} aria-label="Looser lines" onClick={() => setLineHeight(0.1)}>+</Button>
+                </span>
+              </div>
+              <label className="flex items-center justify-between text-small text-fg">
+                Theme
+                <select className={FIELD} value={prefs.theme} onChange={(e) => updatePrefs({ theme: e.target.value as ReaderPrefs['theme'] })}>
+                  <option value="light">Light</option>
+                  <option value="sepia">Sepia</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+              <label className="flex items-center justify-between text-small text-fg">
+                Layout
+                <select className={FIELD} value={prefs.flow} onChange={(e) => updatePrefs({ flow: e.target.value as ReaderPrefs['flow'] })}>
+                  <option value="paginated">Pages</option>
+                  <option value="scrolled">Scrolling</option>
+                </select>
+              </label>
+              <label className="flex items-center justify-between text-small text-fg">
+                Two columns on wide screens
+                <input type="checkbox" className="h-5 w-5" checked={prefs.twoPage} onChange={(e) => updatePrefs({ twoPage: e.target.checked })} />
+              </label>
+    </>
+  );
+
+  if (error) return <p className="text-body text-red">Could not load this file: {error}</p>;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      {!focus && (
+      <div role="toolbar" aria-label="Book controls" className="flex flex-wrap items-center gap-1">
+        <Button variant={panel === 'contents' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'contents'} disabled={!toc.length} onClick={() => togglePanel('contents')}>☰ Contents</Button>
+        <Button variant={panel === 'search' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'search'} disabled={!ready} onClick={() => togglePanel('search')}>Search</Button>
+        <Button variant="ghost" className={BTN} aria-label="Previous page" disabled={!ready} onClick={() => void viewRef.current?.goLeft()}>‹</Button>
+        <Button variant="ghost" className={BTN} aria-label="Next page" disabled={!ready} onClick={() => void viewRef.current?.goRight()}>›</Button>
+        <p className="min-w-0 truncate px-1 text-small text-muted">{location?.tocItem?.label ?? ''}</p>
+        {!fixedLayout && wide && (
+          <details className="relative ml-auto">
+            <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-8 px-3 text-label text-fg hover:bg-raised/60" aria-label="Text and layout settings">Aa</summary>
+            <div className="absolute right-0 z-20 mt-1 flex w-72 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">{settings}</div>
+          </details>
+        )}
+        {!fixedLayout && !wide && <Button variant={settingsOpen ? 'secondary' : 'ghost'} className={`${BTN} ml-auto`} aria-label="Text and layout settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((o) => !o)}>Aa</Button>}
+      </div>
+      )}
+      <div className="flex min-h-0 flex-1 gap-2">
+        {panel && wide && !focus && (
+          <nav aria-label={panel === 'contents' ? 'Contents' : 'Search results'} className="flex w-72 shrink-0 flex-col gap-2 overflow-auto rounded-8 border border-border bg-dim p-2">{panelBody}</nav>
         )}
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-8" style={{ background: THEMES[prefs.theme].bg }}>
           {!ready && <p className="absolute inset-0 z-10 p-4 text-body text-muted">Loading…</p>}
           <div ref={hostRef} className="absolute inset-0" />
           <button type="button" tabIndex={-1} aria-hidden="true" onClick={() => void viewRef.current?.goLeft()} className="absolute inset-y-0 left-0 z-10 w-8 text-2xl text-muted opacity-0 transition-opacity hover:bg-black/5 hover:opacity-100">‹</button>
           <button type="button" tabIndex={-1} aria-hidden="true" onClick={() => void viewRef.current?.goRight()} className="absolute inset-y-0 right-0 z-10 w-8 text-2xl text-muted opacity-0 transition-opacity hover:bg-black/5 hover:opacity-100">›</button>
+          {returnTo && <ReturnButton label={`Back to ${returnTo.label}`} onReturn={() => { void viewRef.current?.goTo(returnTo.cfi); setReturnTo(null); }} onDismiss={() => setReturnTo(null)} />}
         </div>
       </div>
+      {panel && !wide && !focus && <Sheet label={panel === 'contents' ? 'Contents' : 'Search'} onClose={() => setPanel(null)}>{panelBody}</Sheet>}
+      {settingsOpen && !wide && !focus && <Sheet label="Text and layout" onClose={() => setSettingsOpen(false)}>{settings}</Sheet>}
+      {!focus && (
       <div className="flex items-center gap-3">
         <input
           type="range"
@@ -402,6 +448,7 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
         <datalist id="book-sections">{ticks.map((t) => <option key={t} value={t} />)}</datalist>
         <p className="shrink-0 text-small text-muted">{where}{where && ' · '}{Math.round(fraction * 100)}%</p>
       </div>
+      )}
     </div>
   );
 }

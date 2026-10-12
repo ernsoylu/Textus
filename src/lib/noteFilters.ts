@@ -1,4 +1,4 @@
-import { bookTitle, type AnnotationItem } from '@/hooks/useAnnotations';
+import { bookTitle, notePage, type AnnotationItem } from '@/hooks/useAnnotations';
 
 // The Notes page's search, filters, sort and grouping, applied client-side to the user's own notes.
 export const NOTE_SORTS = ['newest', 'oldest', 'page'] as const;
@@ -22,7 +22,7 @@ export interface NoteGroup {
 // Case- and accent-insensitive ("Çelik" matches "celik", "İstanbul" matches "istanbul").
 const fold = (s: string) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
 
-const pageOf = (a: AnnotationItem) => (a.anchor_type === 'pdf_page' ? ((a.anchor_data as { page?: number }).page ?? 0) : 0);
+const pageOf = (a: AnnotationItem) => notePage(a) ?? 0;
 const time = (a: AnnotationItem) => (a.created_at ? Date.parse(a.created_at) : 0);
 
 export function filterNotes(items: AnnotationItem[], f: NoteFilters, tagNames: Map<string, string>): AnnotationItem[] {

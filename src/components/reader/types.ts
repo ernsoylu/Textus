@@ -1,4 +1,4 @@
-import type { Anchor } from '@/hooks/useAnnotations';
+import type { Anchor, InkData } from '@/hooks/useAnnotations';
 import type { Progress } from '@/hooks/useReadingState';
 
 // The contract between the Reader page and each format viewer. Viewers only know geometry: they draw
@@ -14,6 +14,24 @@ export interface ViewerAnnotation {
 export interface ViewerSelection {
   text: string;
   anchor: Anchor;
+  /** Set when the selection had to be cut down (e.g. to its first page); shown before saving. */
+  notice?: string;
+}
+
+// FR-READ-10: a saved (or still saving) ink stroke, and the active Mark-mode tool.
+export interface InkStroke {
+  id: string;
+  data: InkData;
+  color: string | null;
+  unsaved?: boolean;
+}
+
+export interface InkSettings {
+  tool: 'pen' | 'highlighter' | 'eraser';
+  color: string;
+  /** Fraction of the page width. */
+  width: number;
+  fingerDraw: boolean;
 }
 
 export interface Point {
@@ -38,4 +56,6 @@ export interface ViewerProps {
   /** A highlight or its comment marker was clicked. */
   onOpenAnnotation?: (id: string, at: Point) => void;
   onProgress?: (progress: Progress) => void;
+  /** Focus mode (FR-READ-7): hide the viewer's own toolbars; keyboard navigation keeps working. */
+  focus?: boolean;
 }

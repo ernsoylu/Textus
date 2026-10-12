@@ -4,7 +4,33 @@
 
 Updated from the implemented frontend on 2026-10-09 (code revision `a12d152`). All original desktop/mobile frames have been refreshed, with their IDs preserved, and missing implemented states added. The frontend is the source of truth for behavior; Figma uses editable layers and illustrative content.
 
-**252 screen states:** 126 desktop/mobile pairs, comprising 246 active states and six retired references. The original 210 states are retained, with 42 additional states. Public signup, duplicate confirmation and add-edition flows are marked retired. Former dialog states now show inline forms where the code implements them. Three Figma pages organize the guide/components, desktop designs, and mobile designs. Main journeys have prototype links; the index links to every state.
+**Implemented-baseline inventory: 252 screen states:** 126 desktop/mobile pairs, comprising 246 active states and six retired references. The original 210 states are retained, with 42 additional states. Public signup, duplicate confirmation and add-edition flows are marked retired. Former dialog states now show inline forms where the code implements them. The original three Figma pages organize the guide/components, desktop designs, and mobile designs. Main journeys have prototype links; the index links to every state.
+
+## Planned reader evolution — 2026-10-12
+
+[Reader evolution page](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-419) · [Interaction contract](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-809) · [Research and delivery plan](READER_EXPERIENCE_RESEARCH.md).
+
+**Eleven additional states** (implemented in code 2026-10-12, R01–R11 behavior pending device validation; the Figma page name keeps “Planned” until M7.4), on the fourth page `03 · Reader evolution · Planned`; the 252 baseline states above remain the implementation reference. Total inventory: **263 screen states** (246 baseline active, six baseline retired, eleven planned). These mockups propose FR-READ-7–12 and reuse FR-READ-2 preferences; crop/text conversion, offline persistence and annotated-PDF export are later requirements, not working features or completed mockups.
+
+Target: M2 iPad Pro 12.9-inch with Apple Pencil 2, and iPhone 15 Pro Max with finger input. Owner reports latest installed OS; exact builds await hardware testing. Logical frame sizes are design references; actual browser viewport/safe-area dimensions vary.
+
+| State | Design / requirement | Figma |
+| --- | --- | --- |
+| R01 | iPad landscape reading; 1366 × 1024; FR-READ-7 | [Read](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-421) |
+| R02 | iPad Pencil tools + notebook; 1366 × 1024; FR-READ-10/12 | [Pencil and notes](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-454) |
+| R03 | iPad portrait focus; 1024 × 1366; FR-READ-7 | [Focus](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-515) |
+| R04 | iPad narrow window; 678 × 1024; FR-READ-7/11 | [Split View](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-533) |
+| R05 | iPhone reading; 430 × 932; FR-READ-7 | [Read](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-562) |
+| R06 | iPhone fixed-page zoom/pan/reset; FR-READ-8 | [Zoom](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-592) |
+| R07 | iPhone selected text + highlight/comment; FR-READ-9 | [Selection](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-635) |
+| R08 | iPhone pages/contents/search + return; FR-READ-11 | [Navigate](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-676) |
+| R09 | iPhone retained comment after save failure; FR-READ-12 | [Unsaved comment](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-727) |
+| R10 | iPhone EPUB text/layout sheet; FR-READ-2/7 | [Appearance](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=57-764) |
+| R11 | iPhone explicit finger drawing; FR-READ-10 | [Finger ink](https://www.figma.com/design/ywJrgCQb0yXsVkSEf2f7J3?node-id=60-103) |
+
+The planned page uses existing Everforest variables, Inter/Lora text styles and Textus button instances, auto-layout containers, editable document text and vector example ink. Reader buttons are 48 px tall with minimum 44 px widths. Prototype entry points start at iPad R01 and iPhone R05; screen links illustrate navigation only. Pinch, selection handles, actual handwriting, native keyboard and save/retry behavior need implementation. Fixed-page typography and document content are illustrative, not a PDF renderer.
+
+Structural check: eleven device frames, 445 descendant nodes (236 text, 95 frames, 110 instances, two vectors, two selection-handle ellipses), no raster UI/image-filled nodes, no unexpected font families and no undersized button instances. There are 51 nodes with prototype reactions. The full composition was visually inspected and zoom/selection/finger-ink refinements applied; clipping is intentional only inside document viewports. This validates mockup structure and composition, not runtime accessibility or physical-device behavior. Detailed gates A01–A09 remain open in the research plan.
 
 ## Visual system
 

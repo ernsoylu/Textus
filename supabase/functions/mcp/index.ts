@@ -29,7 +29,8 @@ async function getWork(client: SupabaseClient, workId: string, recordOffset: num
     checked(client.from('record_assets').select('record_id,role,assets(id,file_format,file_size,processing_state,metadata)').in('record_id', ids).limit(101)),
     checked(client.from('record_tags').select('record_id,tags(id,name)').in('record_id', ids).limit(101)),
     checked(client.from('collection_records').select('record_id,collections(id,name)').in('record_id', ids).limit(101)),
-    checked(client.from('annotations').select('id,record_id,asset_id,anchor_type,anchor_data,highlighted_text,note').in('record_id', ids).order('id').range(notesOffset, notesOffset + 20)),
+    // Ink strokes (FR-READ-10) are point lists, not text an agent can use; they stay out of the notes.
+    checked(client.from('annotations').select('id,record_id,asset_id,anchor_type,anchor_data,highlighted_text,note').in('record_id', ids).neq('anchor_type', 'pdf_ink').order('id').range(notesOffset, notesOffset + 20)),
   ]);
   return { work: { ...work, abstract: work.abstract?.slice(0, 10000), abstractTruncated: (work.abstract?.length ?? 0) > 10000 }, records: records.slice(0, 10),
     identifiers: (identifiers ?? []).slice(0, 100), credits: (credits ?? []).slice(0, 100), files: (files ?? []).slice(0, 100).map((f) => { const asset = Array.isArray(f.assets) ? f.assets[0] : f.assets; return { record_id: f.record_id, role: f.role, asset: asset ? { id: asset.id, format: asset.file_format, size: asset.file_size, processingState: asset.processing_state, index: asset.metadata?.passage_index } : null }; }),
