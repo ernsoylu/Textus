@@ -63,12 +63,17 @@ export function notePage(a: Pick<AnnotationItem, 'anchor_type' | 'anchor_data'>)
 }
 
 export const isInk = (a: Pick<AnnotationItem, 'anchor_type'>) => a.anchor_type === 'pdf_ink';
+/**
+ * Pen ink: handwriting and drawings, listed per page. A freehand *highlighter* stroke is a highlight like any other:
+ * it keeps the text it covers as highlighted_text and is listed, searched and exported as a note.
+ */
+export const isDrawing = (a: Pick<AnnotationItem, 'anchor_type' | 'anchor_data'>) => isInk(a) && (a.anchor_data as { tool?: unknown } | null)?.tool !== 'highlighter';
 
-/** Ink strokes are one row each; lists show them per page instead (first stroke links to the page). */
+/** Pen strokes are one row each; lists show them per page instead (first stroke links to the page). */
 export function inkPages(items: AnnotationItem[]): { page: number; count: number; first: AnnotationItem }[] {
   const pages = new Map<string, { page: number; count: number; first: AnnotationItem }>();
   for (const a of items) {
-    const page = isInk(a) ? notePage(a) : undefined;
+    const page = isDrawing(a) ? notePage(a) : undefined;
     if (!page) continue;
     const key = `${a.asset_id}:${page}`;
     const entry = pages.get(key);

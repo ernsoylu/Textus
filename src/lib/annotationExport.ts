@@ -1,14 +1,15 @@
-import { annotationHref, inkPages, isInk, type AnnotationItem } from '@/hooks/useAnnotations';
+import { annotationHref, inkPages, isDrawing, notePage, type AnnotationItem } from '@/hooks/useAnnotations';
 
 // FR-READ-5: annotation export, generated client-side from rows the user can already read (§8.4).
 const title = (a: AnnotationItem) => a.records?.title || a.records?.works?.title || 'Untitled';
 
 function location(a: AnnotationItem): string {
-  const d = (a.anchor_data ?? {}) as { page?: number };
-  return a.anchor_type === 'pdf_page' && d.page ? `p. ${d.page}` : '';
+  const page = notePage(a);
+  return page ? `p. ${page}` : '';
 }
 
-// FR-READ-14: Markdown cannot hold ink, so each inked page gets a line and a link back to it; JSON keeps the strokes.
+// FR-READ-14: Markdown cannot hold pen ink, so each drawn-on page gets a line and a link back to it; JSON keeps the
+// strokes. Freehand highlights are quoted like text highlights.
 const inkLines = (list: AnnotationItem[]) =>
   inkPages(list).map(({ page, count, first }) => `*Ink drawing on p. ${page} (${count} ${count === 1 ? 'stroke' : 'strokes'})* — [open](${globalThis.location?.origin ?? ''}${annotationHref(first)})`);
 
@@ -17,7 +18,7 @@ export function annotationsToMarkdown(items: AnnotationItem[]): string {
   for (const a of items) byRecord.set(a.record_id, [...(byRecord.get(a.record_id) ?? []), a]);
   return [...byRecord.values()]
     .map((list) => {
-      const lines = list.filter((a) => !isInk(a)).map((a) => {
+      const lines = list.filter((a) => !isDrawing(a)).map((a) => {
         const loc = location(a);
         const quote = a.highlighted_text ? `> ${a.highlighted_text.replace(/\n+/g, '\n> ')}\n\n` : '';
         const where = loc ? ` *(${loc})*` : '';

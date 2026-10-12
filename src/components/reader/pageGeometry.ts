@@ -1,4 +1,5 @@
 import type { PageRect } from '@/hooks/useAnnotations';
+import { touchesStroke, type InkPoint } from './inkGeometry';
 import type { ViewerAnnotation } from './types';
 
 // Fixed-page formats (PDF, DjVu) anchor highlights as rectangles in page fractions (0–1), so they stay put at
@@ -47,6 +48,50 @@ export function textRects(range: Range): DOMRect[] {
     rects.push(...part.getClientRects());
   }
   return rects;
+}
+
+/** Longest quote kept from a freehand highlight (matches the database trigger). */
+export const INK_TEXT_MAX = 2000;
+
+/**
+ * FR-READ-10: the text a freehand highlighter stroke covers, in reading order, so the stroke becomes a findable
+ * note like a text highlight. A character counts when its centre lies under the stroke's band (half its width
+ * plus a little slack); `box` is the page content box the stroke's fractions refer to.
+ */
+export function textUnderStroke(layer: Element, box: DOMRectReadOnly, points: InkPoint[], width: number): string {
+  if (!points.length || !box.width || !box.height) return '';
+  const aspect = box.height / box.width;
+  const radius = width / 2 + 0.003;
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const pad = radius / Math.min(1, aspect);
+  const [minX, maxX, minY, maxY] = [Math.min(...xs) - pad, Math.max(...xs) + pad, Math.min(...ys) - pad, Math.max(...ys) + pad];
+  const parts: string[] = [];
+  const range = document.createRange();
+  const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent ?? '';
+    if (!text.trim()) continue;
+    range.selectNodeContents(node);
+    const r = range.getBoundingClientRect();
+    if ((r.right - box.left) / box.width < minX || (r.left - box.left) / box.width > maxX || (r.bottom - box.top) / box.height < minY || (r.top - box.top) / box.height > maxY) continue;
+    let first = -1;
+    let last = -1;
+    for (let i = 0; i < text.length; i++) {
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const c = range.getBoundingClientRect();
+      if (!c.width || !c.height) continue;
+      const x = (c.left + c.width / 2 - box.left) / box.width;
+      const y = (c.top + c.height / 2 - box.top) / box.height;
+      if (touchesStroke(points, x, y, radius, aspect)) {
+        if (first < 0) first = i;
+        last = i;
+      }
+    }
+    if (first >= 0) parts.push(text.slice(first, last + 1));
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, INK_TEXT_MAX);
 }
 
 export function pageRectsOf(a: ViewerAnnotation, page: number): PageRect[] {

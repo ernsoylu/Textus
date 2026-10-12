@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ANNOTATION_COLORS, ConflictError, annotationHref, bookTitle, highlightFill, isInk, noteLocation, useDeleteAnnotation, useSetAnnotationTag, useUpdateAnnotation, type AnnotationItem } from '@/hooks/useAnnotations';
+import { ANNOTATION_COLORS, ConflictError, annotationHref, bookTitle, highlightFill, isDrawing, isInk, noteLocation, useDeleteAnnotation, useSetAnnotationTag, useUpdateAnnotation, type AnnotationItem } from '@/hooks/useAnnotations';
 import { TagPicker } from '@/components/library/TagPicker';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UnsavedChangesGuard } from '@/components/ui/UnsavedChangesGuard';
@@ -38,7 +38,7 @@ export function NoteCard({ a, onGoTo, showBook, autoFocus, inBook, onDeleted }: 
       <UnsavedChangesGuard dirty={dirty} subject="note" onSave={() => update.mutateAsync({ id: a.id, note: note.trim(), expected: base.current.at })} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         {showBook ? <Link to={`/library/${a.records?.work_id}`} className="min-w-0 truncate text-label text-fg hover:underline">{bookTitle(a)}</Link> : <span className="text-small text-muted">{where}</span>}
-        {!isInk(a) && (
+        {!isDrawing(a) && (
           <div className="flex" role="radiogroup" aria-label="Highlight color">
             {ANNOTATION_COLORS.map((c) => (
               <ColorSwatch key={c} role="radio" aria-checked={color === c} aria-label={c} selected={color === c} fill={highlightFill(c)} onClick={() => color !== c && update.mutate({ id: a.id, color: c })} />
@@ -46,7 +46,8 @@ export function NoteCard({ a, onGoTo, showBook, autoFocus, inBook, onDeleted }: 
           </div>
         )}
       </div>
-      {isInk(a) && <p className="text-small text-muted">Drawing (pen or highlighter ink){where ? ` on ${where.toLowerCase()}` : ''}.</p>}
+      {isDrawing(a) && <p className="text-small text-muted">Pen drawing{where ? ` on ${where.toLowerCase()}` : ''}.</p>}
+      {isInk(a) && !isDrawing(a) && !a.highlighted_text && <p className="text-small text-muted">Freehand highlight{where ? ` on ${where.toLowerCase()}` : ''} (no text under it).</p>}
       {a.highlighted_text && <blockquote className="line-clamp-6 border-l-2 border-border pl-2 font-serif text-small italic text-muted">{a.highlighted_text}</blockquote>}
       <textarea
         aria-label="Comment"

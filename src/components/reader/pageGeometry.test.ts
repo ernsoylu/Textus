@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hitTest, toPageRects } from './pageGeometry';
+import { hitTest, textUnderStroke, toPageRects } from './pageGeometry';
 import type { ViewerAnnotation } from './types';
 
 const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top }) as DOMRectReadOnly;
@@ -33,5 +33,33 @@ describe('hitTest', () => {
     expect(hitTest(list, 1, 0.4, 0.15)?.id).toBe('b');
     expect(hitTest(list, 1, 0.4, 0.5)).toBeUndefined();
     expect(hitTest(list, 2, 0.4, 0.5)?.id).toBe('c');
+  });
+});
+
+describe('textUnderStroke', () => {
+  it('returns the characters under a freehand highlighter band, in reading order', () => {
+    // A fake text layer: each character is 10 px wide; line 1 at y 0–20, line 2 at y 40–60 on a 200 × 100 page.
+    const layer = document.createElement('div');
+    layer.innerHTML = '<span>Hello world</span><span>second line</span>';
+    const lineOf = (node: Node) => (node.textContent === 'Hello world' ? 0 : 1);
+    const original = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = function (this: Range) {
+      const node = this.startContainer.nodeType === Node.TEXT_NODE ? this.startContainer : this.startContainer.firstChild!;
+      const whole = this.startContainer.nodeType !== Node.TEXT_NODE;
+      const start = whole ? 0 : this.startOffset;
+      const end = whole ? (node.textContent ?? '').length : this.endOffset;
+      const top = lineOf(node) * 40;
+      return new DOMRect(start * 10, top, (end - start) * 10, 20);
+    };
+    try {
+      const box = new DOMRect(0, 0, 200, 100);
+      // A stroke across "world" on line 1 (x 60–110 px, y 10 px).
+      expect(textUnderStroke(layer, box, [[0.3, 0.1], [0.55, 0.1]], 0.02)).toBe('world');
+      // Down across both lines at the "o" / "l" column covers one character of each.
+      expect(textUnderStroke(layer, box, [[0.375, 0.05], [0.375, 0.55]], 0.01)).toBe('o l');
+      expect(textUnderStroke(layer, box, [[0.9, 0.9]], 0.01)).toBe('');
+    } finally {
+      Range.prototype.getBoundingClientRect = original;
+    }
   });
 });

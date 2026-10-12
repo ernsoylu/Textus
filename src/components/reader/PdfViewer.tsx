@@ -18,7 +18,8 @@ import { PdfThumbnails } from './PdfThumbnails';
 import { ReturnButton } from './ReturnButton';
 import { Sheet } from './Sheet';
 import { TocList } from './TocList';
-import { hitTest, textRects, toPageRects } from './pageGeometry';
+import { hitTest, textRects, textUnderStroke, toPageRects } from './pageGeometry';
+import { touchesStroke } from './inkGeometry';
 import type { InkSettings, InkStroke, TocItem, ViewerProps, ViewerSelection } from './types';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -66,7 +67,7 @@ export interface PdfViewerProps extends ViewerProps {
   initialPage?: number;
   onFirstPageRendered?: (canvas: HTMLCanvasElement) => void;
   /** FR-READ-10: ink strokes to draw, and the Mark-mode tool (null while reading). */
-  ink?: { strokes: InkStroke[]; settings: InkSettings | null; onStroke: (data: InkData) => void; onErase: (ids: string[]) => void };
+  ink?: { strokes: InkStroke[]; settings: InkSettings | null; onStroke: (data: InkData, text?: string) => void; onErase: (ids: string[]) => void };
 }
 
 export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, focus, ink, onSelect, onContextMenu, onOpenAnnotation, onProgress, onFirstPageRendered }: Readonly<PdfViewerProps>) {
@@ -297,12 +298,23 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, foc
     if (!ink?.settings) onSelect?.(currentSelection());
   }
 
+  // A highlighter stroke keeps the text under it, so it is found later like a text highlight (FR-READ-10).
+  function commitStroke(data: InkData) {
+    const div = pdf.current?.viewer.getPageView(data.page - 1)?.div as HTMLElement | undefined;
+    const layer = data.tool === 'highlighter' ? div?.querySelector('.textLayer') : null;
+    ink?.onStroke(data, div && layer ? textUnderStroke(layer, contentBox(div), data.points, data.width) : undefined);
+  }
+
   function handleClick(e: MouseEvent) {
     if (!document.getSelection()?.isCollapsed || ink?.settings) return;
     const hit = pageOf(e.target as Node);
     if (!hit) return;
     const box = contentBox(hit.div);
-    const found = hitTest(annotations, hit.page, (e.clientX - box.left) / box.width, (e.clientY - box.top) / box.height);
+    const [x, y] = [(e.clientX - box.left) / box.width, (e.clientY - box.top) / box.height];
+    const found =
+      hitTest(annotations, hit.page, x, y) ??
+      // Reading mode: tapping a freehand highlight opens its note too.
+      ink?.strokes.filter((s) => s.data.page === hit.page && s.data.tool === 'highlighter').reverse().find((s) => touchesStroke(s.data.points, x, y, s.data.width / 2, box.height / box.width));
     if (found) onOpenAnnotation?.(found.id, { x: e.clientX, y: e.clientY });
   }
 
@@ -415,7 +427,7 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, foc
       {[...overlays].map(([n, host]) => createPortal(
         <>
           <PageOverlay page={n} annotations={annotations} onOpen={onOpenAnnotation} />
-          {ink && <InkLayer page={n} strokes={ink.strokes.filter((s) => s.data.page === n)} settings={ink.settings} onStroke={ink.onStroke} onErase={ink.onErase} />}
+          {ink && <InkLayer page={n} strokes={ink.strokes.filter((s) => s.data.page === n)} settings={ink.settings} onStroke={commitStroke} onErase={ink.onErase} />}
         </>,
         host,
         String(n),

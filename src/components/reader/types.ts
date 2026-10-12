@@ -23,6 +23,8 @@ export interface InkStroke {
   id: string;
   data: InkData;
   color: string | null;
+  /** The text a highlighter stroke covers (saved as highlighted_text). */
+  text?: string | null;
   unsaved?: boolean;
 }
 

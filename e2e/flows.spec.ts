@@ -594,3 +594,33 @@ test('Mark mode draws a validated ink stroke and undo removes it', async ({ page
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect.poll(() => deletes.length).toBe(1);
 });
+
+test('a freehand highlight saves the text under it and becomes a findable note', async ({ page }) => {
+  await mocks(page);
+  const rows: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/annotations*', (route) => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      rows.push({ ...body, created_at: '2026-10-13T00:00:00Z', updated_at: '2026-10-13T00:00:00Z', records: { title: null, work_id: workId, works: { title: 'The Garden Book' } }, annotation_tags: [] });
+      return route.fulfill({ status: 201, json: [] });
+    }
+    return route.fulfill({ json: rows });
+  });
+  await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
+  const words = page.locator('.textLayer').getByText('Textus reader fixture');
+  await expect(words).toBeVisible();
+  await page.getByRole('button', { name: /Mark/ }).click();
+  await page.getByRole('radio', { name: 'Highlighter' }).click();
+  const box = (await words.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x - 4, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(box.x - 4 + ((box.width + 8) * i) / 12, y);
+  await page.mouse.up();
+  await expect.poll(() => rows.length).toBe(1);
+  expect(rows[0]).toMatchObject({ anchor_type: 'pdf_ink', anchor_data: { tool: 'highlighter' }, highlighted_text: 'Textus reader fixture' });
+  await page.getByRole('button', { name: 'Done' }).click();
+  const notes = page.getByRole('complementary', { name: 'Notes' });
+  await expect(notes.locator('blockquote').filter({ hasText: 'Textus reader fixture' })).toBeVisible();
+  await expect(notes.getByText('Drawings')).toHaveCount(0);
+});
