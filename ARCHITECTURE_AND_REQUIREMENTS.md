@@ -1501,6 +1501,8 @@ CREATE INDEX idx_asset_passages_user ON asset_passages(user_id);
 -- RLS: SELECT own; no INSERT/UPDATE/DELETE policy (service role only), rows go with their asset or user.
 
 -- search_passages(p_query TEXT, p_limit INT DEFAULT 20, p_work_ids UUID[] DEFAULT NULL): FTS only.
+-- Both search functions are SECURITY DEFINER with explicit auth.uid() scoping, like search_library (§14 #23):
+-- under RLS the non-leakproof @@ cannot use the GIN index (migration 20261013000002).
 -- hybrid_passages(p_query TEXT, p_embedding extensions.vector(768), p_digest TEXT, p_limit INT DEFAULT 20,
 --                 p_work_ids UUID[] DEFAULT NULL):
 -- SECURITY INVOKER (RLS applies). Reciprocal-rank fusion of FTS (websearch_to_tsquery) and cosine

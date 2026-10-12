@@ -4,10 +4,13 @@ export const INVOCATION_MS = 50_000;
 // "Background worker limits"). Unset keeps the default; the cap keeps its lease under claim_jobs' 2 min.
 export const JOB_WORKER_MS = Math.min(100_000, Math.max(INVOCATION_MS, Number(Deno.env.get('JOB_WORKER_BUDGET_MS')) || 0));
 export function deadline(ms = INVOCATION_MS) { return AbortSignal.timeout(ms); }
+// PostgREST errors are plain objects; rethrown raw they surface as "[object Object]" (e.g. in MCP results).
 export async function checked<T>(result: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
   const { data, error } = await result;
-  if (error) throw error;
-  return data;
+  if (!error) return data;
+  const code = typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown';
+  console.error(JSON.stringify({ event: 'db_error', code }));
+  throw code === '57014' ? new HttpError('database_timeout', 503) : new HttpError('request_failed', 500);
 }
 
 import { HttpError } from './http.ts';
