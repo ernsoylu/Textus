@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(16);
+SELECT plan(19);
 INSERT INTO auth.users(id,email) VALUES('ffffffff-0000-0000-0000-000000000001','passagea@test.local'),('ffffffff-0000-0000-0000-000000000002','passageb@test.local');
 INSERT INTO public.works(id,user_id,work_type,title) VALUES('ffffffff-1000-0000-0000-000000000001','ffffffff-0000-0000-0000-000000000001','book','Indexed book');
 INSERT INTO public.records(id,work_id,record_type) VALUES('ffffffff-2000-0000-0000-000000000001','ffffffff-1000-0000-0000-000000000001','edition');
@@ -30,5 +30,12 @@ SELECT is_empty($$SELECT id FROM public.search_passages('Photovoltaic',20,ARRAY[
 SELECT is(public.control_passage_index('cancel','ffffffff-3000-0000-0000-000000000001'),1,'owner cancels live continuation');
 RESET ROLE;
 SELECT is(public.commit_passage_batch((SELECT id FROM testjob),1,'[]',10,10,'complete'),false,'cancelled worker cannot finish');
+-- The fixture passage makes 'photovoltaic' a common term once analyzed; 'solar' is in no passage.
+ANALYZE public.asset_passages;
+SELECT is(private.passage_match_query(websearch_to_tsquery('simple','"photovoltaic" OR "solar"'),'ffffffff-0000-0000-0000-000000000001')::text,
+  CASE WHEN EXISTS(SELECT 1 FROM public.assets WHERE user_id<>'ffffffff-0000-0000-0000-000000000001') THEN '''photovoltaic'' | ''solar''' ELSE '''solar''' END,
+  'common terms leave OR matching for a sole owner');
+SELECT is(private.passage_match_query(websearch_to_tsquery('simple','photovoltaic solar'),'ffffffff-0000-0000-0000-000000000001')::text,'''photovoltaic'' & ''solar''','AND queries are matched unchanged');
+SELECT is(private.passage_match_query(websearch_to_tsquery('simple','"photovoltaic" OR "solar"'),'ffffffff-0000-0000-0000-000000000002')::text,'''photovoltaic'' | ''solar''','instance-wide statistics are unused when another owner has files');
 SELECT * FROM finish();
 ROLLBACK;
