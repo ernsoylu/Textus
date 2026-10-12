@@ -103,7 +103,7 @@ Design in [§6.3](#63-contributors-authors-editors-and-other-roles).
 
 Metadata precedence when merging: (1) user-locked manual values, (2) reviewed exact identifier matches, (3) metadata extracted from the file, (4) unreviewed provider suggestions, (5) LLM-extracted suggestions (FR-AI-3).
 
-### Reading (M1, M4)
+### Reading (M1, M4, M7)
 | ID | Requirement | Milestone |
 |----|-------------|-----------|
 | FR-READ-1 | In-browser PDF viewer: continuous scrolling, page navigation and labels, fit width / fit page / zoom, two-page spreads, outline, text search, fullscreen. | M1 |
@@ -112,6 +112,21 @@ Metadata precedence when merging: (1) user-locked manual values, (2) reviewed ex
 | FR-READ-4 | Highlights and notes with colors, anchored to a specific asset. Text is highlighted from a right-click menu on the selection; a highlight with a comment shows a marker in the text, and clicking it opens the comment in place (Word-style). The Notes page lists every note by book, searchable and filterable by tag, color and comment, and opens a note in its book. | M4 |
 | FR-READ-5 | Export annotations as Markdown and JSON. | M4 |
 | FR-READ-6 | MOBI, AZW3 (KF8) and CBZ are read in the browser with the EPUB viewer, DjVu with a page viewer that uses the file's hidden OCR text for selection and highlights; other formats (and DRM-protected Kindle files) are downloadable. | M4 |
+
+### Reader evolution (M7 — implemented in code, hardware validation open, 2026-10-12)
+
+The M1/M4 rows above describe the implemented baseline. The requirements below extend it for the owner's M2 iPad Pro 12.9-inch with Apple Pencil 2 and iPhone 15 Pro Max. FR-READ-7–12 and the FR-READ-14 export compatibility are **implemented and covered by unit, pgTAP and Chromium Playwright tests, but not yet validated on the physical devices** (M7.0/M7.4); FR-READ-13 and the rest of FR-READ-14 remain planned. See [M7 implemented contracts](#m7-implemented-reader-contracts). Latest installed OS versions are the target; record exact build numbers during validation. [Research, acceptance gates and data boundaries](docs/READER_EXPERIENCE_RESEARCH.md) · [Figma states](docs/FRONTEND_DESIGN.md#planned-reader-evolution--2026-10-12).
+
+| ID | Requirement | Milestone |
+| --- | --- | --- |
+| FR-READ-7 | Immersive reader shell with focus mode, discoverable exit, safe-area/keyboard-aware controls and responsive sheets/panels. Keep the visible passage across focus, orientation and iPad window changes; use CSS focus when native fullscreen is unavailable. | M7.1 |
+| FR-READ-8 | Fixed-page readers offer focal pinch zoom, panning, fit width/page, accessible +/- and reset; do not turn pages while panning zoomed content. Preserve annotation geometry and browser accessibility zoom. Capability and physical-device validation precede release. | M7.2 |
+| FR-READ-9 | Finger/native text selection exposes highlight/comment/copy without right-click. Track selection-handle changes; retain selection while entering a comment. Multi-page quotes and anchors must agree; visibly restrict unsupported cases. Keep keyboard/mouse and EPUB CFI behavior. | M7.2 |
+| FR-READ-10 | PDF page ink with Pencil 2 or explicitly enabled finger drawing: pen, freehand highlighter, color/width, stroke eraser, undo/redo. Separate navigation from drawing, handle cancelled pointers, provide non-pressure fallback, and store validated versioned source-page coordinates on the owned asset. Reflowable book ink and other-format ink require separate anchoring validation. | M7.3 |
+| FR-READ-11 | Adaptive pages/contents/search navigator with page labels, thumbnail overview and return to the prior reading position after a jump. Page navigation remains available without an outline; narrow screens use sheets rather than fixed sidebars. | M7.1–2 |
+| FR-READ-12 | Keep annotation drafts and anchors until successful save or deliberate discard. Show saving/saved/error/offline states near the action, retry idempotently, and prevent silent concurrent overwrite. A server-acknowledged save must survive reload and appear on the other device. Do not claim offline durability before an outbox exists. | M7.2–3 |
+| FR-READ-13 | Add non-destructive fixed-page crop after core touch work. Evaluate optional PDF text view with source-page mapping, reading-order/OCR quality gates and explicit limitations; never silently convert existing anchors. | M7.5 / P2 |
+| FR-READ-14 | Subsequent work: region annotations for scans/figures, bookmarks, validated DjVu/CBZ ink, derived annotated-PDF export and explicitly scoped offline recovery. Preserve full annotation payloads in JSON and meaningful representations/links in Markdown when ink ships. Source assets remain immutable. | M7.3 export compatibility; M7.5 extensions |
 
 ### Research and serials (M5)
 | ID | Requirement |
@@ -161,6 +176,9 @@ Design in [§8.7](#87-ai), [§8.8](#88-mcp) and [§9.4](#94-agent-question-to-ci
 | NFR-REL-2 | Reliability | A failed step never leaves an asset row pointing to a missing file. Upload completion is replayable after a lost response and publishes the exact verified bytes; asset/link/job finalization and deletion claims coordinate with all linking paths. |
 | NFR-REL-4 | Reliability | Jobs use an end-to-end deadline, claim-generation checks and atomic checkpoints/continuations. Cleanup makes bounded forward progress across all users and objects; deletion and indexing stop safely when the owner/asset disappears. |
 | NFR-A11Y-1 | Accessibility | Library and metadata UI meet WCAG 2.1 AA; the reader is keyboard-navigable. |
+| NFR-A11Y-2 | Accessibility / M7 (Chromium-tested, VoiceOver open) | Reader actions use at least 44 × 44 CSS px hit areas, typically 48 px; essential actions have alternatives to gestures, visible focus and VoiceOver labels. Sheets restore focus, avoid keyboard occlusion and support 200% text/browser zoom. This is a product target, not a claim of achieved WCAG conformance. |
+| NFR-PERF-4 | Performance / planned M7 | Proposed p95 input-to-visible-ink ≤50 ms on target devices; measure at least 100 samples and record conditions. Bounded rendering must survive the large-file/1,000-annotation/30-minute fixtures in the reader research plan without tab reload or unbounded growth. Revisit budgets with M7.0 evidence. |
+| NFR-REL-5 | Reliability / M7 (implemented; hardware gates open) | Save failure and interrupted input never silently discard an annotation draft or corrupt an existing anchor. Validate coordinate/payload bounds, owner isolation, idempotent retry and conflict handling; retain existing CFI/page annotations and immutable asset bytes. |
 | NFR-OPS-1 | Operations | Deployable with Docker on a single host; consistent backup covers PostgreSQL, Storage metadata/bytes and configuration. An isolated restore verifies records, files, covers and annotations; derived indexes can be rebuilt and restored agent tokens are invalidated by default. |
 | NFR-MAINT-1 | Maintainability | TypeScript strict mode, no `any`; Zod validation at every trust boundary. |
 
@@ -812,10 +830,14 @@ CREATE TABLE annotations (
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     record_id UUID NOT NULL REFERENCES records(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE, -- anchored to specific bytes
-    anchor_type TEXT NOT NULL CHECK (anchor_type IN ('pdf_page', 'epub_cfi', 'text_quote')),
+    anchor_type TEXT NOT NULL CHECK (anchor_type IN ('pdf_page', 'epub_cfi', 'text_quote', 'pdf_ink')),
     -- 'pdf_page' anchors any fixed page (PDF and DjVu): {page, rects:[{x1,y1,x2,y2}]} in page fractions, rects
     -- omitted for a page note. 'epub_cfi' anchors every foliate-js format (EPUB, MOBI, AZW3): {cfi}.
-    anchor_data JSONB NOT NULL, -- {page, rects:[{x1,y1,x2,y2}]} | {cfi} | {quote, context}
+    -- 'pdf_ink' (M7.3, FR-READ-10) is one pen/highlighter stroke on a PDF page:
+    -- {v:1, page, tool: pen|highlighter, width, points:[[x,y(,pressure)]…]}; values 0–1 page fractions, width
+    -- 0.0005–0.05 of the page width, 1–2000 points, ≤64 KB, no highlighted_text. Trigger
+    -- annotations_check_ink validates it (22023); ink rows are not written to work history.
+    anchor_data JSONB NOT NULL, -- {page, rects:[{x1,y1,x2,y2}]} | {cfi} | {quote, context} | ink stroke
     highlighted_text TEXT,
     note TEXT,
     color TEXT DEFAULT 'yellow',
@@ -1923,6 +1945,20 @@ Completion below reflects implementation/test milestones; deployment gates remai
 
 ---
 
+### M7 — Immersive touch reading (implementation in code; device validation open)
+
+- [x] Source/competitor gap study, requirements and eleven planned Figma reader states — 2026-10-12.
+- [ ] M7.0: physical-device compatibility spike and measured baseline.
+- [x] M7.1: immersive responsive shell — FR-READ-7/11. Implemented 2026-10-12; device gates A01/A07 open.
+- [x] M7.2: touch zoom/selection/navigation and safe annotation saves — FR-READ-8/9/11/12. Implemented 2026-10-12; A02/A03/A05/A06 open on hardware.
+- [x] M7.3: PDF Pencil/finger ink, persistence and export compatibility — FR-READ-10/12/14. Implemented 2026-10-12 (migration `20261012000001_pdf_ink.sql`); A04/A08 need the M2 + Pencil 2 and iPhone.
+- [ ] M7.4: real-device, accessibility, geometry, reliability and security sign-off.
+- [ ] M7.5: separately scoped P2 improvements — FR-READ-13/14.
+
+See [delivery dependencies and acceptance gates](docs/READER_EXPERIENCE_RESEARCH.md#delivery-sequence-and-reach). M4's completed baseline does not imply touch/Pencil validation or M7 completion. M7.1–M7.3 were built before the M7.0 device spike; the spike now validates them instead of gating them, and M7 stays open until M7.4 passes on both devices.
+
+---
+
 ## 14. Deviations from the original definition
 
 The source definition was adopted with these corrections. Each fixes an inconsistency or a bug in it.
@@ -2037,6 +2073,14 @@ Identifier creation freezes the provider preview for approval and reuses the exi
 Live gateway testing found that Deno 2.1 rejects Node HTTP `lookup` overrides. The shared downloader now uses pinned Undici 6.29.0 with an explicit validated-IP TCP/TLS connector; native TLS still verifies the original hostname/SNI, HTTP Host remains the original URL and every redirect is revalidated. There is no unchecked-fetch fallback or forwarded credential. This fixes ordinary browser URL imports as well as agent imports. An approved public URL created exactly one linked asset through the real local Edge runtime; `wrong.host.badssl.com` was rejected with native `NotValidForName`. Transfer logs contain only error class, never full URLs or credentials. Live external transfer/certificate probes are opt-in test fixtures; CI exercises deterministic approval/replay/isolation paths.
 
 Validation: 25 database assertions cover scope, self-approval denial, two-owner isolation, pending/withdrawn/expired approvals, exact argument binding, atomic catalog/tag/collection/URL writes, edition/container preservation, response-loss replay and revoked-token denial. MCP gateway checks reject confirmation flags, return readable proposals without mutation, execute only after owner approval, replay identically and reject revoked approved downloads. UI tests verify default read tokens/one-time secrets and approval of the exact server action. Shared name rules and record-type constants now live in the deployable Edge tree with frontend/shared re-exports; existing golden cases remain covered.
+
+### M7 implemented reader contracts
+
+- **Shell (FR-READ-7).** The reader route sits outside `AppShell` (own `UnsavedChangesProvider`), fills the viewport with safe-area padding and sets `viewport-fit=cover` only while open. Header: Back to details, Mark (PDF), Notes, More (reading status, download, keys), Focus. Focus uses the Fullscreen API with the existing CSS fallback, hides viewer toolbars and keeps an always-visible **Exit focus** (also F/Esc). Fit presets re-apply on resize and pdf.js scrolls back to the last `updateviewarea` location. Notes are an always-mounted panel: a keyboard-aware bottom sheet below 768 px, an overlay to 1280 px, a column beyond.
+- **Navigation (FR-READ-8/11).** PDF: Navigate panel (sheet on narrow screens) with lazily rendered page thumbnails, outline (disabled without one) and search; page-number jump always present; **Back to page …** after any thumbnail/outline/search/page/note jump. DjVu and books get the same return button and sheets. Two-finger pinch/pan (touch events, `touch-action: pan-x pan-y` on the scroller only) previews with a CSS transform and commits through `PDFViewer.updateScale({scaleFactor, origin})` or the DjVu scale, keeping the focal point; +/−, zoom select, **Fit** reset and `0` remain.
+- **Selection (FR-READ-9).** Viewers also report selections from a settled `selectionchange` (300 ms), so native handles work without mouse-up or right-click; on coarse pointers or narrow screens a bottom action bar offers highlight colors, comment and copy. A PDF selection crossing pages is cut to its first page (quote and rectangles agree) and the reader says so.
+- **Saves (FR-READ-12).** Creates are upserts with a client UUID per anchor, so a retry after a lost response cannot duplicate. Forms clear only after success; failures keep text, anchor and selection, show the reason and **Retry** beside the action, and a written comment is discarded only after confirmation (also on outside tap/Esc). Note edits send `updated_at` as an expected revision; a mismatch keeps the local text and offers **Keep mine** or **Use saved version**. Unsaved comments, note edits and ink block navigation/unload. No offline outbox: an unsaved state is shown as such.
+- **Ink (FR-READ-10).** One `pdf_ink` row per stroke (contract above); erase deletes rows; undo/redo replay whole actions as idempotent upserts/deletes in order, retried on failure, and unsaved strokes draw dashed. Pencil (`pointerType` pen) and mouse draw in Mark mode; fingers scroll unless **Draw with finger** is on; touches are ignored while the pen is down; a second finger cancels an unfinished finger stroke; `pointercancel`/lost capture discard it. Coalesced samples are used when available; pressure is stored and scales the stroke width, with a fixed-width fallback. Notes lists, the Notes page and Markdown show ink per page (with a link); JSON keeps every stroke; MCP `get_work` omits ink.
 
 ### M6.7 operational contracts
 

@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { UnsavedChangesProvider } from '@/components/ui/UnsavedChangesGuard';
 import { Login } from '@/pages/Login';
 import { Overview } from '@/pages/Overview';
 import { Library } from '@/pages/Library';
@@ -34,20 +35,23 @@ const router = createBrowserRouter(
     <Route path="/forgot" element={<ForgotPassword />} />
     <Route path="/reset" element={<ResetPassword />} />
     <Route element={<ProtectedRoute />}>
+      {/* FR-READ-7: the reader owns the whole screen; the library's sidebar, top bar and tab bar stay out. */}
+      <Route
+        path="library/:workId/records/:recordId/assets/:assetId/read"
+        element={
+          <UnsavedChangesProvider>
+            <Suspense fallback={<p className="p-4 text-body text-muted">Loading reader…</p>}>
+              <Reader />
+            </Suspense>
+          </UnsavedChangesProvider>
+        }
+      />
       <Route element={<AppShell />}>
         <Route index element={<Overview />} />
         <Route path="library" element={<Library />} />
         <Route path="library/new" element={<NewWork />} />
         <Route path="library/:workId" element={<WorkDetail />} />
         <Route path="library/:workId/edit" element={<WorkDetail />} />
-        <Route
-          path="library/:workId/records/:recordId/assets/:assetId/read"
-          element={
-            <Suspense fallback={<p className="text-body text-muted">Loading reader…</p>}>
-              <Reader />
-            </Suspense>
-          }
-        />
         <Route path="collections" element={<Collections />} />
         <Route path="collections/:collectionId" element={<CollectionDetail />} />
         <Route path="tags" element={<Tags />} />

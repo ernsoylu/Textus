@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ANNOTATION_COLORS, annotationHref, highlightFill, useAnnotations } from '@/hooks/useAnnotations';
+import { ANNOTATION_COLORS, annotationHref, highlightFill, inkPages, isInk, useAnnotations } from '@/hooks/useAnnotations';
 import { useTags } from '@/hooks/useTags';
 import { annotationsToJson, annotationsToMarkdown, downloadText } from '@/lib/annotationExport';
 import { filterNotes, groupNotes, NOTE_SORTS, type NoteSort } from '@/lib/noteFilters';
 import { NoteCard } from '@/components/reader/NoteCard';
+import { ColorSwatch } from '@/components/reader/ColorSwatch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -47,7 +48,7 @@ export function Notes() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-serif text-title text-fg">Notes</h1>
-          {data && <p className="text-small text-muted">{data.length} {data.length === 1 ? 'note' : 'notes'} in {new Set(data.map((a) => a.record_id)).size} {new Set(data.map((a) => a.record_id)).size === 1 ? 'book' : 'books'}</p>}
+          {data && <p className="text-small text-muted">{data.filter((a) => !isInk(a)).length} {data.filter((a) => !isInk(a)).length === 1 ? 'note' : 'notes'} in {new Set(data.map((a) => a.record_id)).size} {new Set(data.map((a) => a.record_id)).size === 1 ? 'book' : 'books'}</p>}
         </div>
         {shown.length > 0 && (
           <div className="flex gap-1">
@@ -82,7 +83,7 @@ export function Notes() {
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-small text-muted">Color</span>
           {ANNOTATION_COLORS.map((c) => (
-            <button key={c} type="button" aria-pressed={filters.color === c} aria-label={`Only ${c}`} onClick={() => set('color', filters.color === c ? '' : c)} style={{ backgroundColor: highlightFill(c) }} className={`h-5 w-5 rounded-full border ${filters.color === c ? 'border-fg ring-2 ring-fg' : 'border-transparent'}`} />
+            <ColorSwatch key={c} aria-pressed={filters.color === c} aria-label={`Only ${c}`} selected={filters.color === c} fill={highlightFill(c)} onClick={() => set('color', filters.color === c ? '' : c)} />
           ))}
           <label className="flex items-center gap-2 text-small text-fg">
             <input type="checkbox" checked={filters.commentsOnly} onChange={(e) => set('comments', e.target.checked ? '1' : '')} />
@@ -103,12 +104,22 @@ export function Notes() {
           <summary className="flex cursor-pointer list-none items-center gap-2 border-b border-border pb-2">
             <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-90">›</span>
             <h2 className="min-w-0 truncate font-serif text-heading text-fg">{g.title}</h2>
-            <span className="text-small text-muted">{g.items.length}</span>
+            <span className="text-small text-muted">{g.items.filter((a) => !isInk(a)).length}</span>
             <span className="flex-1" />
             {g.workId && <Link to={`/library/${g.workId}`} className="text-small text-muted underline">Details</Link>}
             <Link to={annotationHref(g.items[0])} className="text-small text-green underline">Open book</Link>
           </summary>
-          <div className="mt-2 grid gap-3 lg:grid-cols-2">{g.items.map((a) => <NoteCard key={a.id} a={a} />)}</div>
+          <div className="mt-2 grid gap-3 lg:grid-cols-2">{g.items.filter((a) => !isInk(a)).map((a) => <NoteCard key={a.id} a={a} />)}</div>
+          {inkPages(g.items).length > 0 && (
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-small text-muted">
+              Drawings:
+              {inkPages(g.items).map((d) => (
+                <Link key={`${d.first.asset_id}:${d.page}`} to={annotationHref(d.first)} className="flex min-h-11 items-center rounded-8 px-2 text-green underline">
+                  page {d.page} ({d.count})
+                </Link>
+              ))}
+            </p>
+          )}
         </details>
       ))}
     </div>

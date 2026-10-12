@@ -9,6 +9,12 @@ const prefsSchema = z.object({
   lineHeight: z.number().min(1).max(2.4).default(1.5),
   flow: z.enum(['paginated', 'scrolled']).default('paginated'),
   twoPage: z.boolean().default(false),
+  // FR-READ-10 Mark mode. Finger drawing is off by default: a finger scrolls and zooms unless asked to draw.
+  inkTool: z.enum(['pen', 'highlighter', 'eraser']).default('pen'),
+  penColor: z.string().max(20).default('black'),
+  highlighterColor: z.string().max(20).default('yellow'),
+  inkSize: z.number().int().min(0).max(2).default(1),
+  fingerDraw: z.boolean().default(false),
 });
 export type ReaderPrefs = z.infer<typeof prefsSchema>;
 const KEY = 'textus.reader';

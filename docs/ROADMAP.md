@@ -8,6 +8,22 @@ in [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md); live device and accessibility testi
 
 Status legend: **[ ]** open · **[x]** done
 
+## M7 — Immersive touch reader (implemented in code; device validation open)
+
+Added **2026-10-12**, source baseline `d8cb5df`. The owner uses an M2 iPad Pro 12.9-inch + Apple Pencil 2 and iPhone 15 Pro Max. Research and design are complete; implementation and device validation remain open. [Gap study, sources, estimates and acceptance gates](READER_EXPERIENCE_RESEARCH.md) · [eleven Figma states](FRONTEND_DESIGN.md#planned-reader-evolution--2026-10-12).
+
+| Status | Work | Dependency / exit |
+| --- | --- | --- |
+| [x] | Research, FR-READ-7–14, planned Figma mockups, delivery and decision log | Official-source comparison and repository evidence recorded. |
+| [ ] | **M7.0 / P0:** touch/Pencil compatibility spike, exact OS builds, baseline and payload limits | Real M2/Pencil 2 and iPhone; establish feasibility before committing browser gesture promises. |
+| [x] | **M7.1 / P1:** focused shell, adaptive panels/sheets, reachable controls | Implemented 2026-10-12; A01/A07 on hardware open. |
+| [x] | **M7.2 / P0–P1:** safe drafts/retries, touch selection, focal zoom, page navigator and return position | Implemented 2026-10-12, including the failed-save draft-loss fix (G07); A02/A03/A05/A06 on hardware open. |
+| [x] | **M7.3 / P1:** PDF ink, Pencil/finger routing, eraser/undo/redo, compatible persistence/exports | Implemented 2026-10-12 (`pdf_ink`, pgTAP `pdf_ink.test.sql` covers A09 payload/isolation); A04/A05/A06 on hardware open. |
+| [ ] | **M7.4 / release gate:** hardware, accessibility, large-file and format regression sign-off | M7.1–3; all A01–A09 evidence. |
+| [ ] | **M7.5 / P2:** crop/text-view feasibility, region notes/bookmarks, other-format ink, PDF export and separately scoped offline recovery | Core gates first; no deadline promised. |
+
+Core estimate **18–30 engineer-days**, excluding device-test scheduling; revise after M7.0. Existing pdf.js/foliate-js/DjVu.js remain. No native rewrite or new annotation SDK is selected. Existing manual reader/device testing and format-regression items below are prerequisites carried into M7, not closed by this design work.
+
 ## Security and systemic review — 2026-10-01
 
 Scope: repository documentation, migrations/RLS, authentication/cache, upload, worker/cleanup,
@@ -231,3 +247,17 @@ The library is mostly English with German, French and Turkish works, and questio
 
 With indexing finished, re-embedding ran at only ~107 passages/min (1.8/s). Measured on monster's GTX 1050 Ti with synthetic 1,900-character passages: 1.05 passages/s at 1 per Ollama call, 3.27 at 4 (previous), 4.72 at 8, 5.28 at 16, 6.16 at 32. Calls now take up to 16 passages within 32 KB. Overlapping embedding runs also deferred whole books for 5 minutes when the GPU was briefly busy; background runs now wait up to 5 s for the GPU lease and retry after 30 s.
 
+
+### Immersive reader research and design (2026-10-12)
+
+- Compared PDF Expert, Readwise Reader, Zotero, Goodnotes and Xodo using official web/mobile documentation; logged source links and platform boundaries in `READER_EXPERIENCE_RESEARCH.md`.
+- Inspected the implemented reader at `d8cb5df`; identified chrome density, narrow sidebars, small touch targets, selection/gesture integration, absent ink and failed-save draft loss. These are source findings, not physical-device measurements.
+- Owner clarified M2 iPad Pro and wireless-charging Pencil; target is Pencil 2, plus finger input on iPhone 15 Pro Max. Exact latest-installed OS builds await hardware validation.
+- Added eleven editable planned Figma states with Textus styles/components, interaction notes and two prototype entry points; updated requirements, phased backlog and acceptance gates. All implementation tasks remain open.
+- Validation: documentation/link consistency and Figma structural/visual checks; no application code, database or deployment changed. Pencil latency, palm rejection and native selection remain unverified on hardware.
+
+### M7.1–M7.3 implementation (2026-10-12)
+
+- Baseline `d8cb5df`. Implemented FR-READ-7–12 and FR-READ-14 export compatibility; contracts in ARCHITECTURE_AND_REQUIREMENTS.md “M7 implemented reader contracts”. Migration `20261012000001_pdf_ink.sql` (not yet deployed to app102).
+- Tests: Vitest 195 (ink geometry/schema bounds, draft retention and discard, ink Markdown/JSON export); pgTAP `pdf_ink` 12/12 plus all existing suites on a local stack (one `embeddings` ANN-ordering assertion unrelated to annotations failed locally); Playwright 20 in Chromium, including a 430 px reader (failed save → Retry → exactly one row, focus, navigator sheet, axe, every visible control ≥44 px) and a mouse-drawn stroke + undo.
+- Not verified: anything on the M2 iPad/Pencil 2 or iPhone 15 Pro Max (A01–A08 hardware evidence, palm rejection, Safari selection handles, keyboard occlusion, ink latency), WebKit Playwright, large-file/1,000-annotation fixtures. Known limits: ink is PDF-only; unsaved ink lives in the tab only; a failed stroke save that is then erased can be re-created by Retry; ink is not in work history.

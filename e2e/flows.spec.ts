@@ -241,7 +241,7 @@ test('upload a file, preview metadata, and open the reader', async ({ page }) =>
   expect(detailScan.violations, JSON.stringify(detailScan.violations, null, 2)).toEqual([]);
 
   await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
-  await expect(page.getByLabel('Reading status')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to details' })).toBeVisible();
   await expect(page.getByText('of 1')).toBeVisible();
   await expect(page.getByText('Textus reader fixture')).toBeVisible();
   const documentPages = page.getByRole('group', { name: 'Document pages' });
@@ -292,7 +292,7 @@ test('library opens book details, metadata shares one input, and Read opens the 
   await page.getByRole('link', { name: 'Back to details' }).click();
   await page.getByRole('link', { name: 'Read', exact: true }).click();
   await expect(page).toHaveURL(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
-  await expect(page.getByLabel('Reading status')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to details' })).toBeVisible();
   await expect(page.getByText('Textus reader fixture')).toBeVisible();
   await expect(page.getByText('Add note to page 1')).toBeVisible();
 });
@@ -494,6 +494,7 @@ test('dropdown arrows have consistent inset and text clearance across pages', as
       expect(style.image).toContain('image/svg+xml');
     }
   }
+  await page.getByText('More', { exact: true }).click();
   await page.getByLabel('Reading status').selectOption('reading');
   await expect(page.getByLabel('Reading status')).toHaveValue('reading');
 });
@@ -513,5 +514,83 @@ for (const mobile of [false, true]) test(`hostile EPUB retains a second-spine CF
   })).toEqual([{ index: 1, evidence: 'Deep evidence', active: 0 }]);
   expect(await page.evaluate(() => document.body.dataset.exploited)).toBeUndefined();
   expect(escapedRequests).toEqual([]);
-  await expect(page.getByLabel('Reading status')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Back to details' })).toBeVisible();
+});
+
+// M7 (FR-READ-7/8/10/11/12, NFR-A11Y-2): phone-width reader. Emulation cannot prove Pencil, palm rejection or
+// native selection (acceptance gates A03/A04 need the physical devices); this covers the reproducible UI.
+test('phone reader keeps a failed note, focuses, navigates and keeps 44 px controls', async ({ page }) => {
+  await mocks(page);
+  await page.setViewportSize({ width: 430, height: 932 });
+  let fail = true;
+  const saved: unknown[] = [];
+  await page.route('**/rest/v1/annotations*', (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ json: [] });
+    if (fail) return route.fulfill({ status: 500, json: { message: 'Server error' } });
+    saved.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: [] });
+  });
+  await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
+  await expect(page.getByText('Textus reader fixture')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: /main/i })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const small = await page.locator('button:visible, summary:visible, select:visible, input:visible').evaluateAll((els) =>
+    els.map((el) => ({ name: el.getAttribute('aria-label') ?? el.textContent?.trim(), h: el.getBoundingClientRect().height, w: el.getBoundingClientRect().width })).filter((b) => b.h < 43.5 || b.w < 43.5));
+  expect(small).toEqual([]);
+
+  await expect(page.getByRole('complementary', { name: 'Notes' })).toBeHidden();
+  await page.getByRole('button', { name: /^Notes/ }).click();
+  const notes = page.getByRole('complementary', { name: 'Notes' });
+  await notes.getByLabel('Comment', { exact: true }).fill('Check figure 2');
+  await notes.getByRole('button', { name: 'Add note to page 1' }).click();
+  await expect(notes.getByRole('alert')).toContainText('Could not save');
+  await expect(notes.getByLabel('Comment', { exact: true })).toHaveValue('Check figure 2');
+  fail = false;
+  await notes.getByRole('button', { name: 'Retry' }).click();
+  await expect(notes.getByLabel('Comment', { exact: true })).toHaveValue('');
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ anchor_type: 'pdf_page', anchor_data: { page: 1 }, note: 'Check figure 2' });
+  await notes.getByRole('button', { name: 'Close' }).click();
+  await expect(notes).toBeHidden();
+
+  await page.getByRole('button', { name: 'Pages, contents and search' }).click();
+  await expect(page.getByRole('dialog', { name: 'Navigate' }).getByRole('list', { name: 'Pages' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Navigate' }).getByRole('button', { name: 'Close' }).click();
+
+  await page.getByRole('button', { name: 'Focus' }).click();
+  await expect(page.getByRole('toolbar', { name: 'PDF controls' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Exit focus' }).click();
+  await expect(page.getByRole('toolbar', { name: 'PDF controls' })).toBeVisible();
+  const scan = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
+});
+
+test('Mark mode draws a validated ink stroke and undo removes it', async ({ page }) => {
+  await mocks(page);
+  const posts: { anchor_type: string; anchor_data: { v: number; page: number; tool: string; points: number[][] } }[] = [];
+  const deletes: string[] = [];
+  await page.route('**/rest/v1/annotations*', (route) => {
+    const method = route.request().method();
+    if (method === 'POST') posts.push(route.request().postDataJSON());
+    if (method === 'DELETE') deletes.push(route.request().url());
+    return route.fulfill({ status: method === 'POST' ? 201 : 200, json: [] });
+  });
+  await page.goto(`/library/${workId}/records/${recordId}/assets/${assetId}/read`);
+  await expect(page.getByText('Textus reader fixture')).toBeVisible();
+  await page.getByRole('button', { name: /Mark/ }).click();
+  await expect(page.getByRole('toolbar', { name: 'Drawing tools' })).toBeVisible();
+  const surface = page.getByRole('img', { name: 'Drawing surface, page 1' });
+  const box = (await surface.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + box.width * (0.2 + i * 0.04), box.y + box.height * 0.3 + i * 3);
+  await page.mouse.up();
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0].anchor_type).toBe('pdf_ink');
+  expect(posts[0].anchor_data).toMatchObject({ v: 1, page: 1, tool: 'pen' });
+  expect(posts[0].anchor_data.points.length).toBeGreaterThan(5);
+  expect(posts[0].anchor_data.points.flat().every((n) => n >= 0 && n <= 1)).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => deletes.length).toBe(1);
 });
