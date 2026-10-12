@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ANNOTATION_COLORS, annotationHref, highlightFill, inkPages, isInk, useAnnotations } from '@/hooks/useAnnotations';
+import { ANNOTATION_COLORS, annotationHref, highlightFill, inkPages, isDrawing, useAnnotations } from '@/hooks/useAnnotations';
 import { useTags } from '@/hooks/useTags';
 import { annotationsToJson, annotationsToMarkdown, downloadText } from '@/lib/annotationExport';
 import { filterNotes, groupNotes, NOTE_SORTS, type NoteSort } from '@/lib/noteFilters';
@@ -48,7 +48,7 @@ export function Notes() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="font-serif text-title text-fg">Notes</h1>
-          {data && <p className="text-small text-muted">{data.filter((a) => !isInk(a)).length} {data.filter((a) => !isInk(a)).length === 1 ? 'note' : 'notes'} in {new Set(data.map((a) => a.record_id)).size} {new Set(data.map((a) => a.record_id)).size === 1 ? 'book' : 'books'}</p>}
+          {data && <p className="text-small text-muted">{data.filter((a) => !isDrawing(a)).length} {data.filter((a) => !isDrawing(a)).length === 1 ? 'note' : 'notes'} in {new Set(data.map((a) => a.record_id)).size} {new Set(data.map((a) => a.record_id)).size === 1 ? 'book' : 'books'}</p>}
         </div>
         {shown.length > 0 && (
           <div className="flex gap-1">
@@ -104,12 +104,12 @@ export function Notes() {
           <summary className="flex cursor-pointer list-none items-center gap-2 border-b border-border pb-2">
             <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-90">›</span>
             <h2 className="min-w-0 truncate font-serif text-heading text-fg">{g.title}</h2>
-            <span className="text-small text-muted">{g.items.filter((a) => !isInk(a)).length}</span>
+            <span className="text-small text-muted">{g.items.filter((a) => !isDrawing(a)).length}</span>
             <span className="flex-1" />
             {g.workId && <Link to={`/library/${g.workId}`} className="text-small text-muted underline">Details</Link>}
             <Link to={annotationHref(g.items[0])} className="text-small text-green underline">Open book</Link>
           </summary>
-          <div className="mt-2 grid gap-3 lg:grid-cols-2">{g.items.filter((a) => !isInk(a)).map((a) => <NoteCard key={a.id} a={a} />)}</div>
+          <div className="mt-2 grid gap-3 lg:grid-cols-2">{g.items.filter((a) => !isDrawing(a)).map((a) => <NoteCard key={a.id} a={a} />)}</div>
           {inkPages(g.items).length > 0 && (
             <p className="mt-2 flex flex-wrap items-center gap-2 text-small text-muted">
               Drawings:

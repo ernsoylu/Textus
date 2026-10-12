@@ -9,7 +9,7 @@ import { useKeyboardInset } from '@/hooks/useKeyboardInset';
 import { useReaderPrefs } from '@/hooks/useReaderPrefs';
 import { useInk } from '@/hooks/useInk';
 import { useReadingState, useProgressSaver, useSaveReadingState, READING_STATUSES, type ReadingStatus, type Progress } from '@/hooks/useReadingState';
-import { anchorSchema, highlightFill, useAnnotations, useCreateAnnotation, type Anchor, type AnnotationItem, type InkData } from '@/hooks/useAnnotations';
+import { anchorSchema, highlightFill, isDrawing, useAnnotations, useCreateAnnotation, type Anchor, type AnnotationItem, type InkData } from '@/hooks/useAnnotations';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { isTypingTarget } from '@/lib/keyboard';
@@ -157,7 +157,7 @@ export function Reader() {
       const anchor = parseAnchor(a);
       if (!anchor.success) return;
       setGoTo({ anchor: anchor.data });
-      if (withBubble && anchor.data.anchor_type !== 'pdf_ink') setBubble({ id: a.id, at: bubbleHome() });
+      if (withBubble && !isDrawing(a)) setBubble({ id: a.id, at: bubbleHome() });
       if (!wide) setNotesOpen(false);
     },
     [bubbleHome, wide],
@@ -301,7 +301,7 @@ export function Reader() {
           )}
           {readable && (
             <Button ref={notesButtonRef} variant={notesOpen ? 'secondary' : 'ghost'} className={BTN} aria-pressed={notesOpen} aria-expanded={notesOpen} onClick={toggleNotes}>
-              Notes{annotations.data?.length ? ` (${annotations.data.filter((a) => a.anchor_type !== 'pdf_ink').length})` : ''}
+              Notes{annotations.data?.length ? ` (${annotations.data.filter((a) => !isDrawing(a)).length})` : ''}
             </Button>
           )}
           <details className="relative">
@@ -356,7 +356,7 @@ export function Reader() {
               {...common}
               initialPage={startPage}
               onFirstPageRendered={handleFirstPageRendered}
-              ink={{ strokes: ink.strokes, settings: inkSettings, onStroke: (data: InkData) => ink.add(data, inkSettings?.color ?? 'black'), onErase: ink.erase }}
+              ink={{ strokes: ink.strokes, settings: inkSettings, onStroke: (data: InkData, text?: string) => ink.add(data, inkSettings?.color ?? 'black', text), onErase: ink.erase }}
             />
           )}
           {isDjvu && <DjvuViewer {...common} initialPage={startPage} onFirstPageRendered={handleFirstPageRendered} />}

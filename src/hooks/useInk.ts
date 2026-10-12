@@ -42,7 +42,7 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
     setUnsaved((m) => new Map([...m, ...strokes.map((s) => [s.id, { ...s, unsaved: true }] as const)]));
     setHidden((h) => new Set([...h].filter((id) => !strokes.some((s) => s.id === id))));
     run(async () => {
-      for (const s of strokes) await saveAnnotation({ id: s.id, recordId, assetId, anchor: { anchor_type: 'pdf_ink', anchor_data: s.data }, color: s.color ?? 'black' }, session!.user.id);
+      for (const s of strokes) await saveAnnotation({ id: s.id, recordId, assetId, anchor: { anchor_type: 'pdf_ink', anchor_data: s.data }, color: s.color ?? 'black', text: s.text || undefined }, session!.user.id);
       setUnsaved((m) => {
         const next = new Map(m);
         for (const s of strokes) next.delete(s.id);
@@ -62,7 +62,7 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
   const saved = useMemo(() => (rows ?? []).flatMap((a): InkStroke[] => {
     if (a.anchor_type !== 'pdf_ink') return [];
     const data = inkDataSchema.safeParse(a.anchor_data);
-    return data.success ? [{ id: a.id, data: data.data, color: a.color }] : [];
+    return data.success ? [{ id: a.id, data: data.data, color: a.color, text: a.highlighted_text }] : [];
   }), [rows]);
 
   const strokes = useMemo(() => {
@@ -71,8 +71,8 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
     return [...byId.values()].filter((s) => !hidden.has(s.id));
   }, [saved, unsaved, hidden]);
 
-  const add = useCallback((data: InkData, color: string) => {
-    const stroke: InkStroke = { id: crypto.randomUUID(), data, color };
+  const add = useCallback((data: InkData, color: string, text?: string) => {
+    const stroke: InkStroke = { id: crypto.randomUUID(), data, color, text: data.tool === 'highlighter' ? text || null : null };
     setUndo((u) => [...u, { kind: 'add', strokes: [stroke] }]);
     setRedo([]);
     persistAdd([stroke]);

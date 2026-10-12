@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ANNOTATION_COLORS, highlightFill, inkPages, isInk, type AnnotationItem } from '@/hooks/useAnnotations';
+import { ANNOTATION_COLORS, highlightFill, inkPages, isDrawing, type AnnotationItem } from '@/hooks/useAnnotations';
 import { annotationsToJson, annotationsToMarkdown, downloadText } from '@/lib/annotationExport';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,8 @@ import { NoteCard } from './NoteCard';
 
 // FR-READ-4/5: the open book's highlights and notes in the reader's side panel — filter, edit, jump, export.
 export function AnnotationPanel({ items: all, onGoTo }: Readonly<{ items: AnnotationItem[]; onGoTo?: (a: AnnotationItem) => void }>) {
-  // Ink strokes are summarized per page below the cards, not listed one card per stroke.
-  const items = all.filter((a) => !isInk(a));
+  // Pen strokes are summarized per page below the cards; freehand highlights are cards like text highlights.
+  const items = all.filter((a) => !isDrawing(a));
   const drawings = inkPages(all);
   const [colors, setColors] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -25,8 +25,8 @@ export function AnnotationPanel({ items: all, onGoTo }: Readonly<{ items: Annota
         <p className="text-label text-fg">Notes · {shown.length === items.length ? items.length : `${shown.length} of ${items.length}`}</p>
         {shown.length > 0 && (
           <div className="flex gap-1">
-            <Button variant="ghost" className="min-h-11 px-3 py-1" onClick={() => downloadText('annotations.md', annotationsToMarkdown([...shown, ...all.filter(isInk)]), 'text/markdown')}>Markdown</Button>
-            <Button variant="ghost" className="min-h-11 px-3 py-1" onClick={() => downloadText('annotations.json', annotationsToJson([...shown, ...all.filter(isInk)]), 'application/json')}>JSON</Button>
+            <Button variant="ghost" className="min-h-11 px-3 py-1" onClick={() => downloadText('annotations.md', annotationsToMarkdown([...shown, ...all.filter(isDrawing)]), 'text/markdown')}>Markdown</Button>
+            <Button variant="ghost" className="min-h-11 px-3 py-1" onClick={() => downloadText('annotations.json', annotationsToJson([...shown, ...all.filter(isDrawing)]), 'application/json')}>JSON</Button>
           </div>
         )}
       </div>

@@ -22,6 +22,12 @@ describe('annotation export', () => {
     const [row] = JSON.parse(annotationsToJson([stroke('i1', 4)]));
     expect(row.anchor_data.points).toEqual([[0.1, 0.2]]);
   });
+  it('quotes freehand highlights like text highlights', () => {
+    const md = annotationsToMarkdown([item({ id: 'h1', anchor_type: 'pdf_ink', anchor_data: { v: 1, page: 7, tool: 'highlighter', width: 0.018, points: [[0.1, 0.2]] }, highlighted_text: 'freehand words', note: null })]);
+    expect(md).toContain('> freehand words');
+    expect(md).toContain('*(p. 7)*');
+    expect(md).not.toContain('Ink drawing');
+  });
   it('emits JSON without the joined record objects', () => {
     const [row] = JSON.parse(annotationsToJson([item({})]));
     expect(row).toMatchObject({ title: 'Dune', note: 'Check this' });

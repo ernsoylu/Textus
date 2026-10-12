@@ -7,7 +7,25 @@ import { ColorSwatch } from './ColorSwatch';
 
 // Stroke widths as fractions of the page width (small, medium, large).
 export const INK_WIDTHS = { pen: [0.0015, 0.003, 0.006], highlighter: [0.01, 0.018, 0.028] } as const;
-const TOOLS = [['pen', 'Pen'], ['highlighter', 'Highlighter'], ['eraser', 'Eraser']] as const;
+// 24 × 24 stroke icons drawn inline (no icon dependency), like the comment marker in pageGeometry.ts.
+const ICONS = {
+  pen: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
+  highlighter: ['m9 11-6 6v3h9l3-3', 'm22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'],
+  eraser: ['m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21', 'M22 21H7', 'm5 11 9 9'],
+  undo: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'],
+  redo: ['M21 7v6h-6', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7'],
+  finger: ['M8 13V4.5a1.5 1.5 0 0 1 3 0V12', 'M11 11.5v-2a1.5 1.5 0 0 1 3 0V12', 'M14 10.5a1.5 1.5 0 0 1 3 0V12', 'M17 11.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-4.6-2.2l-2.8-3.3a1.6 1.6 0 0 1 2.5-2L8 15.5'],
+} as const;
+
+function Icon({ name }: Readonly<{ name: keyof typeof ICONS }>) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name].map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}
+
+const TOOLS = [['pen', 'Pen'], ['highlighter', 'Highlighter (keeps the text it covers as a note)'], ['eraser', 'Eraser']] as const;
 const SIZES = ['Thin', 'Medium', 'Thick'];
 const BTN = 'min-h-11 min-w-11 px-2';
 
@@ -34,7 +52,9 @@ export function InkToolbar({ prefs, update, status, error, unsaved, canUndo, can
     <div role="toolbar" aria-label="Drawing tools" className="flex flex-wrap items-center gap-1 rounded-8 border border-border bg-raised p-1 shadow">
       <div role="radiogroup" aria-label="Tool" className="flex">
         {TOOLS.map(([value, label]) => (
-          <Button key={value} role="radio" aria-checked={tool === value} variant={tool === value ? 'secondary' : 'ghost'} className={`${BTN} ${tool === value ? 'ring-2 ring-green' : ''}`} onClick={() => update({ inkTool: value })}>{label}</Button>
+          <Button key={value} role="radio" aria-checked={tool === value} aria-label={label.split(' (')[0]} title={label} variant={tool === value ? 'secondary' : 'ghost'} className={`${BTN} ${tool === value ? 'ring-2 ring-green' : ''}`} onClick={() => update({ inkTool: value })}>
+            <Icon name={value} />
+          </Button>
         ))}
       </div>
       {tool !== 'eraser' && (
@@ -52,12 +72,19 @@ export function InkToolbar({ prefs, update, status, error, unsaved, canUndo, can
           </label>
         </>
       )}
-      <Button variant="ghost" className={BTN} aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}>↶</Button>
-      <Button variant="ghost" className={BTN} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}>↷</Button>
-      <label className="flex min-h-11 items-center gap-2 px-2 text-small text-fg">
-        <input type="checkbox" role="switch" checked={prefs.fingerDraw} onChange={(e) => update({ fingerDraw: e.target.checked })} className="h-5 w-5" />
-        Draw with finger
-      </label>
+      <Button variant="ghost" className={BTN} aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo}><Icon name="undo" /></Button>
+      <Button variant="ghost" className={BTN} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo}><Icon name="redo" /></Button>
+      <Button
+        role="switch"
+        aria-checked={prefs.fingerDraw}
+        aria-label="Draw with finger"
+        title={prefs.fingerDraw ? 'Draw with finger: on (one finger draws, two fingers scroll and zoom)' : 'Draw with finger: off (fingers scroll; Apple Pencil and mouse draw)'}
+        variant={prefs.fingerDraw ? 'secondary' : 'ghost'}
+        className={`${BTN} ${prefs.fingerDraw ? 'ring-2 ring-green' : ''}`}
+        onClick={() => update({ fingerDraw: !prefs.fingerDraw })}
+      >
+        <Icon name="finger" />
+      </Button>
       <span className={`px-1 text-small ${status === 'error' || (!online && unsaved) ? 'text-red' : 'text-muted'}`} role="status" aria-live="polite">{message}</span>
       {status === 'error' && <Button variant="secondary" className={BTN} onClick={onRetry}>Retry</Button>}
       <Button variant="primary" className={`${BTN} ml-auto`} onClick={onDone}>Done</Button>

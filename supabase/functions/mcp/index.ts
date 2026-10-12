@@ -29,12 +29,12 @@ async function getWork(client: SupabaseClient, workId: string, recordOffset: num
     checked(client.from('record_assets').select('record_id,role,assets(id,file_format,file_size,processing_state,metadata)').in('record_id', ids).limit(101)),
     checked(client.from('record_tags').select('record_id,tags(id,name)').in('record_id', ids).limit(101)),
     checked(client.from('collection_records').select('record_id,collections(id,name)').in('record_id', ids).limit(101)),
-    // Ink strokes (FR-READ-10) are point lists, not text an agent can use; they stay out of the notes.
-    checked(client.from('annotations').select('id,record_id,asset_id,anchor_type,anchor_data,highlighted_text,note').in('record_id', ids).neq('anchor_type', 'pdf_ink').order('id').range(notesOffset, notesOffset + 20)),
+    // Pen ink (FR-READ-10) is point lists, not text an agent can use; freehand highlights keep their text and stay.
+    checked(client.from('annotations').select('id,record_id,asset_id,anchor_type,anchor_data,highlighted_text,note').in('record_id', ids).or('anchor_type.neq.pdf_ink,highlighted_text.not.is.null').order('id').range(notesOffset, notesOffset + 20)),
   ]);
   return { work: { ...work, abstract: work.abstract?.slice(0, 10000), abstractTruncated: (work.abstract?.length ?? 0) > 10000 }, records: records.slice(0, 10),
     identifiers: (identifiers ?? []).slice(0, 100), credits: (credits ?? []).slice(0, 100), files: (files ?? []).slice(0, 100).map((f) => { const asset = Array.isArray(f.assets) ? f.assets[0] : f.assets; return { record_id: f.record_id, role: f.role, asset: asset ? { id: asset.id, format: asset.file_format, size: asset.file_size, processingState: asset.processing_state, index: asset.metadata?.passage_index } : null }; }),
-    tags: (tags ?? []).slice(0, 100), collections: (collections ?? []).slice(0, 100), notes: (notes ?? []).slice(0, 20).map((n) => ({ ...n, note: n.note?.slice(0, 2000), highlighted_text: n.highlighted_text?.slice(0, 2000) })),
+    tags: (tags ?? []).slice(0, 100), collections: (collections ?? []).slice(0, 100), notes: (notes ?? []).slice(0, 20).map((n) => ({ ...n, anchor_data: n.anchor_type === 'pdf_ink' ? { page: (n.anchor_data as { page?: number } | null)?.page } : n.anchor_data, note: n.note?.slice(0, 2000), highlighted_text: n.highlighted_text?.slice(0, 2000) })),
     nextRecordOffset: records.length > 10 ? recordOffset + 10 : null, nextNotesOffset: (notes?.length ?? 0) > 20 ? notesOffset + 20 : null,
     nestedDataLimited: [identifiers, credits, files, tags, collections].some((rows) => (rows?.length ?? 0) > 100) };
 }

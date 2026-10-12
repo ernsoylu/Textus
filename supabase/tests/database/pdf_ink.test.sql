@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(12);
+SELECT plan(15);
 -- FR-READ-10 / NFR-REL-5 / acceptance A09: ink payload bounds, owner isolation, idempotent retry, history.
 INSERT INTO auth.users(id,email) VALUES('c7c7c7c7-0000-0000-0000-000000000001','ink-a@test.local'),('c7c7c7c7-0000-0000-0000-000000000002','ink-b@test.local');
 SET LOCAL ROLE authenticated;
@@ -25,6 +25,10 @@ SELECT throws_ok(pg_temp.stroke('{"v":1,"page":1,"tool":"spray","width":0.003,"p
 SELECT throws_ok(pg_temp.stroke('{"v":1,"page":1,"tool":"pen","width":0.5,"points":[[0,0]]}'), '22023', 'invalid ink stroke', 'oversized widths are rejected');
 SELECT throws_ok(pg_temp.stroke('{"v":1,"page":1,"tool":"pen","width":0.003,"points":[[0,0]],"extra":"x"}'), '22023', 'invalid ink stroke', 'unexpected fields are rejected');
 SELECT throws_ok(pg_temp.stroke(format('{"v":1,"page":1,"tool":"pen","width":0.003,"points":[%s]}', (SELECT string_agg('[0.5,0.5]', ',') FROM generate_series(1, 2001)))), '22023', 'invalid ink stroke', 'more than 2000 points are rejected');
+-- A freehand highlight keeps the text it covers; pen strokes never carry text.
+SELECT lives_ok($$INSERT INTO public.annotations(user_id,record_id,asset_id,anchor_type,anchor_data,highlighted_text,color) VALUES('c7c7c7c7-0000-0000-0000-000000000001','c7c7c7c7-2000-0000-0000-000000000001','c7c7c7c7-3000-0000-0000-000000000001','pdf_ink','{"v":1,"page":3,"tool":"highlighter","width":0.018,"points":[[0.1,0.5],[0.6,0.5]]}','the highlighted words','yellow')$$, 'a highlighter stroke saves the text under it');
+SELECT throws_ok($$INSERT INTO public.annotations(user_id,record_id,asset_id,anchor_type,anchor_data,highlighted_text) VALUES('c7c7c7c7-0000-0000-0000-000000000001','c7c7c7c7-2000-0000-0000-000000000001','c7c7c7c7-3000-0000-0000-000000000001','pdf_ink','{"v":1,"page":3,"tool":"pen","width":0.003,"points":[[0.1,0.5]]}','text')$$, '22023', 'invalid ink stroke', 'pen strokes carry no text');
+SELECT throws_ok(format($$INSERT INTO public.annotations(user_id,record_id,asset_id,anchor_type,anchor_data,highlighted_text) VALUES('c7c7c7c7-0000-0000-0000-000000000001','c7c7c7c7-2000-0000-0000-000000000001','c7c7c7c7-3000-0000-0000-000000000001','pdf_ink','{"v":1,"page":3,"tool":"highlighter","width":0.018,"points":[[0.1,0.5]]}',%L)$$, repeat('x', 2001)), '22023', 'invalid ink stroke', 'highlight text is capped at 2000 characters');
 SELECT is((SELECT count(*)::int FROM public.work_events WHERE event LIKE 'annotation.%'), 0, 'ink strokes are not logged as work history');
 -- Another user can neither see nor draw on the first user's asset.
 SET LOCAL request.jwt.claims='{"sub":"c7c7c7c7-0000-0000-0000-000000000002","role":"authenticated"}';
