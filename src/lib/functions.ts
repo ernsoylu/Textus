@@ -1,26 +1,38 @@
 import { supabase, supabaseUrl } from './supabase';
 import type { IdentifierScheme, StandardScheme } from 'shared/identifier';
 
+// Server rate limits (check_request_limit) count per fixed 60 s window.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_RETRIES = 10;
+
 // Typed Edge Function invocations (§12). Edge Functions authenticate the caller from the
 // Authorization JWT themselves (§8) — this just attaches the current session's access token.
+// A 429 `rate_limited` waits for the next window and retries, so long batches (many uploads) slow down instead of failing.
 async function callFunction<T>(path: string, body: unknown): Promise<T> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-  if (!token) throw new Error('Not signed in.');
+  for (let attempt = 0; ; attempt++) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Not signed in.');
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  // A gateway or crash can answer with plain text; never let that surface as a JSON parse error.
-  const json = await res.json().catch(() => ({ error: `Request failed (${res.status}).` }));
-  if (!res.ok && !('status' in json)) {
-    // Function-level errors (400/404/500) use { error, ... }; upload/complete's own
-    // "rejected" outcome is a 200 with a typed status and is returned as-is below.
-    throw new Error(typeof json.error === 'string' ? json.error : `Request failed (${res.status})`);
+    const res = await fetch(`${supabaseUrl}/functions/v1/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    // A gateway or crash can answer with plain text; never let that surface as a JSON parse error.
+    const json = await res.json().catch(() => ({ error: `Request failed (${res.status}).` }));
+    if (res.status === 429 && json.error === 'rate_limited') {
+      if (attempt >= RATE_LIMIT_RETRIES) throw new Error('Too many requests. Wait a minute and try again.');
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WINDOW_MS - (Date.now() % RATE_LIMIT_WINDOW_MS) + 1000));
+      continue;
+    }
+    if (!res.ok && !('status' in json)) {
+      // Function-level errors (400/404/500) use { error, ... }; upload/complete's own
+      // "rejected" outcome is a 200 with a typed status and is returned as-is below.
+      throw new Error(typeof json.error === 'string' ? json.error : `Request failed (${res.status})`);
+    }
+    return json as T;
   }
-  return json as T;
 }
 
 export interface UploadIntentResponse {
