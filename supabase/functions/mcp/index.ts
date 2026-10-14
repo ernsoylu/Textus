@@ -134,8 +134,9 @@ export function createAgentServer(principal: AgentPrincipal, client: SupabaseCli
 const serve = withSupabase({ auth: 'none' }, async (req: Request, ctx: SupabaseContext) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: { Allow: 'POST' } });
   const principal = await authenticateAgent(ctx.supabaseAdmin, req);
-  await rateLimit(ctx.supabaseAdmin, `mcp:${principal.token_id}`, 30);
-  await rateLimit(ctx.supabaseAdmin, `mcp-owner:${principal.user_id}`, 60);
+  // A bulk upload costs ~4.5 calls per book (check, create, credits, upload x2); 120/min lets one agent add ~25 books/min.
+  await rateLimit(ctx.supabaseAdmin, `mcp:${principal.token_id}`, 120);
+  await rateLimit(ctx.supabaseAdmin, `mcp-owner:${principal.user_id}`, 240);
   const client = await agentClient(principal);
   // ponytail: stateless JSON transport; add session/event persistence only if clients need resumable streams.
   const server = createAgentServer(principal, client, ctx.supabaseAdmin);

@@ -34,8 +34,8 @@ export function catalogPreview(raw: unknown, scheme: string, value: string) {
 export async function agentWrite(principal: AgentPrincipal, client: SupabaseClient, admin: SupabaseClient, tool: string, input: { requestId: string } & Record<string, unknown>) {
   requireAgentScope(principal, 'read_write');
   if (Deno.env.get('MCP_WRITES_ENABLED') !== 'true') throw new HttpError('agent_writes_disabled', 503);
-  // 30/min keeps a bulk upload (create_work + two upload_file calls per book) near the browser's ~10 books/min.
-  await rateLimit(admin, `agent-write:${principal.user_id}`, 30);
+  // create_work + two upload_file calls per book; 120/min matches the per-token MCP limit for bulk uploads.
+  await rateLimit(admin, `agent-write:${principal.user_id}`, 120);
   const { requestId, ...args } = input;
   let preview: unknown = null;
   if (tool === 'create_work_from_identifier') {
