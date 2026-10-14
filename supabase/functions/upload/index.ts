@@ -167,7 +167,7 @@ async function handleComplete(req: Request, ctx: UploadContext, signal: AbortSig
 export async function completeStaged(ctx: UploadContext, { uploadId, recordId, role, filename }: z.infer<typeof CompleteSchema>, signal: AbortSignal): Promise<Response> {
   const userId = ctx.userId;
   const request = { role, filename: filename ?? '' };
-  const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
+  const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,intent,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
   if (!attempt || attempt.record_id !== recordId) return Response.json({ error: 'upload_intent_missing' }, { status: 409 });
   if (uploadRequestChanged(attempt.request, request)) return Response.json({ error: 'upload_request_changed' }, { status: 409 });
   if (attempt.result) return Response.json(attempt.result);
@@ -177,6 +177,9 @@ export async function completeStaged(ctx: UploadContext, { uploadId, recordId, r
   if (!await freezeStaged(ctx, folder, stagingPath)) return Response.json({ status: 'rejected', reason: 'missing' });
   const staged = await inspectStaged(ctx, stagingPath, signal);
   if (staged.kind !== 'ok') return Response.json({ status: 'rejected', reason: staged.kind === 'missing' ? 'missing' : 'size_mismatch' });
+  // begin_upload reserved quota for the declared size; bytes of another size would get around that check.
+  const declared = (attempt.intent as { size?: unknown } | null)?.size;
+  if (typeof declared === 'number' && declared !== staged.size) return Response.json({ status: 'rejected', reason: 'size_mismatch' });
   return publishVerifiedUpload(ctx, uploadId, request, staged, signal);
 }
 

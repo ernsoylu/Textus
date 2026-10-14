@@ -116,6 +116,12 @@ Deno.test('MCP read_write tokens write directly, reject confirmation flags, repl
     const putAgain = await fetch(`${api}${new URL(again.uploadUrl).pathname}${new URL(again.uploadUrl).search}`, { method: 'PUT', headers: again.headers, body: pdf }); await putAgain.text();
     const duplicate = result(await call('upload_file', againArgs));
     if (duplicate.status !== 'duplicate' || duplicate.workId !== created.workId) throw new Error(`same file in another work was not rejected: ${JSON.stringify(duplicate)}`);
+    // Quota is reserved for the declared size, so other-sized bytes are refused.
+    const understated = { ...againArgs, requestId: crypto.randomUUID(), size: 1 };
+    const small = result(await call('upload_file', understated));
+    const putSmall = await fetch(`${api}${new URL(small.uploadUrl).pathname}${new URL(small.uploadUrl).search}`, { method: 'PUT', headers: small.headers, body: pdf }); await putSmall.text();
+    const mismatch = result(await call('upload_file', understated));
+    if (mismatch.status !== 'rejected' || mismatch.reason !== 'size_mismatch') throw new Error(`understated size accepted: ${JSON.stringify(mismatch)}`);
     // A revoked token stops writing at once.
     await body(await fetch(`${api}/rest/v1/agent_tokens?id=eq.${tokenRow.id}`, { method: 'DELETE', headers: adminHeaders }));
     const revoked = await fetch(`${api}/functions/v1/mcp`, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add_file_from_url', arguments: downloadArgs } }) });
