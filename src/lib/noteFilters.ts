@@ -20,7 +20,7 @@ export interface NoteGroup {
 }
 
 // Case- and accent-insensitive ("Çelik" matches "celik", "İstanbul" matches "istanbul").
-const fold = (s: string) => s.toLocaleLowerCase('tr').replaceAll(/ı/g, 'i').normalize('NFKD').replaceAll(/\p{M}/gu, '').toLowerCase();
+const fold = (s: string) => s.toLocaleLowerCase('tr').replaceAll('ı', 'i').normalize('NFKD').replaceAll(/\p{M}/gu, '').toLowerCase();
 
 const pageOf = (a: AnnotationItem) => notePage(a) ?? 0;
 const time = (a: AnnotationItem) => (a.created_at ? Date.parse(a.created_at) : 0);

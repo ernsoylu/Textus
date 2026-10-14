@@ -51,7 +51,7 @@ export async function importMetadata(work: ImportWork, record: RecordValue, onMe
       fetchedAt = response.fetchedAt;
     }
     if (!metadata) return;
-    return await applyImportedMetadata(work, record, metadata, fetchedAt, identifier, workLocks, recordLocks, onMessage);
+    return await applyImportedMetadata(work, record, metadata, fetchedAt, identifier, { workLocks, recordLocks }, onMessage);
   } catch (error) {
     onMessage(error instanceof Error ? `Automatic lookup stopped: ${error.message}. Your file is still in the library.` : 'Automatic lookup stopped. Your file is still in the library.');
   }
@@ -127,7 +127,7 @@ function extractedIdentifier(assets: { metadata: unknown }[]) {
   return valid.find((item) => item.scheme === 'isbn') ?? valid[0];
 }
 
-async function applyImportedMetadata(work: ImportWork, record: RecordValue, metadata: NormalizedMetadata, fetchedAt: string, identifier: ImportIdentifier | undefined, workLocks: string[], recordLocks: string[], onMessage: (message: string) => void) {
+async function applyImportedMetadata(work: ImportWork, record: RecordValue, metadata: NormalizedMetadata, fetchedAt: string, identifier: ImportIdentifier | undefined, { workLocks, recordLocks }: { workLocks: string[]; recordLocks: string[] }, onMessage: (message: string) => void) {
   const data = metadata;
   onMessage(`Applying details from ${data.source_provider}…`);
   const selection = defaultSelection(data, workLocks, recordLocks);

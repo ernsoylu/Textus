@@ -93,7 +93,7 @@ function indexingExplanation(row: ActivityRow, indexing: StepState, ai: StepStat
   return completedExplanation(indexable, index);
 }
 
-function activityExplanation(row: ActivityRow, read: StepState, metadata: StepState, indexing: StepState, ai: StepState, index: PassageIndex, embedding: EmbeddingIndex, indexable: boolean) {
+function activityExplanation(row: ActivityRow, read: StepState, metadata: StepState, indexing: StepState, ai: StepState, index: PassageIndex, embedding: EmbeddingIndex) {
   if (read === 'failed') {
     const reason = row.processing_error ? ': ' + row.processing_error : '.';
     return `The file could not be read${reason}`;
@@ -102,7 +102,7 @@ function activityExplanation(row: ActivityRow, read: StepState, metadata: StepSt
   if (index.status === 'cancelled') return 'Indexing was cancelled. Retry to continue from the last checkpoint.';
   if (read !== 'done') return 'Reading the file to find its text and identifiers.';
   if (metadata === 'active') return `Looking up catalog details${row.pending_steps.includes('process_cover') ? ' and the cover' : ''}.`;
-  return indexingExplanation(row, indexing, ai, index, embedding, indexable);
+  return indexingExplanation(row, indexing, ai, index, embedding, INDEXED_FORMATS.has(row.file_format));
 }
 
 export function activityView(row: ActivityRow): ActivityView {
@@ -125,7 +125,7 @@ export function activityView(row: ActivityRow): ActivityView {
   const progress = Math.round(weight(read, 10) + weight(metadata, 10)
     + weight(indexing, 50, fraction(index.done, index.total)) + weight(ai, 30, fraction(embedding.embedded, embedding.total)));
   const group = activityGroup(read, indexing, steps);
-  let explanation = activityExplanation(row, read, metadata, indexing, ai, index, embedding, indexable);
+  let explanation = activityExplanation(row, read, metadata, indexing, ai, index, embedding);
   if (metadataFailed) explanation += ' Metadata lookup failed; you can gather metadata from the book page.';
   const status = activityStatus(group, indexing, ai, metadata);
   return {
