@@ -15,7 +15,7 @@ it('shows the book, its steps, progress and a retry for a failed index', () => {
   render(<MemoryRouter><ul><BookActivity row={row} busy={false} onControl={onControl} /></ul></MemoryRouter>);
   expect(screen.getByRole('link', { name: 'Heat Transfer' })).toHaveAttribute('href', '/library/work-1');
   expect(screen.getByText('Needs attention')).toBeInTheDocument();
-  expect(screen.getByRole('progressbar', { name: 'Heat Transfer progress' })).toHaveAttribute('aria-valuenow', '20');
+  expect(screen.getByRole('progressbar', { name: 'Heat Transfer progress' })).toHaveAttribute('value', '20');
   expect(screen.getByText(/Full-text search/)).toHaveTextContent('failed');
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(onControl).toHaveBeenCalledWith('retry', 'asset-1');

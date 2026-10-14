@@ -14,6 +14,7 @@ describe('history labels', () => {
     expect(fieldLabel('metadata.container_title')).toBe('Container title');
     expect(formatValue(null)).toBe('—');
     expect(formatValue([{ name: 'Ada Author', role: 'author' }, { name: 'Bea Editor', role: 'editor' }])).toBe('Ada Author (author), Bea Editor (editor)');
+    expect(formatValue([{ name: { given: 'Ada' }, role: { label: 'author' } }])).toBe('given: Ada (label: author)');
     expect(formatValue({ role: 'primary', file_size: 2048 })).toBe('role: primary, file size: 2048');
   });
 });

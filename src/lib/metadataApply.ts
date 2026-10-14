@@ -108,13 +108,7 @@ export interface ApplyInput {
 function buildPatches({ data, selected, workLocks, recordLocks }: ApplyInput) {
   const workPatch: Record<string, unknown> = {};
   const recordPatch: Record<string, unknown> = {};
-  for (const field of selected) {
-    if (field === 'standard_reference') continue;
-    const isWork = isWorkField(field);
-    if ((isWork ? workLocks : recordLocks).includes(field)) continue;
-    const value = data[field];
-    if (value) (isWork ? workPatch : recordPatch)[field] = value;
-  }
+  copySelectedFields(data, selected, workLocks, recordLocks, workPatch, recordPatch);
   if (workPatch.work_type === 'standard' && !recordLocks.includes('record_type')) recordPatch.record_type = 'standard';
   if (selected.includes('publication_date') && data.publication_date_precision && !recordLocks.includes('publication_date')) {
     recordPatch.publication_date_precision = data.publication_date_precision;
@@ -202,19 +196,9 @@ async function applyContributors(input: ApplyInput) {
 
 export async function applyMetadata(input: ApplyInput) {
   const { data, selectedCredits, includeCover, recordId, workId } = input;
-  const reference = input.selected.includes('standard_reference') && data.standard_scheme && data.standard_reference
-    ? parseStandardReference(data.standard_scheme, data.standard_reference) : undefined;
-  if (reference && !reference.ok) throw new Error('Invalid standard reference returned by the catalogue.');
+  const reference = selectedReference(input);
   const { workPatch, recordPatch } = buildPatches(input);
-  // ponytail: catches replacement glyphs and in-word '?'; broader mojibake needs source verification.
-  // Prefer the attached file's intact title, preserving the current title when none exists.
-  if (typeof workPatch.title === 'string' && /\uFFFD|\p{L}\?\p{L}/u.test(workPatch.title)) {
-    const { data: files, error } = await supabase.from('record_assets').select('assets(metadata)').eq('record_id', recordId);
-    if (error) throw error;
-    const fileTitle = files?.map(({ assets }) => meta(assets?.metadata).title_suggestion).find((title) => typeof title === 'string' && title.trim() && !/\uFFFD|\p{L}\?\p{L}/u.test(title));
-    if (typeof fileTitle === 'string') workPatch.title = fileTitle.normalize('NFC');
-    else delete workPatch.title;
-  }
+  await preserveIntactTitle(workPatch, recordId);
   const metadataPatch: Record<string, unknown> = {};
   for (const field of ['container_title', 'standard_status']) {
     if (field in recordPatch) { metadataPatch[field] = recordPatch[field]; delete recordPatch[field]; }
@@ -234,4 +218,34 @@ export async function applyMetadata(input: ApplyInput) {
   }
   if (selectedCredits.length) await applyContributors(input);
   if (includeCover && data.cover_url) await queueCover(recordId, data.cover_url);
+}
+
+async function preserveIntactTitle(workPatch: Record<string, unknown>, recordId: string) {
+  // ponytail: catches replacement glyphs and in-word '?'; broader mojibake needs source verification.
+  // Prefer the attached file's intact title, preserving the current title when none exists.
+  if (typeof workPatch.title === 'string' && /\uFFFD|\p{L}\?\p{L}/u.test(workPatch.title)) {
+    const { data: files, error } = await supabase.from('record_assets').select('assets(metadata)').eq('record_id', recordId);
+    if (error) throw error;
+    const fileTitle = files?.map(({ assets }) => meta(assets?.metadata).title_suggestion).find((title) => typeof title === 'string' && title.trim() && !/\uFFFD|\p{L}\?\p{L}/u.test(title));
+    if (typeof fileTitle === 'string') workPatch.title = fileTitle.normalize('NFC');
+    else delete workPatch.title;
+  }
+}
+
+function copySelectedFields(data: NormalizedMetadata, selected: Field[], workLocks: string[], recordLocks: string[], workPatch: Record<string, unknown>, recordPatch: Record<string, unknown>) {
+  for (const field of selected) {
+    if (field === 'standard_reference') continue;
+    const isWork = isWorkField(field);
+    if ((isWork ? workLocks : recordLocks).includes(field)) continue;
+    const value = data[field];
+    if (value) (isWork ? workPatch : recordPatch)[field] = value;
+  }
+}
+
+function selectedReference(input: ApplyInput) {
+  const { data } = input;
+  const reference = input.selected.includes('standard_reference') && data.standard_scheme && data.standard_reference
+    ? parseStandardReference(data.standard_scheme, data.standard_reference) : undefined;
+  if (reference && !reference.ok) throw new Error('Invalid standard reference returned by the catalogue.');
+  return reference;
 }

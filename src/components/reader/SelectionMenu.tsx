@@ -11,12 +11,12 @@ export function SelectionMenu({ quote, notice, busy, error, bar, onHighlight, on
       {!bar && <p className="line-clamp-2 px-2 font-serif text-small italic text-muted">“{quote}”</p>}
       {notice && <p className="px-2 text-small text-yellow">{notice}</p>}
       <div className={bar ? 'flex flex-wrap items-center gap-1' : 'flex flex-col gap-1'}>
-        <div className="flex items-center px-1" role="group" aria-label="Highlight">
+        <fieldset className="flex min-w-0 items-center border-0 p-0 px-1" aria-label="Highlight">
           <span className="px-1 text-small text-fg">{busy ? 'Saving…' : 'Highlight'}</span>
           {ANNOTATION_COLORS.map((c) => (
             <ColorSwatch key={c} role="menuitem" aria-label={`Highlight ${c}`} disabled={busy} fill={highlightFill(c)} onClick={() => onHighlight(c)} />
           ))}
-        </div>
+        </fieldset>
         <button type="button" role="menuitem" className={item} disabled={busy} onClick={onComment}>💬 Add comment…</button>
         <button type="button" role="menuitem" className={item} onClick={onCopy}>Copy text</button>
       </div>

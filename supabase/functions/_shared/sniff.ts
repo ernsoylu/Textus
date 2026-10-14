@@ -57,7 +57,7 @@ export function sniffHead(head: Uint8Array): Sniffed | null {
 // Plain text has no magic bytes: accept only a file that is valid UTF-8 all the way through with no control
 // bytes outside common whitespace. Fed chunk by chunk, so it never needs the whole file.
 export class TextProbe {
-  private decoder = new TextDecoder('utf-8', { fatal: true });
+  private readonly decoder = new TextDecoder('utf-8', { fatal: true });
   private ok = true;
 
   push(chunk: Uint8Array): void {

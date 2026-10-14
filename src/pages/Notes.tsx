@@ -86,8 +86,7 @@ export function Notes() {
             <ColorSwatch key={c} aria-pressed={filters.color === c} aria-label={`Only ${c}`} selected={filters.color === c} fill={highlightFill(c)} onClick={() => set('color', filters.color === c ? '' : c)} />
           ))}
           <label className="flex items-center gap-2 text-small text-fg">
-            <input type="checkbox" checked={filters.commentsOnly} onChange={(e) => set('comments', e.target.checked ? '1' : '')} />
-            With comments only
+            <input type="checkbox" checked={filters.commentsOnly} onChange={(e) => set('comments', e.target.checked ? '1' : '')} /><span>With comments only</span>
           </label>
           {filtered && <Button variant="ghost" className="min-h-8 px-2 py-1" onClick={() => setParams(filters.sort === 'newest' ? {} : { sort: filters.sort }, { replace: true })}>Clear filters</Button>}
           {filtered && data && <span className="text-small text-muted" aria-live="polite">{shown.length} of {data.length}</span>}

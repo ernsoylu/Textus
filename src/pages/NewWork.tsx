@@ -107,7 +107,7 @@ export function NewWork() {
   function addLink(e: FormEvent) {
     e.preventDefault();
     const url = new URL(link.trim());
-    let name = url.pathname.split('/').filter(Boolean).at(-1) ?? '';
+    let name = url.pathname.split('/').findLast(Boolean) ?? '';
     try { name = decodeURIComponent(name); } catch { /* malformed escape: keep it encoded */ }
     name ||= url.hostname;
     setUploads((items) => [...items, { name, url: url.href, status: 'queued', progress: 0 }]);
@@ -115,43 +115,62 @@ export function NewWork() {
   }
   const totalPercent = totalBytes ? Math.round(uploadedBytes / totalBytes * 100) : 0;
 
+  async function uploadOne(index: number, item: UploadItem): Promise<{ duplicate: string } | { workId: string; recordId: string; titleFromFile: string }> {
+    const titleFromFile = item.name.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ').trim() || item.name;
+    if (item.file && (!item.file.size || item.file.size > MAX_UPLOAD_BYTES)) throw new Error('Choose a nonempty file up to 500 MB.');
+    patchUpload(index, { status: 'uploading', progress: 0, error: undefined, message: 'Preparing upload…' });
+    if (item.file && !item.workId) {
+      const existing = await workWithFile(await sha256Hex(item.file));
+      if (existing) return { duplicate: existing };
+    }
+    const workId = item.workId ?? await createWork(session!.user.id, titleFromFile, 'book', '', true);
+    patchUpload(index, { workId });
+    const { data: work, error } = await supabase.from('works').select('records(id)').eq('id', workId).single();
+    if (error) throw error;
+    const recordId = (work.records as { id: string }[])[0].id;
+    patchUpload(index, { recordId, message: `${item.file ? 'Uploading file' : 'Downloading link'} ${index + 1} of ${uploads.length}` });
+    const result = item.file ? await uploadFile(recordId, 'primary', item.file, (progress) => patchUpload(index, { progress })) : await uploadUrl(recordId, 'primary', item.url!);
+    // Links cannot be hashed before download; the server also resolves racing uploads.
+    if (result.status === 'duplicate' && result.workId) {
+      const { error: deleteError } = await supabase.from('works').delete().eq('id', workId);
+      if (deleteError) throw deleteError;
+      return { duplicate: result.workId };
+    }
+    return { workId, recordId, titleFromFile };
+  }
+
   async function uploadAndAdd() {
     if (!session || !uploads.length || busy) return;
     setBusy(true);
     const processing: Promise<void>[] = [];
-    const workIds: string[] = [];
+    const workIds = uploads.filter((item) => item.status === 'done').map((item) => item.workId!);
     let failed = false;
     let duplicates = false;
     const markDuplicate = (index: number, workId: string) => {
       duplicates = true;
       patchUpload(index, { status: 'duplicate', workId, progress: 1, message: 'This file is already in your library.' });
     };
-    for (const [index, item] of uploads.entries()) {
-      if (item.status === 'duplicate') continue;
-      if (item.status === 'done') { workIds.push(item.workId!); continue; }
-      const titleFromFile = item.name.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ').trim() || item.name;
+    async function enrichUpload(index: number, workId: string, recordId: string, titleFromFile: string) {
+      const outcome = await importMetadata(
+        { id: workId, title: titleFromFile, metadata: { locked_fields: [] } },
+        { id: recordId, title: null, metadata: {}, metadata_fetched_at: null, publisher: null, publication_date: null, record_contributors: [], record_assets: [] },
+        (message) => patchUpload(index, { message }),
+      );
+      if (outcome?.mergedInto) {
+        duplicates = true;
+        patchUpload(index, { status: 'duplicate', workId: outcome.mergedInto, progress: 1, message: 'This book is already in your library; the file was added to it.' });
+        return;
+      }
+      const similar = await findDuplicateWorks(workId).catch(() => []);
+      if (similar.length) duplicates = true;
+      patchUpload(index, { status: 'done', similar });
+    }
+    const pendingUploads = [...uploads.entries()].filter(([, item]) => !['duplicate', 'done'].includes(item.status));
+    for (const [index, item] of pendingUploads) {
       try {
-        if (item.file && (!item.file.size || item.file.size > MAX_UPLOAD_BYTES)) throw new Error('Choose a nonempty file up to 500 MB.');
-        patchUpload(index, { status: 'uploading', progress: 0, error: undefined, message: 'Preparing upload…' });
-        if (item.file && !item.workId) {
-          const existing = await workWithFile(await sha256Hex(item.file));
-          if (existing) { markDuplicate(index, existing); continue; }
-        }
-        const workId = item.workId ?? await createWork(session.user.id, titleFromFile, 'book', '', true);
-        patchUpload(index, { workId });
-        const { data: work, error } = await supabase.from('works').select('records(id)').eq('id', workId).single();
-        if (error) throw error;
-        const recordId = (work.records as { id: string }[])[0].id;
-        patchUpload(index, { recordId, message: `${item.file ? 'Uploading file' : 'Downloading link'} ${index + 1} of ${uploads.length}` });
-        const result = item.file ? await uploadFile(recordId, 'primary', item.file, (progress) => patchUpload(index, { progress })) : await uploadUrl(recordId, 'primary', item.url!);
-        // Links can't be hashed before download, and a file can race another upload: the server refuses the second work.
-        const existing = result.status === 'duplicate' ? result.workId : undefined;
-        if (existing) {
-          const { error: deleteError } = await supabase.from('works').delete().eq('id', workId);
-          if (deleteError) throw deleteError;
-          markDuplicate(index, existing);
-          continue;
-        }
+        const uploaded = await uploadOne(index, item);
+        if ('duplicate' in uploaded) { markDuplicate(index, uploaded.duplicate); continue; }
+        const { workId, recordId, titleFromFile } = uploaded;
         workIds.push(workId);
         if (uploads.length === 1) {
           await queryClient.invalidateQueries({ queryKey: ['works'] });
@@ -160,20 +179,7 @@ export function NewWork() {
           return;
         }
         patchUpload(index, { status: 'processing', progress: 1, message: 'Looking up metadata…' });
-        processing.push(importMetadata(
-          { id: workId, title: titleFromFile, metadata: { locked_fields: [] } },
-          { id: recordId, title: null, metadata: {}, metadata_fetched_at: null, publisher: null, publication_date: null, record_contributors: [], record_assets: [] },
-          (message) => patchUpload(index, { message }),
-        ).then(async (outcome) => {
-          if (outcome?.mergedInto) {
-            duplicates = true;
-            patchUpload(index, { status: 'duplicate', workId: outcome.mergedInto, progress: 1, message: 'This book is already in your library; the file was added to it.' });
-            return;
-          }
-          const similar = await findDuplicateWorks(workId).catch(() => []);
-          if (similar.length) duplicates = true;
-          patchUpload(index, { status: 'done', similar });
-        }));
+        processing.push(enrichUpload(index, workId, recordId, titleFromFile));
       } catch (cause) {
         failed = true;
         patchUpload(index, { status: 'failed', message: undefined, error: cause instanceof Error ? cause.message : 'Upload failed.' });
@@ -208,9 +214,9 @@ export function NewWork() {
             {/* A link has no client-side progress; an indeterminate bar shows while the server downloads it. */}
             <progress aria-label={`Uploading ${item.name}`} value={item.url && item.status === 'uploading' ? undefined : item.progress} max={1} className="h-3 w-full accent-green" />
             {item.file ? <p className="text-muted">{Math.round(item.progress * 100)}% · {(item.file.size * item.progress / 1_048_576).toFixed(1)} / {(item.file.size / 1_048_576).toFixed(1)} MB</p> : <p className="break-all text-muted">{item.url}</p>}
-            {item.message && <p role="status" className="text-muted">{item.message}</p>}
+            {item.message && <output className="block text-muted">{item.message}</output>}
             {item.error && <p role="alert" className="text-red">{item.error}</p>}
-            {item.similar?.map((other) => <p key={other.work_id} role="status" className="text-yellow">Possibly already in your library: <Link to={`/library/${other.work_id}`} className="underline">{other.title}</Link> ({DUPLICATE_REASON_LABELS[other.reason] ?? other.reason})</p>)}
+            {item.similar?.map((other) => <output key={other.work_id} className="block text-yellow">Possibly already in your library: <Link to={`/library/${other.work_id}`} className="underline">{other.title}</Link> ({DUPLICATE_REASON_LABELS[other.reason] ?? other.reason})</output>)}
             {item.workId && <Link to={`/library/${item.workId}`} className={`text-green underline ${busy ? 'pointer-events-none' : ''}`} aria-disabled={busy}>View details</Link>}
           </li>)}
         </ul>}
@@ -222,10 +228,10 @@ export function NewWork() {
         <button type="button" className="self-start text-small text-green underline" disabled={busy} onClick={() => setMode('manual')}>Add manually</button>
       </> : <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-heading text-fg">Add a work manually</p>
-        <label className="flex flex-col gap-2 text-small text-fg">Type
-        <select className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={workType} onChange={(e) => setWorkType(e.target.value as (typeof WORK_TYPES)[number])}>
-          {WORK_TYPES.map((t) => <option key={t} value={t}>{WORK_TYPE_LABELS[t]}</option>)}
-        </select>
+        <label className="flex flex-col gap-2 text-small text-fg"><span>Type</span>
+          <select className="rounded-8 border border-muted bg-dim p-4 text-body text-fg" value={workType} onChange={(e) => setWorkType(e.target.value as (typeof WORK_TYPES)[number])}>
+            {WORK_TYPES.map((t) => <option key={t} value={t}>{WORK_TYPE_LABELS[t]}</option>)}
+          </select>
         </label>
         <label className="flex flex-col gap-2 text-small text-fg">Title<Input required placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
         {workType !== 'serial' && <label className="flex flex-col gap-2 text-small text-fg">Author (optional)<Input placeholder="Author (optional)" value={author} onChange={(e) => setAuthor(e.target.value)} /></label>}

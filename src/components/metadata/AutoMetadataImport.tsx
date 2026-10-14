@@ -26,5 +26,6 @@ export function AutoMetadataImport({ work, record, enabled }: Readonly<Props>) {
     });
   }, [enabled, navigate, query, record, work]);
 
-  return pending ? <MetadataProgress message={message || 'Searching for metadata…'} /> : message ? <p role="status" className="text-small text-muted">{message}</p> : null;
+  if (pending) return <MetadataProgress message={message || 'Searching for metadata…'} />;
+  return message ? <output className="block text-small text-muted">{message}</output> : null;
 }

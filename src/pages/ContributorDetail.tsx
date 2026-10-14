@@ -40,6 +40,7 @@ export function ContributorDetail() {
     });
   const canSplit = picked.size > 0 && (splitTo || newName.trim());
 
+  const creditLabel = data.record_contributors.length === 1 ? 'credit' : 'credits';
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -132,7 +133,7 @@ export function ContributorDetail() {
       <ConfirmDialog
         open={deleting}
         title={`Delete ${data.display_name}?`}
-        description={data.record_contributors.length ? `This removes ${data.record_contributors.length} ${data.record_contributors.length === 1 ? 'credit' : 'credits'} from your records, along with their names and identifiers. Merge instead if this is a duplicate.` : 'This contributor has no credits. Their names and identifiers are removed too.'}
+        description={data.record_contributors.length ? `This removes ${data.record_contributors.length} ${creditLabel} from your records, along with their names and identifiers. Merge instead if this is a duplicate.` : 'This contributor has no credits. Their names and identifiers are removed too.'}
         confirmLabel="Delete contributor"
         busy={del.isPending}
         error={del.error?.message}

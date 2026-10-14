@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useAsset } from '@/hooks/useAsset';
 import { useUploadAsset } from '@/hooks/useUploadAsset';
@@ -6,7 +6,7 @@ import { useFullscreen } from '@/hooks/useFullscreen';
 import { useOnline } from '@/hooks/useOnline';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useKeyboardInset } from '@/hooks/useKeyboardInset';
-import { useReaderPrefs } from '@/hooks/useReaderPrefs';
+import { useReaderPrefs, type ReaderPrefs } from '@/hooks/useReaderPrefs';
 import { useInk } from '@/hooks/useInk';
 import { useReadingState, useProgressSaver, useSaveReadingState, READING_STATUSES, type ReadingStatus, type Progress } from '@/hooks/useReadingState';
 import { anchorSchema, highlightFill, isDrawing, useAnnotations, useCreateAnnotation, type Anchor, type AnnotationItem, type InkData } from '@/hooks/useAnnotations';
@@ -37,7 +37,10 @@ const PENDING_ID = 'pending-selection';
 const BTN = 'min-h-11 min-w-11 px-3 py-1';
 
 const parseAnchor = (a: AnnotationItem) => anchorSchema.safeParse({ anchor_type: a.anchor_type, anchor_data: a.anchor_data });
-const message = (e: unknown) => (navigator.onLine ? (e instanceof Error ? e.message : 'Could not save.') : 'You’re offline.');
+const message = (e: unknown) => {
+  if (!navigator.onLine) return 'You’re offline.';
+  return e instanceof Error ? e.message : 'Could not save.';
+};
 
 // The reader draws under the iPhone notch / home indicator only while open; safe-area padding keeps its controls clear.
 function useViewportFitCover() {
@@ -124,7 +127,7 @@ export function Reader() {
 
   // Focusing a comment box clears the document's text selection, so the viewers draw the selection being
   // commented on like a highlight until it is saved or dismissed.
-  const pending = bubble && 'draft' in bubble ? bubble.draft : held && held === selection ? held : null;
+  const pending = pendingSelection(bubble, held, selection);
   const viewerAnnotations = useMemo<ViewerAnnotation[]>(
     () => [
       ...(annotations.data ?? []).flatMap((a) => {
@@ -245,16 +248,9 @@ export function Reader() {
   const isBook = isBookFormat(format);
   const readable = isPdf || isDjvu || isBook;
   const pageFormat = isPdf || isDjvu;
-  const bubbleNote = bubble && 'id' in bubble ? annotations.data?.find((a) => a.id === bubble.id) : undefined;
+  const bubbleNote = noteFromBubble(bubble, annotations.data);
   const startPage = Math.max(1, Math.floor(Number(searchParams.get('page')) || resume?.current_page || 1));
-  const inkSettings: InkSettings | null = isPdf && marking
-    ? {
-        tool: prefs.inkTool,
-        color: prefs.inkTool === 'highlighter' ? prefs.highlighterColor : prefs.penColor,
-        width: INK_WIDTHS[prefs.inkTool === 'highlighter' ? 'highlighter' : 'pen'][prefs.inkSize],
-        fingerDraw: prefs.fingerDraw,
-      }
-    : null;
+  const inkSettings = activeInkSettings(isPdf, marking, prefs);
   const common = {
     storagePath: asset.storage_path,
     annotations: viewerAnnotations,
@@ -267,67 +263,17 @@ export function Reader() {
   };
   const showBar = !!selection && !menuAt && !bubble && !marking && (coarse || !wide) && !(notesOpen && !wide);
 
-  const notes = (
-    <>
-      <div className="flex items-center justify-between">
-        <h2 className="text-label text-fg">Notes</h2>
-        <Button variant="ghost" className={cn(BTN, 'xl:hidden')} onClick={toggleNotes}>Close</Button>
-      </div>
-      {selection && (
-        <div onFocus={() => setHeld(selection)}>
-          <AnnotationForm label="Highlight selection" quote={selection.text} notice={selection.notice} onCancel={() => setSelection(null)} onSubmit={(color, note) => highlight(color, note)} />
-        </div>
-      )}
-      {pageFormat && page && !selection && <AnnotationForm label={`Add note to page ${page}`} onSubmit={addPageNote} />}
-      <AnnotationPanel items={annotations.data ?? []} onGoTo={(a) => handleGoTo(a)} />
-    </>
-  );
-
   return (
     <div
       ref={shellRef}
       className="fixed inset-0 z-30 flex flex-col gap-2 bg-bg pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))]"
     >
       <UnsavedChangesGuard dirty={ink.unsavedCount > 0} subject="drawing" />
-      {!focus && (
-        <header className="flex flex-wrap items-center gap-1">
-          <Link to={`/library/${workId}`} aria-label="Back to details" className="flex min-h-11 items-center rounded-8 px-3 text-small text-fg hover:bg-raised">← Details</Link>
-          {!online && <span role="status" className="rounded-4 bg-yellow-bg px-2 py-1 text-small text-yellow">Offline — changes can’t be saved</span>}
-          <span className="flex-1" />
-          {isPdf && (
-            <Button variant={marking ? 'secondary' : 'ghost'} className={BTN} aria-pressed={marking} onClick={() => { setMarking((m) => !m); setMenuAt(null); setSelection(null); }} title="Draw and highlight with Apple Pencil, mouse or finger">
-              ✎ Mark
-            </Button>
-          )}
-          {readable && (
-            <Button ref={notesButtonRef} variant={notesOpen ? 'secondary' : 'ghost'} className={BTN} aria-pressed={notesOpen} aria-expanded={notesOpen} onClick={toggleNotes}>
-              Notes{annotations.data?.length ? ` (${annotations.data.filter((a) => !isDrawing(a)).length})` : ''}
-            </Button>
-          )}
-          <details className="relative">
-            <summary className={cn(BTN, 'flex cursor-pointer list-none items-center rounded-8 text-label text-fg hover:bg-raised/60')}>More</summary>
-            <div className="absolute right-0 z-40 mt-1 flex w-72 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">
-              <label className="flex items-center justify-between gap-2 text-small text-fg">
-                Status
-                <select
-                  aria-label="Reading status"
-                  className="min-h-11 rounded-4 border border-muted bg-dim pl-2 text-small text-fg"
-                  value={saved?.status ?? 'unread'}
-                  onChange={(e) => saveState.mutate({ status: e.target.value as ReadingStatus })}
-                >
-                  {READING_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-              {resume && <p className="text-small text-muted">{Math.round(Number(resume.progress_percentage))}% read</p>}
-              <DownloadButton bucket={asset.bucket} storagePath={asset.storage_path} />
-              <p className="text-small text-muted">Keys: F focus · ← → pages · + − zoom{isPdf ? ' · 0 fit width' : ''}</p>
-            </div>
-          </details>
-          {readable && (
-            <Button variant="ghost" className={BTN} aria-pressed={focus} onClick={toggleFocus} title="Focus (F)">⛶ Focus</Button>
-          )}
-        </header>
-      )}
+      {!focus && <ReaderHeader workId={workId} online={online} isPdf={isPdf} marking={marking}
+        onToggleMark={() => { setMarking((m) => !m); setMenuAt(null); setSelection(null); }} readable={readable}
+        notesButtonRef={notesButtonRef} notesOpen={notesOpen} toggleNotes={toggleNotes} annotations={annotations.data ?? []}
+        status={saved?.status ?? 'unread'} onStatusChange={(status) => saveState.mutate({ status })}
+        progress={resume ? Number(resume.progress_percentage) : null} asset={asset} focus={focus} toggleFocus={toggleFocus} />}
       {focus && (
         <Button variant="secondary" className={cn(BTN, 'fixed right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] z-40 opacity-80 shadow hover:opacity-100 focus-visible:opacity-100')} onClick={toggleFocus}>
           Exit focus
@@ -377,7 +323,9 @@ export function Reader() {
             className={cn((!notesOpen || focus) && '!hidden', "fixed inset-x-0 bottom-0 z-40 flex max-h-[75dvh] flex-col gap-3 overflow-auto rounded-t-[16px] border border-border bg-bg p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-xl md:absolute md:inset-x-auto md:inset-y-0 md:right-0 md:z-30 md:max-h-none md:w-[min(22rem,100%)] md:rounded-8 md:pb-3 xl:static xl:z-auto xl:w-80 xl:shrink-0 xl:shadow-none")}
             style={wide ? undefined : { bottom: keyboardInset }}
           >
-            {notes}
+            <ReaderNotes selection={selection} onHold={setHeld} onClear={() => setSelection(null)} highlight={highlight}
+              pageFormat={pageFormat} page={page} addPageNote={addPageNote} annotations={annotations.data ?? []}
+              onGoTo={(a) => handleGoTo(a)} toggleNotes={toggleNotes} />
           </aside>
         )}
       </main>
@@ -447,4 +395,92 @@ export function Reader() {
       ))}
     </div>
   );
+}
+
+function ReaderHeader({ workId, online, isPdf, marking, onToggleMark, readable, notesButtonRef, notesOpen, toggleNotes, annotations, status, onStatusChange, progress, asset, focus, toggleFocus }: Readonly<{
+  workId?: string; online: boolean; isPdf: boolean; marking: boolean; onToggleMark: () => void; readable: boolean;
+  notesButtonRef: RefObject<HTMLButtonElement>; notesOpen: boolean; toggleNotes: () => void; annotations: AnnotationItem[];
+  status: string; onStatusChange: (status: ReadingStatus) => void; progress: number | null;
+  asset: { bucket: string; storage_path: string }; focus: boolean; toggleFocus: () => void;
+}>) {
+  return (
+    <header className="flex flex-wrap items-center gap-1">
+      <Link to={`/library/${workId}`} aria-label="Back to details" className="flex min-h-11 items-center rounded-8 px-3 text-small text-fg hover:bg-raised">← Details</Link>
+      {!online && <output className="rounded-4 bg-yellow-bg px-2 py-1 text-small text-yellow">Offline — changes can’t be saved</output>}
+      <span className="flex-1" />
+      {isPdf && (
+        <Button variant={marking ? 'secondary' : 'ghost'} className={BTN} aria-pressed={marking} onClick={onToggleMark} title="Draw and highlight with Apple Pencil, mouse or finger">
+          ✎ Mark
+        </Button>
+      )}
+      {readable && (
+        <Button ref={notesButtonRef} variant={notesOpen ? 'secondary' : 'ghost'} className={BTN} aria-pressed={notesOpen} aria-expanded={notesOpen} onClick={toggleNotes}>
+          Notes{annotations.length ? ` (${annotations.filter((a) => !isDrawing(a)).length})` : ''}
+        </Button>
+      )}
+      <details className="relative">
+        <summary className={cn(BTN, 'flex cursor-pointer list-none items-center rounded-8 text-label text-fg hover:bg-raised/60')}>More</summary>
+        <div className="absolute right-0 z-40 mt-1 flex w-72 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">
+          <label className="flex items-center justify-between gap-2 text-small text-fg"><span>Status</span>
+            <select
+              aria-label="Reading status"
+              className="min-h-11 rounded-4 border border-muted bg-dim pl-2 text-small text-fg"
+              value={status}
+              onChange={(e) => onStatusChange(e.target.value as ReadingStatus)}
+            >
+              {READING_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          {progress !== null && <p className="text-small text-muted">{Math.round(progress)}% read</p>}
+          <DownloadButton bucket={asset.bucket} storagePath={asset.storage_path} />
+          <p className="text-small text-muted">Keys: F focus · ← → pages · + − zoom{isPdf ? ' · 0 fit width' : ''}</p>
+        </div>
+      </details>
+      {readable && (
+        <Button variant="ghost" className={BTN} aria-pressed={focus} onClick={toggleFocus} title="Focus (F)">⛶ Focus</Button>
+      )}
+    </header>
+  );
+}
+
+function ReaderNotes({ selection, onHold, onClear, highlight, pageFormat, page, addPageNote, annotations, onGoTo, toggleNotes }: Readonly<{
+  selection: ViewerSelection | null; onHold: (selection: ViewerSelection) => void; onClear: () => void;
+  highlight: (color: string, note: string) => Promise<unknown>; pageFormat: boolean; page?: number;
+  addPageNote: (color: string, note: string) => Promise<unknown>; annotations: AnnotationItem[];
+  onGoTo: (annotation: AnnotationItem) => void; toggleNotes: () => void;
+}>) {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h2 className="text-label text-fg">Notes</h2>
+        <Button variant="ghost" className={cn(BTN, 'xl:hidden')} onClick={toggleNotes}>Close</Button>
+      </div>
+      {selection && (
+        <div onFocus={() => onHold(selection)}>
+          <AnnotationForm label="Highlight selection" quote={selection.text} notice={selection.notice} onCancel={onClear} onSubmit={(color, note) => highlight(color, note)} />
+        </div>
+      )}
+      {pageFormat && page && !selection && <AnnotationForm label={`Add note to page ${page}`} onSubmit={addPageNote} />}
+      <AnnotationPanel items={annotations} onGoTo={onGoTo} />
+    </>
+  );
+}
+
+function pendingSelection(bubble: Bubble | null, held: ViewerSelection | null, selection: ViewerSelection | null) {
+  if (bubble && 'draft' in bubble) return bubble.draft;
+  return held && held === selection ? held : null;
+}
+
+function activeInkSettings(isPdf: boolean, marking: boolean, prefs: ReaderPrefs): InkSettings | null {
+  if (!isPdf || !marking) return null;
+  return {
+    tool: prefs.inkTool,
+    color: prefs.inkTool === 'highlighter' ? prefs.highlighterColor : prefs.penColor,
+    width: INK_WIDTHS[prefs.inkTool === 'highlighter' ? 'highlighter' : 'pen'][prefs.inkSize],
+    fingerDraw: prefs.fingerDraw,
+  };
+}
+
+function noteFromBubble(bubble: Bubble | null, annotations: AnnotationItem[] | undefined) {
+  return bubble && 'id' in bubble ? annotations?.find((a) => a.id === bubble.id) : undefined;
 }

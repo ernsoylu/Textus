@@ -27,7 +27,7 @@ const pdfAssets = import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : '/pdfjs/';
 const PRESETS = [['page-width', 'Fit width'], ['page-fit', 'Fit page'], ['auto', 'Automatic']] as const;
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const MAX_PINCH_SCALE = 5;
-const FIT_PRESETS = ['page-width', 'page-fit', 'auto'];
+const FIT_PRESETS = new Set(['page-width', 'page-fit', 'auto']);
 // NFR-A11Y-2: 44 px reader controls.
 const BTN = 'min-h-11 min-w-11 px-2 py-1';
 const FIELD = 'min-h-11 rounded-4 border border-muted bg-dim px-2 py-1 text-small text-fg';
@@ -182,7 +182,7 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, foc
     // is left alone.
     const resize = new ResizeObserver(() => {
       const preset = viewer.currentScaleValue;
-      if (!FIT_PRESETS.includes(preset) || !viewer.pagesCount) return;
+      if (!FIT_PRESETS.has(preset) || !viewer.pagesCount) return;
       const at = location;
       viewer.currentScaleValue = preset;
       if (at) viewer.scrollPageIntoView({ pageNumber: at.pageNumber, destArray: [null, { name: 'XYZ' }, at.left, at.top, null], allowNegativeOffset: true });
@@ -419,7 +419,7 @@ export function PdfViewer({ storagePath, annotations, goTo, initialPage = 1, foc
             <div ref={viewerRef} className="pdfViewer" />
           </div>
           {returnTo !== null && returnTo !== page && (
-            <ReturnButton label={`Back to page ${labels?.[returnTo - 1] ?? returnTo}`} onReturn={() => { if (pdf.current) pdf.current.viewer.currentPageNumber = returnTo; setReturnTo(null); }} onDismiss={() => setReturnTo(null)} />
+            <ReturnButton label={`Back to page ${labels?.[returnTo - 1] ?? returnTo}`} onReturn={() => { if (pdf.current) { pdf.current.viewer.currentPageNumber = returnTo; } setReturnTo(null); }} onDismiss={() => setReturnTo(null)} />
           )}
         </div>
       </div>

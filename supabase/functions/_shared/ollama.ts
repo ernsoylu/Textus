@@ -24,9 +24,7 @@ export function isAllowedModel(model: LocalModel, allowed: string[]) {
 export async function ollama(path: '/api/version' | '/api/tags' | '/api/generate' | '/api/embed', body?: unknown, timeoutMs = 40_000): Promise<unknown> {
   const config = aiConfig();
   if (!config.enabled) throw new HttpError('ai_disabled', 503);
-  let base: URL;
-  try { base = new URL(config.url); } catch { throw new HttpError('ai_misconfigured', 503); }
-  if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new HttpError('ai_misconfigured', 503);
+  const base = ollamaBase(config.url);
   try {
     const response = await boundedFetch(new URL(path, base), {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
@@ -34,8 +32,7 @@ export async function ollama(path: '/api/version' | '/api/tags' | '/api/generate
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     // A 400 is the request itself, never transient: retrying it would defer a job forever.
-    if (response.status === 400) throw new HttpError(/exceeds the context length/i.test(await response.text()) ? 'input_too_long' : 'invalid_request', 400);
-    if (!response.ok) throw new HttpError(response.status === 404 ? 'model_missing' : 'ai_unreachable', 503);
+    await checkOllamaResponse(response);
     return JSON.parse(await readCapped(response));
   } catch (e) {
     if (e instanceof HttpError) throw e;
@@ -67,7 +64,8 @@ const EMBED_PROMPTS: { model: RegExp; query: (t: string) => string; document: (t
 ];
 export function embedPrompt(modelName: string, text: string, query: boolean) {
   const prompts = EMBED_PROMPTS.find((p) => p.model.test(modelName));
-  return prompts ? (query ? prompts.query : prompts.document)(text) : text;
+  if (!prompts) return text;
+  return (query ? prompts.query : prompts.document)(text);
 }
 // Measured on monster's GTX 1050 Ti (2026-10-02): 3.3 passages/s in calls of 4, 5.3/s in calls of 16, 6.2/s in
 // calls of 32. 16 keeps one call near 3 s, so an interactive question never waits long for the GPU.
@@ -82,7 +80,7 @@ export async function embedText(model: LocalModel, text: string[], query = false
   }, 30_000); // a batch right after a model swap includes loading the embedder
   // Formula-heavy text can exceed the embedder's 2048 tokens within the byte limits; truncate only then, so one
   // passage loses its tail instead of its whole book never being embedded.
-  const raw = await embed(false).catch((error) => { if (error instanceof HttpError && error.code === 'input_too_long') return embed(true); throw error; });
+  const raw = await embed(false).catch((error) => { if (error instanceof HttpError && error.code === 'input_too_long') { return embed(true); } throw error; });
   const data = z.object({ embeddings: z.array(z.array(z.number().finite()).length(768)).max(EMBED_BATCH.count) }).parse(raw);
   if (data.embeddings.length !== text.length || data.embeddings.some((v) => !v.some((n) => n !== 0))) throw new HttpError('invalid_model_output', 502);
   // Tags may change while inference is running; never persist/query vectors under a stale digest.
@@ -98,4 +96,16 @@ export async function generateJson(model: LocalModel, prompt: string, schema: un
     options: { num_ctx: config.contextTokens, num_predict: 512, temperature: 0 },
   }));
   try { return JSON.parse(output.response); } catch { throw new HttpError('invalid_model_output', 502); }
+}
+
+function ollamaBase(raw: string) {
+  let base: URL;
+  try { base = new URL(raw); } catch { throw new HttpError('ai_misconfigured', 503); }
+  if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new HttpError('ai_misconfigured', 503);
+  return base;
+}
+
+async function checkOllamaResponse(response: Response) {
+  if (response.status === 400) throw new HttpError(/exceeds the context length/i.test(await response.text()) ? 'input_too_long' : 'invalid_request', 400);
+  if (!response.ok) throw new HttpError(response.status === 404 ? 'model_missing' : 'ai_unreachable', 503);
 }

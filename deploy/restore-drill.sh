@@ -17,7 +17,7 @@ docker run --rm --network none -v "$name-data:/var/lib/postgresql/data" -v "$nam
 docker run -d --name "$name" --network none -v "$name-data:/var/lib/postgresql/data" -v "$name-config:/etc/postgresql-custom" \
   "$image" postgres -c config_file=/etc/postgresql/postgresql.conf -c cron.launch_active_jobs=off >/dev/null
 for _ in $(seq 60); do docker exec "$name" pg_isready -U postgres -h localhost >/dev/null 2>&1 && break; sleep 2; done
-sql() { docker exec "$1" psql -U supabase_admin -d postgres -Atc "$2"; }
+sql() { local container="$1" query="$2"; docker exec "$container" psql -U supabase_admin -d postgres -Atc "$query"; }
 # Row counts are informational; permissions must match production exactly.
 counts="SELECT (SELECT count(*) FROM auth.users)||' users, '||(SELECT count(*) FROM public.works)||' works, '||(SELECT count(*) FROM public.assets)||' assets, '||(SELECT count(*) FROM storage.objects)||' objects'"
 permissions="SELECT md5(string_agg(x, '|' ORDER BY x)) FROM (
@@ -26,9 +26,9 @@ permissions="SELECT md5(string_agg(x, '|' ORDER BY x)) FROM (
   UNION ALL SELECT p.oid::regprocedure::text||coalesce(p.proacl::text,'')||p.prosecdef FROM pg_proc p WHERE p.pronamespace IN ('public'::regnamespace,'private'::regnamespace)
   UNION ALL SELECT (SELECT string_agg(id||public::text, ',' ORDER BY id) FROM storage.buckets)) s(x)"
 echo "Restored: $(sql "$name" "$counts")"
-[ "$(sql "$name" "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND NOT relrowsecurity")" = 0 ] || { echo 'Restored table without RLS' >&2; exit 1; }
-[ "$(sql "$name" "SELECT count(*) FROM storage.buckets WHERE public")" = 0 ] || { echo 'Restored public bucket' >&2; exit 1; }
-[ "$(sql "$name" "$permissions")" = "$(sql supabase-db "$permissions")" ] || { echo 'Restored RLS/grants differ from production' >&2; exit 1; }
+[[ "$(sql "$name" "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND NOT relrowsecurity")" = 0 ]] || { echo 'Restored table without RLS' >&2; exit 1; }
+[[ "$(sql "$name" "SELECT count(*) FROM storage.buckets WHERE public")" = 0 ]] || { echo 'Restored public bucket' >&2; exit 1; }
+[[ "$(sql "$name" "$permissions")" = "$(sql supabase-db "$permissions")" ]] || { echo 'Restored RLS/grants differ from production' >&2; exit 1; }
 echo 'RLS, policies, grants, function privileges and private buckets match production'
 sql "$name" "DELETE FROM public.agent_tokens" >/dev/null
 echo "Agent tokens after deletion: $(sql "$name" "SELECT count(*) FROM public.agent_tokens")"

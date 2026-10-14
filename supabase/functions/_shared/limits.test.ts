@@ -12,7 +12,11 @@ Deno.test('body byte limits apply with and without Content-Length', async () => 
 
 Deno.test('interactive GPU lease waits for a background holder; background callers do not', async () => {
   let free = false, calls = 0;
-  const admin = { rpc: (name: string) => Promise.resolve({ data: name === 'acquire_ai_lease' ? (calls++, free ? 'holder' : null) : null, error: null }) } as unknown as SupabaseClient;
+  const admin = { rpc: (name: string) => {
+    let data = null;
+    if (name === 'acquire_ai_lease') { calls++; data = free ? 'holder' : null; }
+    return Promise.resolve({ data, error: null });
+  } } as unknown as SupabaseClient;
   setTimeout(() => { free = true; }, 600);
   if (await withAiLease(admin, () => Promise.resolve('ran'), 5_000) !== 'ran' || calls < 2) throw new Error('waiting caller did not acquire the lease');
   free = false;

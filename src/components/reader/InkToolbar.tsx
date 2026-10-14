@@ -47,7 +47,7 @@ export function InkToolbar({ prefs, update, status, error, unsaved, canUndo, can
   const online = useOnline();
   const tool = prefs.inkTool;
   const colorKey = tool === 'highlighter' ? 'highlighterColor' : 'penColor';
-  const message = !online && unsaved ? 'Offline — not saved' : status === 'saving' ? 'Saving…' : status === 'saved' && !unsaved ? 'Saved' : status === 'error' ? `Could not save: ${error ?? ''}` : '';
+  const message = saveMessage(online, unsaved, status, error);
   return (
     <div role="toolbar" aria-label="Drawing tools" className="flex flex-wrap items-center gap-1 rounded-8 border border-border bg-raised p-1 shadow">
       <div role="radiogroup" aria-label="Tool" className="flex">
@@ -85,9 +85,16 @@ export function InkToolbar({ prefs, update, status, error, unsaved, canUndo, can
       >
         <Icon name="finger" />
       </Button>
-      <span className={`px-1 text-small ${status === 'error' || (!online && unsaved) ? 'text-red' : 'text-muted'}`} role="status" aria-live="polite">{message}</span>
+      <output className={`px-1 text-small ${status === 'error' || (!online && unsaved) ? 'text-red' : 'text-muted'}`} aria-live="polite">{message}</output>
       {status === 'error' && <Button variant="secondary" className={BTN} onClick={onRetry}>Retry</Button>}
       <Button variant="primary" className={`${BTN} ml-auto`} onClick={onDone}>Done</Button>
     </div>
   );
+}
+
+function saveMessage(online: boolean, unsaved: number, status: InkStatus, error: string | null) {
+  if (!online && unsaved) return 'Offline — not saved';
+  if (status === 'saving') return 'Saving…';
+  if (status === 'saved' && !unsaved) return 'Saved';
+  return status === 'error' ? `Could not save: ${error ?? ''}` : '';
 }

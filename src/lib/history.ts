@@ -24,7 +24,7 @@ export function formatValue(value: unknown): string {
     return value.map((item) => {
       if (item && typeof item === 'object' && 'name' in item) {
         const { name, role } = item as { name: unknown; role?: unknown };
-        return role ? `${String(name)} (${String(role)})` : String(name);
+        return role ? `${formatValue(name)} (${formatValue(role)})` : formatValue(name);
       }
       return formatValue(item);
     }).join(', ') || '—';

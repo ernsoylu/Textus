@@ -24,8 +24,7 @@ export function LinkVersionDialog({ workId, open, onClose }: Readonly<{ workId: 
   return (
     <ModalDialog open={open} title="Two versions, one work." onClose={close}>
       <p className="text-body text-muted">Link a preprint and its published version.</p>
-      <label className="flex flex-col gap-2 text-small text-fg">
-        Find a record
+      <label className="flex flex-col gap-2 text-small text-fg"><span>Find a record</span>
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Title of the other version" />
       </label>
       <ul className="flex flex-col gap-2">
@@ -47,8 +46,7 @@ export function LinkVersionDialog({ workId, open, onClose }: Readonly<{ workId: 
         })}
         {found.data?.length === 0 && <li className="text-small text-muted">No other article versions match “{search.trim()}”.</li>}
       </ul>
-      <label className="flex items-center gap-2 text-small text-fg">
-        This record is the
+      <label className="flex items-center gap-2 text-small text-fg"><span>This record is the</span>
         <select aria-label="Version" className="rounded-8 border border-muted bg-dim p-3 text-body text-fg" value={version} onChange={(e) => setVersion(e.target.value)}>
           <option value="published">published version</option>
           <option value="preprint">preprint</option>

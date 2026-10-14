@@ -21,11 +21,11 @@ export function Activity() {
   const client = useQueryClient();
   const activity = useActivity();
   const control = useMutation({ mutationFn: async ({ action, asset }: { action: 'retry' | 'cancel' | 'reindex' | 'backfill' | 'top'; asset?: string }) => {
-    const { error } = action === 'top' ? await supabase.rpc('move_to_top', { p_asset: asset! })
-      : await supabase.rpc('control_passage_index', { p_action: action, ...(asset ? { p_asset: asset } : {}) });
-    if (error) throw error;
-    await Promise.all([client.invalidateQueries({ queryKey: ['activity'] }), client.invalidateQueries({ queryKey: ['jobs'] })]);
-  } });
+      const { error } = action === 'top' ? await supabase.rpc('move_to_top', { p_asset: asset! })
+        : await supabase.rpc('control_passage_index', { p_action: action, ...(asset ? { p_asset: asset } : {}) });
+      if (error) throw error;
+      await Promise.all([client.invalidateQueries({ queryKey: ['activity'] }), client.invalidateQueries({ queryKey: ['jobs'] })]);
+    } });
   const rows = (activity.data ?? []).map((row: ActivityRow) => ({ row, view: activityView(row) }));
   const done = rows.filter(({ view }) => view.group === 'done').length;
   const overall = rows.length ? Math.round(rows.reduce((sum, { view }) => sum + view.progress, 0) / rows.length) : 0;
@@ -45,9 +45,7 @@ export function Activity() {
       {rows.length > 0 && (
         <div className="flex flex-col gap-2 rounded-8 border border-border bg-dim p-4">
           <p className="text-body text-fg">{done} of {rows.length} books fully processed · {overall}% overall</p>
-          <div role="progressbar" aria-label="Library progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={overall} className="h-2 overflow-hidden rounded-full bg-raised">
-            <div className="h-full bg-green" style={{ width: `${overall}%` }} />
-          </div>
+          <progress aria-label="Library progress" max={100} value={overall} className="h-2 w-full overflow-hidden rounded-full border-0 bg-raised [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-current [&::-moz-progress-bar]:bg-current text-green" />
           {unindexed && <Button variant="secondary" disabled={control.isPending} onClick={() => control.mutate({ action: 'backfill' })}>Index files that were never indexed (up to 100)</Button>}
         </div>
       )}

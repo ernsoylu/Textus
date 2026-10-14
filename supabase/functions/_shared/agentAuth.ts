@@ -1,8 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SignJWT, importJWK, type JWTPayload } from 'jose';
-import { readCapped } from './http.ts';
+import { readCapped, HttpError } from './http.ts';
 import { boundedFetch, checked } from './budget.ts';
-import { HttpError } from './http.ts';
 export interface AgentPrincipal { token_id: string; user_id: string; scope: 'read' | 'read_write' }
 export function checkMcpOrigin(req: Request) {
   const origin = req.headers.get('Origin');
@@ -47,8 +46,8 @@ export async function signJwt(claims: JWTPayload, ttl: string) {
 export async function agentClient(principal: AgentPrincipal) {
   const jwt = await signJwt({ role: 'authenticated', textus_agent: true, textus_scope: principal.scope, textus_token_id: principal.token_id, sub: principal.user_id, aud: 'authenticated' }, '5m');
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: `Bearer ${jwt}` }, fetch: async (input, init) => {
-    const response = await boundedFetch(input, init);
-    const body = await readCapped(response);
-    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
-  } }, auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+        const response = await boundedFetch(input, init);
+        const body = await readCapped(response);
+        return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+      } }, auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }

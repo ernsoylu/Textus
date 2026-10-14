@@ -167,7 +167,16 @@ export function DjvuViewer({ storagePath, annotations, goTo, initialPage = 1, fo
 
   // Screen size of the page: 100% is the scan at 96 dpi; the fit modes follow the reading area.
   const natural = rendered ? { width: (rendered.width * 96) / rendered.dpi, height: (rendered.height * 96) / rendered.dpi } : null;
-  const scale = !natural ? 1 : zoom === 'fit-width' ? box.width / natural.width : zoom === 'fit-page' ? Math.min(box.width / natural.width, box.height / natural.height) : zoom;
+  let scale: number;
+  if (!natural) {
+    scale = 1;
+  } else if (zoom === 'fit-width') {
+    scale = box.width / natural.width;
+  } else if (zoom === 'fit-page') {
+    scale = Math.min(box.width / natural.width, box.height / natural.height);
+  } else {
+    scale = zoom;
+  }
   const cssWidth = natural ? natural.width * scale : 0;
   const cssHeight = natural ? natural.height * scale : 0;
 
@@ -324,27 +333,27 @@ export function DjvuViewer({ storagePath, annotations, goTo, initialPage = 1, fo
           <nav aria-label="Contents" className="w-64 shrink-0 overflow-auto rounded-8 border border-border bg-dim p-2">{contents}</nav>
         )}
         <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} className="absolute inset-0 overflow-auto rounded-8 bg-dim p-4" style={{ touchAction: 'pan-x pan-y' }}>
-          {!rendered && <p className="text-body text-muted">Loading…</p>}
-          <div ref={pageRef} className="relative mx-auto bg-white shadow" style={{ width: cssWidth, height: cssHeight }} role="group" aria-label="Document page" tabIndex={0} onMouseUp={() => onSelect?.(currentSelection())} onKeyUp={() => onSelect?.(currentSelection())} onClick={handleClick} onContextMenu={handleContextMenu}>
-            <canvas ref={canvasRef} className="block h-full w-full" />
-            {rendered && (
-              <div ref={textRef} className="absolute inset-0 overflow-hidden leading-none" style={{ color: 'transparent' }}>
-                {rendered.zones.map((z, i) => (
-                  <span
-                    key={i}
-                    data-width={(z.width / rendered.width) * cssWidth}
-                    className="absolute origin-left whitespace-pre font-serif selection:bg-blue/40"
-                    style={{ left: `${(z.x / rendered.width) * 100}%`, top: `${((rendered.height - z.y - z.height) / rendered.height) * 100}%`, fontSize: (z.height / rendered.height) * cssHeight * 0.85 }}
-                  >
-                    {z.text}
-                  </span>
-                ))}
-              </div>
-            )}
-            {rendered && <PageOverlay page={rendered.page} annotations={annotations} onOpen={onOpenAnnotation} />}
+          <div ref={scrollRef} className="absolute inset-0 overflow-auto rounded-8 bg-dim p-4" style={{ touchAction: 'pan-x pan-y' }}>
+            {!rendered && <p className="text-body text-muted">Loading…</p>}
+            <div ref={pageRef} className="relative mx-auto bg-white shadow" style={{ width: cssWidth, height: cssHeight }} role="group" aria-label="Document page" tabIndex={0} onMouseUp={() => onSelect?.(currentSelection())} onKeyUp={() => onSelect?.(currentSelection())} onClick={handleClick} onContextMenu={handleContextMenu}>
+              <canvas ref={canvasRef} className="block h-full w-full" />
+              {rendered && (
+                <div ref={textRef} className="absolute inset-0 overflow-hidden leading-none" style={{ color: 'transparent' }}>
+                  {rendered.zones.map((z, i) => (
+                    <span
+                      key={i}
+                      data-width={(z.width / rendered.width) * cssWidth}
+                      className="absolute origin-left whitespace-pre font-serif selection:bg-blue/40"
+                      style={{ left: `${(z.x / rendered.width) * 100}%`, top: `${((rendered.height - z.y - z.height) / rendered.height) * 100}%`, fontSize: (z.height / rendered.height) * cssHeight * 0.85 }}
+                    >
+                      {z.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {rendered && <PageOverlay page={rendered.page} annotations={annotations} onOpen={onOpenAnnotation} />}
+            </div>
           </div>
-        </div>
           {returnTo !== null && returnTo !== page && <ReturnButton label={`Back to page ${returnTo}`} onReturn={() => { setPage(returnTo); setReturnTo(null); }} onDismiss={() => setReturnTo(null)} />}
         </div>
       </div>

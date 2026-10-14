@@ -16,14 +16,7 @@ export function inertBookHtml(html: string): string {
       element.replaceWith(replacement);
       continue;
     }
-    for (const attr of [...element.attributes]) {
-      if (attr.name === 'xmlns' && !attr.namespaceURI) { element.removeAttributeNode(attr); continue; }
-      if (/^on/i.test(attr.localName) || ['srcdoc','action','formaction','target','ping','srcset'].includes(attr.localName.toLowerCase()) || (/^(?:href|src)$/i.test(attr.localName) && /^\s*(?:javascript|vbscript):/i.test(Array.from(attr.value).filter((char) => char.charCodeAt(0) > 32).join('')))) element.removeAttributeNode(attr);
-      // Foliate has already rewritten packaged resources to blobs. Never fetch tracking URLs.
-      if (['src', 'poster', 'background'].includes(attr.localName.toLowerCase()) || (attr.localName.toLowerCase() === 'href' && element.localName.toLowerCase() !== 'a')) {
-        if (!/^(?:blob:|data:|#)/i.test(attr.value.trim())) element.removeAttributeNode(attr);
-      }
-    }
+    sanitizeAttributes(element);
   }
   const policy = doc.createElementNS('http://www.w3.org/1999/xhtml', 'meta');
   policy.setAttribute('http-equiv', 'Content-Security-Policy'); policy.setAttribute('content', BOOK_POLICY);
@@ -34,4 +27,17 @@ export function inertBookHtml(html: string): string {
     const newHead = doc.createElementNS('http://www.w3.org/1999/xhtml', 'head'); newHead.append(policy); doc.documentElement.append(newHead);
   }
   return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
+function sanitizeAttributes(element: Element) {
+  // Snapshot the live attribute collection before removing entries.
+  const attributes = [...element.attributes];
+  for (const attr of attributes) {
+    if (attr.name === 'xmlns' && !attr.namespaceURI) { element.removeAttributeNode(attr); continue; }
+    if (/^on/i.test(attr.localName) || ['srcdoc','action','formaction','target','ping','srcset'].includes(attr.localName.toLowerCase()) || (/^(?:href|src)$/i.test(attr.localName) && /^\s*(?:javascript|vbscript):/i.test(Array.from(attr.value).filter((char) => char.codePointAt(0)! > 32).join('')))) element.removeAttributeNode(attr);
+    // Foliate has already rewritten packaged resources to blobs. Never fetch tracking URLs.
+    if (['src', 'poster', 'background'].includes(attr.localName.toLowerCase()) || (attr.localName.toLowerCase() === 'href' && element.localName.toLowerCase() !== 'a')) {
+      if (!/^(?:blob:|data:|#)/i.test(attr.value.trim())) element.removeAttributeNode(attr);
+    }
+  }
 }

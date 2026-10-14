@@ -23,9 +23,7 @@ export function BookActivity({ row, busy, onControl }: Readonly<{ row: ActivityR
       <ol aria-label="Processing steps" className="flex flex-wrap gap-x-4 gap-y-1 text-small">
         {view.steps.map((step) => <li key={step.label} className={STEP[step.state].color}><span aria-hidden="true">{STEP[step.state].icon} </span>{step.label}<span className="sr-only">: {STEP[step.state].label}</span></li>)}
       </ol>
-      <div role="progressbar" aria-label={`${row.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={view.progress} className="h-2 overflow-hidden rounded-full bg-raised">
-        <div className={`h-full ${view.group === 'attention' ? 'bg-red' : 'bg-green'}`} style={{ width: `${view.progress}%` }} />
-      </div>
+      <progress aria-label={`${row.title} progress`} max={100} value={view.progress} className={`h-2 w-full overflow-hidden rounded-full border-0 bg-raised [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-current [&::-moz-progress-bar]:bg-current ${view.group === 'attention' ? 'text-red' : 'text-green'}`} />
       <p className="text-small text-muted">{view.explanation}</p>
       {(view.canRetry || view.canCancel || view.canReindex || view.canMoveToTop) && (
         <div className="flex gap-2">

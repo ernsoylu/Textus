@@ -17,21 +17,18 @@ export function AppearanceTab() {
   return (
     <div className="flex flex-col gap-4">
       <p className="rounded-8 bg-green-bg p-3 text-small text-fg">Selected · Everforest Dark Medium</p>
-      <label className="flex items-center justify-between gap-4 text-body text-fg">
-        Text size
+      <label className="flex items-center justify-between gap-4 text-body text-fg"><span>Text size</span>
         <select aria-label="Text size" className={SELECT} value={prefs.textSize} onChange={(e) => change({ textSize: e.target.value as Appearance['textSize'] })}>
           {Object.entries(TEXT_SIZES).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
         </select>
       </label>
-      <label className="flex items-center justify-between gap-4 text-body text-fg">
-        Library density
+      <label className="flex items-center justify-between gap-4 text-body text-fg"><span>Library density</span>
         <select aria-label="Library density" className={SELECT} value={prefs.density} onChange={(e) => change({ density: e.target.value as Appearance['density'] })}>
           <option value="comfortable">Comfortable</option>
           <option value="compact">Compact</option>
         </select>
       </label>
-      <label className="flex items-center justify-between gap-4 text-body text-fg">
-        Motion
+      <label className="flex items-center justify-between gap-4 text-body text-fg"><span>Motion</span>
         <select aria-label="Motion" className={SELECT} value={prefs.motion} onChange={(e) => change({ motion: e.target.value as Appearance['motion'] })}>
           <option value="system">Respect device preference</option>
           <option value="reduce">Reduce motion</option>

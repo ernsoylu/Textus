@@ -8,7 +8,7 @@ export function deadline(ms = INVOCATION_MS) { return AbortSignal.timeout(ms); }
 export async function checked<T>(result: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
   const { data, error } = await result;
   if (!error) return data;
-  const code = typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown';
+  const code = typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'unknown';
   console.error(JSON.stringify({ event: 'db_error', code }));
   throw code === '57014' ? new HttpError('database_timeout', 503) : new HttpError('request_failed', 500);
 }
