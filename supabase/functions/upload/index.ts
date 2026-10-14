@@ -16,7 +16,7 @@ import { fetchPublic } from '../_shared/fetchPublic.ts';
 import { jsonBody, rateLimit } from '../_shared/limits.ts';
 import { deadline, checked, withBudget } from '../_shared/budget.ts';
 
-const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
+export const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
 const DOCUMENT_MIME_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -34,6 +34,8 @@ const COVER_MIME_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 };
 
+export const SafeFilename = z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\') && n !== '.' && n !== '..');
+
 const IntentSchema = z.object({
   uploadId: z.string().uuid(),
   recordId: z.string().uuid(),
@@ -41,7 +43,7 @@ const IntentSchema = z.object({
   // defense in depth against that constraint being lost in a future edit. Path traversal
   // (security review, 2026-09-28): a raw client filename in a storage key lets a caller write
   // outside their own {userId}/{uploadId}/ prefix via "../" segments.
-  filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\') && n !== '.' && n !== '..'),
+  filename: SafeFilename,
   size: z.number().int().positive(),
 });
 
