@@ -298,7 +298,9 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const view = viewRef.current;
-      if (!view || isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      // The position slider keeps focus after a drag; its native 1% arrow steps jump erratically, so turn pages instead.
+      const slider = e.target instanceof HTMLInputElement && e.target.type === 'range';
+      if (!view || (isTypingTarget(e.target) && !slider) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowRight') void view.goRight();
       else if (e.key === 'ArrowLeft') void view.goLeft();
       else if (e.key === 'PageDown') void view.next();
