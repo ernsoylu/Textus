@@ -167,49 +167,20 @@ export async function completeStaged(ctx: UploadContext, { uploadId, recordId, r
   const request = { role, filename: filename ?? '' };
   const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
   if (!attempt || attempt.record_id !== recordId) return Response.json({ error: 'upload_intent_missing' }, { status: 409 });
-  if (attempt.request && JSON.stringify(attempt.request) !== JSON.stringify(request)) {
-    // JSONB key order is not significant.
-    const stored = attempt.request as { role: string; filename: string };
-    if (stored.role !== role || stored.filename !== request.filename) return Response.json({ error: 'upload_request_changed' }, { status: 409 });
-  }
+  if (uploadRequestChanged(attempt.request, request)) return Response.json({ error: 'upload_request_changed' }, { status: 409 });
   if (attempt.result) return Response.json(attempt.result);
 
   const folder = `${userId}/${uploadId}`;
   const stagingPath = `${folder}/frozen`;
-  const { data: frozen } = await ctx.supabaseAdmin.storage.from('staging').exists(stagingPath);
-  if (!frozen) {
-    // Only /upload was signed for client writes. Moving to /frozen makes both verification
-    // and copying read the same immutable object, even if the old signed URL is reused.
-    const { error } = await ctx.supabaseAdmin.storage.from('staging').move(`${folder}/upload`, stagingPath);
-    if (error) {
-      const { data: raced } = await ctx.supabaseAdmin.storage.from('staging').exists(stagingPath);
-      if (!raced) return Response.json({ status: 'rejected', reason: 'missing' });
-    }
-  }
+  if (!await freezeStaged(ctx, folder, stagingPath)) return Response.json({ status: 'rejected', reason: 'missing' });
   const staged = await inspectStaged(ctx, stagingPath, signal);
   if (staged.kind !== 'ok') return Response.json({ status: 'rejected', reason: staged.kind === 'missing' ? 'missing' : 'size_mismatch' });
-  const isCover = role === 'cover';
-  const allowed = isCover ? COVER_MIME_TYPES : DOCUMENT_MIME_TYPES;
-  if (!staged.mimeType || !(staged.mimeType in allowed)) return Response.json({ status: 'rejected', reason: 'unsupported_type' });
-  if (isCover && staged.size > 5_242_880) return Response.json({ status: 'rejected', reason: 'size_mismatch' });
-  const bucket = isCover ? 'covers' : 'documents';
-  const ext = allowed[staged.mimeType];
-  const destPath = `${userId}/${staged.checksum}.${ext}`;
-  const publishError = await publishStaged(ctx, stagingPath, bucket, destPath, staged.mimeType, staged.size, signal);
-  if (publishError) return Response.json({ error: 'storage_error' }, { status: 500 });
-  const result = await checked(ctx.supabaseAdmin.rpc(ctx.agentAction ? 'complete_agent_upload' : 'complete_upload', {
-    ...(ctx.agentAction ? { p_action: ctx.agentAction.id, p_token: ctx.agentAction.tokenId } : { p_user: userId, p_id: uploadId }), p_request: request,
-    p_asset: { bucket, storage_path: destPath, file_size: staged.size, checksum_sha256: staged.checksum,
-      mime_type: staged.mimeType, file_format: isCover ? 'image' : ext, processing_state: isCover ? 'ready' : 'pending' },
-  }).setHeader('x-textus-actor', ctx.agentAction ? `agent:${ctx.agentAction.tokenId}` : 'user')); // book history: whose upload this is
-  // Completion is durable before staging is removed; failures here are handled by cleanup.
-  await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath, `${folder}/upload`]);
-  return Response.json(result);
+  return publishVerifiedUpload(ctx, uploadId, request, staged, signal);
 }
 
 // Name for identifier suggestions only (as complete's `filename`); never used in a storage path.
 function filenameFromUrl(url: string): string | undefined {
-  const last = new URL(url).pathname.split('/').filter(Boolean).at(-1);
+  const last = new URL(url).pathname.split('/').findLast(Boolean);
   try {
     const name = last && decodeURIComponent(last).replace(/[/\\]/g, ' ').slice(0, 255);
     return name && name !== '.' && name !== '..' ? name : undefined;
@@ -281,3 +252,48 @@ export default {
     return new Response('Not found', { status: 404 });
   })),
 };
+
+async function freezeStaged(ctx: UploadContext, folder: string, stagingPath: string) {
+  const { data: frozen } = await ctx.supabaseAdmin.storage.from('staging').exists(stagingPath);
+  if (!frozen) {
+    // Only /upload was signed for client writes. Moving to /frozen makes both verification
+    // and copying read the same immutable object, even if the old signed URL is reused.
+    const { error } = await ctx.supabaseAdmin.storage.from('staging').move(`${folder}/upload`, stagingPath);
+    if (error) {
+      const { data: raced } = await ctx.supabaseAdmin.storage.from('staging').exists(stagingPath);
+      if (!raced) return false;
+    }
+  }
+  return true;
+}
+
+function uploadRequestChanged(stored: unknown, request: { role: string; filename: string }) {
+  if (!stored || JSON.stringify(stored) === JSON.stringify(request)) return false;
+  // JSONB key order is not significant.
+  const previous = stored as { role: string; filename: string };
+  return previous.role !== request.role || previous.filename !== request.filename;
+}
+
+async function publishVerifiedUpload(ctx: UploadContext, uploadId: string, request: { role: string; filename: string }, staged: Extract<Awaited<ReturnType<typeof inspectStaged>>, { kind: 'ok' }>, signal: AbortSignal): Promise<Response> {
+  const userId = ctx.userId;
+  const { role } = request;
+  const folder = `${userId}/${uploadId}`;
+  const stagingPath = `${folder}/frozen`;
+  const isCover = role === 'cover';
+  const allowed = isCover ? COVER_MIME_TYPES : DOCUMENT_MIME_TYPES;
+  if (!staged.mimeType || !(staged.mimeType in allowed)) return Response.json({ status: 'rejected', reason: 'unsupported_type' });
+  if (isCover && staged.size > 5_242_880) return Response.json({ status: 'rejected', reason: 'size_mismatch' });
+  const bucket = isCover ? 'covers' : 'documents';
+  const ext = allowed[staged.mimeType];
+  const destPath = `${userId}/${staged.checksum}.${ext}`;
+  const publishError = await publishStaged(ctx, stagingPath, bucket, destPath, staged.mimeType, staged.size, signal);
+  if (publishError) return Response.json({ error: 'storage_error' }, { status: 500 });
+  const result = await checked(ctx.supabaseAdmin.rpc(ctx.agentAction ? 'complete_agent_upload' : 'complete_upload', {
+    ...(ctx.agentAction ? { p_action: ctx.agentAction.id, p_token: ctx.agentAction.tokenId } : { p_user: userId, p_id: uploadId }), p_request: request,
+    p_asset: { bucket, storage_path: destPath, file_size: staged.size, checksum_sha256: staged.checksum,
+      mime_type: staged.mimeType, file_format: isCover ? 'image' : ext, processing_state: isCover ? 'ready' : 'pending' },
+  }).setHeader('x-textus-actor', ctx.agentAction ? `agent:${ctx.agentAction.tokenId}` : 'user')); // book history: whose upload this is
+  // Completion is durable before staging is removed; failures here are handled by cleanup.
+  await ctx.supabaseAdmin.storage.from('staging').remove([stagingPath, `${folder}/upload`]);
+  return Response.json(result);
+}

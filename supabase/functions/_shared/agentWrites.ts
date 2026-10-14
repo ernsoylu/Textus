@@ -33,25 +33,11 @@ export async function agentWrite(principal: AgentPrincipal, client: SupabaseClie
   const { requestId, ...args } = input;
   let preview: unknown = null;
   if (tool === 'create_work_from_identifier') {
-    const parsed = CreateFromIdentifier.parse(input), id = parseIdentifier(parsed.scheme, parsed.value);
-    if (!id.ok) throw new HttpError('invalid_identifier');
-    args.value = id.normalized;
-    const previous = await checked(admin.from('agent_actions').select('id').eq('user_id', principal.user_id).eq('token_id', principal.token_id).eq('request_id', requestId).maybeSingle());
-    if (!previous) {
-      // Already catalogued: answer like create_catalog would, without spending a provider lookup.
-      const known = await checked(client.from('identifiers').select('record_id,records(work_id)').eq('scheme', parsed.scheme).eq('normalized_value', id.normalized).limit(1).maybeSingle());
-      const knownRecord = Array.isArray(known?.records) ? known.records[0] : known?.records;
-      if (known && knownRecord) return { status: 'existing', workId: knownRecord.work_id, recordId: known.record_id };
-      const response = await lookupAcrossProviders({ supabase: client, supabaseAdmin: admin }, parsed.scheme, id.normalized);
-      const metadata = await response.json();
-      if (metadata.status !== 'success') return metadata;
-      preview = catalogPreview(metadata.data, parsed.scheme, id.normalized);
-    }
+    const prepared = await identifierPreview(principal, client, admin, input, args);
+    if ('result' in prepared) return prepared.result;
+    preview = prepared.preview;
   } else if (tool === 'tag_work' || tool === 'add_to_collection') {
-    const work = await checked(client.from('works').select('title').eq('id', args.workId).maybeSingle());
-    const target = await checked(client.from(tool === 'tag_work' ? 'tags' : 'collections').select('name').eq('id', tool === 'tag_work' ? args.tagId : args.collectionId).maybeSingle());
-    if (!work || !target) throw new HttpError('not_found', 404);
-    preview = { workTitle: work.title, targetName: target.name };
+    preview = await targetPreview(client, tool, args);
   } else {
     const record = await checked(client.from('records').select('id,title,works(title)').eq('id', args.recordId).maybeSingle());
     if (!record) throw new HttpError('not_found', 404);
@@ -69,4 +55,29 @@ export async function agentWrite(principal: AgentPrincipal, client: SupabaseClie
   const result = await response.json();
   // Storage/public-fetch failures leave the request approved, so repeating the same requestId retries safely.
   return result;
+}
+
+async function identifierPreview(principal: AgentPrincipal, client: SupabaseClient, admin: SupabaseClient, input: { requestId: string } & Record<string, unknown>, args: Record<string, unknown>) {
+  const parsed = CreateFromIdentifier.parse(input), id = parseIdentifier(parsed.scheme, parsed.value);
+  if (!id.ok) throw new HttpError('invalid_identifier');
+  args.value = id.normalized;
+  const previous = await checked(admin.from('agent_actions').select('id').eq('user_id', principal.user_id).eq('token_id', principal.token_id).eq('request_id', input.requestId).maybeSingle());
+  if (!previous) {
+    // Already catalogued: answer like create_catalog would, without spending a provider lookup.
+    const known = await checked(client.from('identifiers').select('record_id,records(work_id)').eq('scheme', parsed.scheme).eq('normalized_value', id.normalized).limit(1).maybeSingle());
+    const knownRecord = Array.isArray(known?.records) ? known.records[0] : known?.records;
+    if (known && knownRecord) return { result: { status: 'existing', workId: knownRecord.work_id, recordId: known.record_id } };
+    const response = await lookupAcrossProviders({ supabase: client, supabaseAdmin: admin }, parsed.scheme, id.normalized);
+    const metadata = await response.json();
+    if (metadata.status !== 'success') return { result: metadata };
+    return { preview: catalogPreview(metadata.data, parsed.scheme, id.normalized) };
+  }
+  return { preview: null };
+}
+
+async function targetPreview(client: SupabaseClient, tool: string, args: Record<string, unknown>) {
+  const work = await checked(client.from('works').select('title').eq('id', args.workId).maybeSingle());
+  const target = await checked(client.from(tool === 'tag_work' ? 'tags' : 'collections').select('name').eq('id', tool === 'tag_work' ? args.tagId : args.collectionId).maybeSingle());
+  if (!work || !target) throw new HttpError('not_found', 404);
+  return { workTitle: work.title, targetName: target.name };
 }

@@ -118,12 +118,13 @@ export function InkLayer({ page, strokes, settings, onStroke, onErase }: Readonl
     setErasing(new Set());
   }
 
+  const cursor = settings?.tool === 'eraser' ? 'cell' : 'crosshair';
   const live = settings && settings.tool !== 'eraser' ? { ...settings, tool: settings.tool } : null;
   return (
     <svg
       ref={svgRef}
       className="absolute inset-0 z-[6] h-full w-full"
-      style={{ pointerEvents: settings ? 'auto' : 'none', touchAction: settings?.fingerDraw ? 'none' : 'pan-x pan-y', cursor: settings ? (settings.tool === 'eraser' ? 'cell' : 'crosshair') : undefined }}
+      style={{ pointerEvents: settings ? 'auto' : 'none', touchAction: settings?.fingerDraw ? 'none' : 'pan-x pan-y', cursor: settings ? cursor : undefined }}
       aria-hidden={settings ? undefined : true}
       aria-label={settings ? `Drawing surface, page ${page}` : undefined}
       role={settings ? 'img' : undefined}

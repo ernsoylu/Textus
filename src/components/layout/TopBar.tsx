@@ -37,7 +37,7 @@ export function TopBar() {
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === 'ArrowDown' && e.target === inputRef.current) {
       e.preventDefault();
-      e.currentTarget.querySelector<HTMLAnchorElement>('ul a')?.focus();
+      inputRef.current?.form?.querySelector<HTMLAnchorElement>('ul a')?.focus();
     }
     if (e.key === 'Escape') {
       setOpen(false);
@@ -47,10 +47,11 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-bg p-3">
-      <form onSubmit={submit} className="relative flex-1" role="search" onKeyDown={onKeyDown} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+      <form onSubmit={submit} className="relative flex-1" role="search" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
         <input
           ref={inputRef}
           type="search"
+          onKeyDown={onKeyDown}
           aria-label="Search titles, people, identifiers"
           placeholder="Search titles, people, identifiers…"
           value={query}
@@ -63,7 +64,7 @@ export function TopBar() {
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-small text-muted md:block">⌘K</kbd>
         {open && query.trim() && (
-          <BookSearchResults items={results} loading={search.isFetching || debounced !== query.trim()} error={search.error?.message} onSelect={() => setOpen(false)} />
+          <BookSearchResults items={results} loading={search.isFetching || debounced !== query.trim()} error={search.error?.message} onSelect={() => setOpen(false)} onDismiss={() => setOpen(false)} />
         )}
       </form>
       <Link to="/library/new" className="hidden sm:block"><Button>+ Add to library</Button></Link>

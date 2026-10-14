@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useMetadataJobs } from '@/hooks/useJobs';
 
 export function Library() {
+  const searchContainer = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -98,12 +99,12 @@ export function Library() {
         </div>
       </div>
 
-      <div className="relative w-full max-w-[520px]" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }} onKeyDown={(event) => {
-        if (event.key === 'Escape') setSearchOpen(false);
-        if (event.key === 'ArrowDown' && event.target instanceof HTMLInputElement) { event.preventDefault(); event.currentTarget.querySelector<HTMLAnchorElement>('ul a')?.focus(); }
-      }}>
-        <Input aria-label="Search library" placeholder="Search title, contributor or file text…" value={filters.q} onFocus={() => setSearchOpen(true)} onChange={(e) => { setFilters({ ...filters, q: e.target.value }); setSearchOpen(true); }} />
-        {searchOpen && filters.q.trim() && <BookSearchResults items={items.slice(0, 8)} loading={query.isFetching || debouncedQ !== filters.q} error={query.error?.message} onSelect={() => setSearchOpen(false)} />}
+      <div ref={searchContainer} className="relative w-full max-w-[520px]" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }}>
+        <Input onKeyDown={(event) => {
+          if (event.key === 'Escape') setSearchOpen(false);
+          if (event.key === 'ArrowDown') { event.preventDefault(); searchContainer.current?.querySelector<HTMLAnchorElement>('ul a')?.focus(); }
+        }} aria-label="Search library" placeholder="Search title, contributor or file text…" value={filters.q} onFocus={() => setSearchOpen(true)} onChange={(e) => { setFilters({ ...filters, q: e.target.value }); setSearchOpen(true); }} />
+        {searchOpen && filters.q.trim() && <BookSearchResults items={items.slice(0, 8)} loading={query.isFetching || debouncedQ !== filters.q} error={query.error?.message} onSelect={() => setSearchOpen(false)} onDismiss={() => setSearchOpen(false)} />}
       </div>
       <LibraryFilterBar filters={filters} languages={languages.data ?? []} onChange={setFilters} />
 

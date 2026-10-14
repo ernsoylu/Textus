@@ -33,7 +33,7 @@ for model in (sys.argv[1:] or MODELS):
     ranks = []
     for q, vec in zip(queries, qs):
         order = np.argsort(-(docs @ vec))
-        ranks.append(int(np.where(np.array(ids)[order] == q['target'])[0][0]) + 1)
+        ranks.append(int(np.nonzero(np.array(ids)[order] == q['target'])[0][0]) + 1)
     groups = {}
     for q, rank in zip(queries, ranks):
         for key in ('all', q['kind'], f"{q['query_lang']}->{q['passage_lang']}"):

@@ -257,7 +257,12 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   useEffect(() => {
     const view = viewRef.current;
     if (!view?.renderer || !ready) return;
-    const wanted = new Map(annotations.flatMap((a) => (a.anchor.anchor_type === 'epub_cfi' ? [[a.anchor.anchor_data.cfi, `${a.color}|${a.note ? 1 : 0}`] as const] : [])));
+    const wanted = new Map(annotations.flatMap((a) => {
+      if (a.anchor.anchor_type === 'epub_cfi') {
+        return [[a.anchor.anchor_data.cfi, `${a.color}|${a.note ? 1 : 0}`] as const];
+      }
+      return [];
+    }));
     for (const [cfi, key] of drawn.current) {
       if (wanted.get(cfi) !== key) {
         void view.deleteAnnotation({ value: cfi });
@@ -329,71 +334,76 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   // Some books (e.g. a MOBI's first record) report no fraction until the reader moves.
   const fraction = Number.isFinite(location?.fraction) ? (location?.fraction as number) : 0;
   const togglePanel = (p: 'contents' | 'search') => setPanel((cur) => (cur === p ? null : p));
-  const where = location?.pageItem?.label ? `Page ${location.pageItem.label}` : location?.location ? `Location ${location.location.current + 1} of ${location.location.total}` : '';
+  let where: string;
+  if (location?.pageItem?.label) {
+    where = `Page ${location.pageItem.label}`;
+  } else if (location?.location) {
+    where = `Location ${location.location.current + 1} of ${location.location.total}`;
+  } else {
+    where = '';
+  }
 
+  const resultCount = `${hits.length} ${hits.length === 1 ? 'result' : 'results'}`;
   const panelBody: ReactNode = (
     <>
-            {panel === 'contents' && <TocList items={toc} active={location?.tocItem?.href} onSelect={jump} />}
-            {panel === 'search' && (
-              <>
-                <form role="search" onSubmit={(e) => void search(e)} className="flex gap-1">
-                  <input type="search" aria-label="Search in book" placeholder="Search the book…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-4 border border-muted bg-bg px-2 py-1 text-small text-fg" />
-                  <Button type="submit" variant="secondary" className={BTN}>Find</Button>
-                </form>
-                <p className="text-small text-muted" aria-live="polite">{searching !== null ? `Searching… ${Math.round(searching * 100)}%` : query.trim() && `${hits.length} ${hits.length === 1 ? 'result' : 'results'}`}</p>
-                <ul className="flex flex-col gap-1">
-                  {hits.map((h) => (
-                    <li key={h.cfi}>
-                      <button type="button" onClick={() => jump(h.cfi)} className="min-h-11 w-full rounded-4 p-2 text-left text-small text-muted hover:bg-raised">
-                        {h.label && <span className="block text-fg">{h.label}</span>}
-                        {h.pre}<mark className="bg-yellow-bg text-yellow">{h.match}</mark>{h.post}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+      {panel === 'contents' && <TocList items={toc} active={location?.tocItem?.href} onSelect={jump} />}
+      {panel === 'search' && (
+        <>
+          <form role="search" onSubmit={(e) => void search(e)} className="flex gap-1">
+            <input type="search" aria-label="Search in book" placeholder="Search the book…" value={query} onChange={(e) => setQuery(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-4 border border-muted bg-bg px-2 py-1 text-small text-fg" />
+            <Button type="submit" variant="secondary" className={BTN}>Find</Button>
+          </form>
+          <p className="text-small text-muted" aria-live="polite">{searching !== null ? `Searching… ${Math.round(searching * 100)}%` : query.trim() && resultCount}</p>
+          <ul className="flex flex-col gap-1">
+            {hits.map((h) => (
+              <li key={h.cfi}>
+                <button type="button" onClick={() => jump(h.cfi)} className="min-h-11 w-full rounded-4 p-2 text-left text-small text-muted hover:bg-raised">
+                  {h.label && <span className="block text-fg">{h.label}</span>}
+                  {h.pre}<mark className="bg-yellow-bg text-yellow">{h.match}</mark>{h.post}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   );
 
   // Figma R10: text size, spacing, theme and layout — a popover on wide screens, a bottom sheet on phones.
   const settings: ReactNode = (
     <>
-              <div className="flex items-center justify-between text-small text-fg">
-                Text size
-                <span className="flex items-center gap-1">
-                  <Button variant="ghost" className={BTN} aria-label="Smaller text" onClick={() => setFontSize(-10)}>A−</Button>
-                  <span className="w-10 text-center text-muted">{prefs.fontSize}%</span>
-                  <Button variant="ghost" className={BTN} aria-label="Larger text" onClick={() => setFontSize(10)}>A+</Button>
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-small text-fg">
-                Line spacing
-                <span className="flex items-center gap-1">
-                  <Button variant="ghost" className={BTN} aria-label="Tighter lines" onClick={() => setLineHeight(-0.1)}>−</Button>
-                  <span className="w-10 text-center text-muted">{prefs.lineHeight.toFixed(1)}</span>
-                  <Button variant="ghost" className={BTN} aria-label="Looser lines" onClick={() => setLineHeight(0.1)}>+</Button>
-                </span>
-              </div>
-              <label className="flex items-center justify-between text-small text-fg">
-                Theme
-                <select className={FIELD} value={prefs.theme} onChange={(e) => updatePrefs({ theme: e.target.value as ReaderPrefs['theme'] })}>
-                  <option value="light">Light</option>
-                  <option value="sepia">Sepia</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </label>
-              <label className="flex items-center justify-between text-small text-fg">
-                Layout
-                <select className={FIELD} value={prefs.flow} onChange={(e) => updatePrefs({ flow: e.target.value as ReaderPrefs['flow'] })}>
-                  <option value="paginated">Pages</option>
-                  <option value="scrolled">Scrolling</option>
-                </select>
-              </label>
-              <label className="flex items-center justify-between text-small text-fg">
-                Two columns on wide screens
-                <input type="checkbox" className="h-5 w-5" checked={prefs.twoPage} onChange={(e) => updatePrefs({ twoPage: e.target.checked })} />
-              </label>
+      <div className="flex items-center justify-between text-small text-fg">
+        Text size
+        <span className="flex items-center gap-1">
+          <Button variant="ghost" className={BTN} aria-label="Smaller text" onClick={() => setFontSize(-10)}>A−</Button>
+          <span className="w-10 text-center text-muted">{prefs.fontSize}%</span>
+          <Button variant="ghost" className={BTN} aria-label="Larger text" onClick={() => setFontSize(10)}>A+</Button>
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-small text-fg">
+        Line spacing
+        <span className="flex items-center gap-1">
+          <Button variant="ghost" className={BTN} aria-label="Tighter lines" onClick={() => setLineHeight(-0.1)}>−</Button>
+          <span className="w-10 text-center text-muted">{prefs.lineHeight.toFixed(1)}</span>
+          <Button variant="ghost" className={BTN} aria-label="Looser lines" onClick={() => setLineHeight(0.1)}>+</Button>
+        </span>
+      </div>
+      <label className="flex items-center justify-between text-small text-fg"><span>Theme</span>
+        <select className={FIELD} value={prefs.theme} onChange={(e) => updatePrefs({ theme: e.target.value as ReaderPrefs['theme'] })}>
+          <option value="light">Light</option>
+          <option value="sepia">Sepia</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label className="flex items-center justify-between text-small text-fg"><span>Layout</span>
+        <select className={FIELD} value={prefs.flow} onChange={(e) => updatePrefs({ flow: e.target.value as ReaderPrefs['flow'] })}>
+          <option value="paginated">Pages</option>
+          <option value="scrolled">Scrolling</option>
+        </select>
+      </label>
+      <label className="flex items-center justify-between text-small text-fg"><span>Two columns on wide screens</span>
+        <input type="checkbox" className="h-5 w-5" checked={prefs.twoPage} onChange={(e) => updatePrefs({ twoPage: e.target.checked })} />
+      </label>
     </>
   );
 
@@ -402,20 +412,20 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       {!focus && (
-      <div role="toolbar" aria-label="Book controls" className="flex flex-wrap items-center gap-1">
-        <Button variant={panel === 'contents' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'contents'} disabled={!toc.length} onClick={() => togglePanel('contents')}>☰ Contents</Button>
-        <Button variant={panel === 'search' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'search'} disabled={!ready} onClick={() => togglePanel('search')}>Search</Button>
-        <Button variant="ghost" className={BTN} aria-label="Previous page" disabled={!ready} onClick={() => void viewRef.current?.goLeft()}>‹</Button>
-        <Button variant="ghost" className={BTN} aria-label="Next page" disabled={!ready} onClick={() => void viewRef.current?.goRight()}>›</Button>
-        <p className="min-w-0 truncate px-1 text-small text-muted">{location?.tocItem?.label ?? ''}</p>
-        {!fixedLayout && wide && (
-          <details className="relative ml-auto">
-            <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-8 px-3 text-label text-fg hover:bg-raised/60" aria-label="Text and layout settings">Aa</summary>
-            <div className="absolute right-0 z-20 mt-1 flex w-72 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">{settings}</div>
-          </details>
-        )}
-        {!fixedLayout && !wide && <Button variant={settingsOpen ? 'secondary' : 'ghost'} className={`${BTN} ml-auto`} aria-label="Text and layout settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((o) => !o)}>Aa</Button>}
-      </div>
+        <div role="toolbar" aria-label="Book controls" className="flex flex-wrap items-center gap-1">
+          <Button variant={panel === 'contents' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'contents'} disabled={!toc.length} onClick={() => togglePanel('contents')}>☰ Contents</Button>
+          <Button variant={panel === 'search' ? 'secondary' : 'ghost'} className={BTN} aria-pressed={panel === 'search'} disabled={!ready} onClick={() => togglePanel('search')}>Search</Button>
+          <Button variant="ghost" className={BTN} aria-label="Previous page" disabled={!ready} onClick={() => void viewRef.current?.goLeft()}>‹</Button>
+          <Button variant="ghost" className={BTN} aria-label="Next page" disabled={!ready} onClick={() => void viewRef.current?.goRight()}>›</Button>
+          <p className="min-w-0 truncate px-1 text-small text-muted">{location?.tocItem?.label ?? ''}</p>
+          {!fixedLayout && wide && (
+            <details className="relative ml-auto">
+              <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-8 px-3 text-label text-fg hover:bg-raised/60" aria-label="Text and layout settings">Aa</summary>
+              <div className="absolute right-0 z-20 mt-1 flex w-72 flex-col gap-3 rounded-8 border border-border bg-raised p-3 shadow-lg">{settings}</div>
+            </details>
+          )}
+          {!fixedLayout && !wide && <Button variant={settingsOpen ? 'secondary' : 'ghost'} className={`${BTN} ml-auto`} aria-label="Text and layout settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((o) => !o)}>Aa</Button>}
+        </div>
       )}
       <div className="flex min-h-0 flex-1 gap-2">
         {panel && wide && !focus && (
@@ -432,22 +442,22 @@ export function BookViewer({ storagePath, format, initialCfi, annotations, goTo,
       {panel && !wide && !focus && <Sheet label={panel === 'contents' ? 'Contents' : 'Search'} onClose={() => setPanel(null)}>{panelBody}</Sheet>}
       {settingsOpen && !wide && !focus && <Sheet label="Text and layout" onClose={() => setSettingsOpen(false)}>{settings}</Sheet>}
       {!focus && (
-      <div className="flex items-center gap-3">
-        <input
-          type="range"
-          aria-label="Position in book"
-          min={0}
-          max={1}
-          step="any"
-          list="book-sections"
-          disabled={!ready}
-          value={fraction}
-          onChange={(e) => void viewRef.current?.goToFraction(Number(e.target.value))}
-          className="min-w-0 flex-1 accent-green"
-        />
-        <datalist id="book-sections">{ticks.map((t) => <option key={t} value={t} />)}</datalist>
-        <p className="shrink-0 text-small text-muted">{where}{where && ' · '}{Math.round(fraction * 100)}%</p>
-      </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            aria-label="Position in book"
+            min={0}
+            max={1}
+            step="any"
+            list="book-sections"
+            disabled={!ready}
+            value={fraction}
+            onChange={(e) => void viewRef.current?.goToFraction(Number(e.target.value))}
+            className="min-w-0 flex-1 accent-green"
+          />
+          <datalist id="book-sections">{ticks.map((t) => <option key={t} value={t} />)}</datalist>
+          <p className="shrink-0 text-small text-muted">{where}{where && ' · '}{Math.round(fraction * 100)}%</p>
+        </div>
       )}
     </div>
   );

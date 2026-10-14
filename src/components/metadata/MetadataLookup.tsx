@@ -47,7 +47,11 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
   async function lookup() {
     setError(''); setDone(''); setResponse(null);
     const parsed = parseIdentifier(scheme, value);
-    if (!parsed.ok) { setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : (STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Enter the standard reference with its edition year, such as ISO/PAS 20065:2016(E).' : `Invalid ${scheme.toUpperCase()} format.`); return; }
+    if (!parsed.ok) {
+      const formatError = (STANDARD_SCHEMES as readonly string[]).includes(scheme) ? 'Enter the standard reference with its edition year, such as ISO/PAS 20065:2016(E).' : `Invalid ${scheme.toUpperCase()} format.`;
+      setError(parsed.reason === 'invalid_check_digit' ? 'Invalid check digit.' : formatError);
+      return;
+    }
     setPending(true);
     setProgressMessage(`Searching ${scheme.toUpperCase()} ${parsed.normalized}…`);
     try {
@@ -127,8 +131,8 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
       <label className="text-small text-fg"><input type="checkbox" checked={externalConsent} onChange={(e) => setExternalConsent(e.target.checked)} /> Allow sending this title and author to these public catalogs</label>
       <Button variant="secondary" disabled={!externalConsent || !searchTitle.trim() || pending} isLoading={titleSearch.isPending} onClick={() => titleSearch.mutate()}>Search public catalogs</Button>
       {titleSearch.error && <p role="alert">Public catalog search failed. Try again later.</p>}
-      {titleSearch.isSuccess && !titleSearch.data.candidates.length && <p role="status">No catalog candidates found.</p>}
-      {titleSearch.data?.candidates.map((candidate, index) => <Button key={index} variant="ghost" disabled={pending} onClick={async () => {
+      {titleSearch.isSuccess && !titleSearch.data.candidates.length && <output>No catalog candidates found.</output>}
+      {titleSearch.data?.candidates.map((candidate) => <Button key={`${candidate.data.source_provider}:${candidate.data.source_url ?? candidate.data.title}:${candidate.identifier?.value ?? ''}`} variant="ghost" disabled={pending} onClick={async () => {
         setPending(true); setError(''); setDone('');
         try {
           setResponse({ status: 'success', data: candidate.data, fromCache: false, fetchedAt: new Date().toISOString() });
@@ -148,7 +152,16 @@ export function MetadataLookup({ work, record, defaultScheme = 'isbn' }: Readonl
       {[...WORK_FIELDS, ...RECORD_FIELDS].filter((field) => data[field]).map((field) => {
         const isWork = isWorkField(field);
         const locked = (isWork ? workLocks : recordLocks).includes(field);
-        const current = field === 'container_title' || field === 'standard_status' ? meta(record.metadata)[field] : field === 'standard_reference' ? record.identifiers?.find((identifier) => identifier.scheme === data.standard_scheme)?.normalized_value : isWork ? work[field as keyof Work] : record[field as keyof RecordValue];
+        let current: unknown;
+        if (field === 'container_title' || field === 'standard_status') {
+          current = meta(record.metadata)[field];
+        } else if (field === 'standard_reference') {
+          current = record.identifiers?.find((identifier) => identifier.scheme === data.standard_scheme)?.normalized_value;
+        } else if (isWork) {
+          current = work[field as keyof Work];
+        } else {
+          current = record[field as keyof RecordValue];
+        }
         return <div key={field} className="flex items-start gap-2 text-small text-fg"><label><input type="checkbox" checked={selected.includes(field)} disabled={locked} onChange={(e) => setSelected((prev) => e.target.checked ? [...prev, field] : prev.filter((f) => f !== field))} /> {field === 'container_title' ? 'Journal / container title' : field.replaceAll('_', ' ')}: {displayValue(current)} → {data[field]}{locked ? ' (locked)' : ''}</label>{locked && <button type="button" className="text-green underline" onClick={() => unlock(field, isWork)}>Unlock</button>}</div>;
       })}
       {recordLocks.includes('contributors') && <button type="button" className="text-left text-small text-green underline" onClick={() => unlock('contributors', false)}>Contributor credits locked by manual edit. Unlock credits</button>}

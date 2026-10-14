@@ -72,9 +72,11 @@ async function createItem(item: NewItem, requestId: string): Promise<string> {
   });
   const credits = item.credits.map((row) => {
     const display = row.kind === 'organization' ? row.organizationName : [row.givenNames, row.particle, row.familyName, row.suffix].filter(Boolean).join(' ');
+    const particle = row.particle ? row.particle + ' ' : '';
+    const given = row.givenNames ? ', ' + row.givenNames : '';
     return { ...(row.contributorId ? { contributor_id: row.contributorId } : {}), kind: row.kind, display_name: display,
       family_name: row.kind === 'person' ? row.familyName : null, given_names: row.givenNames || null, particle: row.particle || null, suffix: row.suffix || null,
-      sort_name: row.kind === 'organization' ? display : `${row.particle ? row.particle + ' ' : ''}${row.familyName}${row.givenNames ? ', ' + row.givenNames : ''}`,
+      sort_name: row.kind === 'organization' ? display : `${particle}${row.familyName}${given}`,
       match_key: fold(row.kind === 'organization' ? display : row.familyName), identifiers: row.identifiers ?? {}, role: row.role, credited_as: row.creditedAs || null };
   });
   const payload = { expectedOwner: item.userId, work: { title: item.title, subtitle: item.subtitle ?? null, abstract: item.abstract ?? null, language: item.language ?? null, work_type: item.workType },
@@ -184,7 +186,7 @@ async function planCsv(userId: string, table: CsvTable, mapping: ColumnMapping):
     const keys = (['doi', 'isbn'] as const).flatMap((scheme) => (data[scheme] ? [identifierKey(scheme, data[scheme]!)] : [])).filter((k): k is string => !!k);
     const label = `Row ${line} · ${data.title}`;
     const clash = keys.find((k) => existing.has(k));
-    const repeat = keys.find((k) => seen.has(k));
+    const repeat = keys.some((k) => seen.has(k));
     if (clash) plan.duplicates.push({ label, reason: `Already in your library (${clash.replace(':', ' ').toUpperCase()}).` });
     else if (repeat) plan.duplicates.push({ label, reason: 'Repeated earlier in this file.' });
     else {

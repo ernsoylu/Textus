@@ -16,12 +16,12 @@ export function WorkHistory({ workId }: Readonly<{ workId: string }>) {
     <section aria-labelledby="work-history" className="flex flex-col gap-3 rounded-8 border border-border p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="work-history" className="text-heading text-fg">History</h2>
-        <div role="group" aria-label="Show changes by" className="flex flex-wrap gap-1">
+        <fieldset aria-label="Show changes by" className="flex min-w-0 flex-wrap gap-1 border-0 p-0">
           {FILTERS.map(([value, label]) => (
             <button key={value} type="button" aria-pressed={actor === value} onClick={() => setActor(value)}
               className={`rounded-8 px-3 py-1 text-small ${actor === value ? 'bg-green text-dim' : 'bg-raised text-fg'}`}>{label}</button>
           ))}
-        </div>
+        </fieldset>
       </div>
       {history.isLoading && <p className="text-small text-muted">Loading history…</p>}
       {history.error && <p role="alert" className="text-small text-red">Could not load this book’s history.</p>}

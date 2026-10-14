@@ -54,7 +54,6 @@ export function NoteCard({ a, onGoTo, showBook, autoFocus, inBook, onDeleted }: 
         placeholder="Add a comment…"
         rows={note ? Math.min(8, note.split('\n').length + 1) : 2}
         value={note}
-        autoFocus={autoFocus}
         data-autofocus={autoFocus || undefined}
         onChange={(e) => setNote(e.target.value)}
         onBlur={save}

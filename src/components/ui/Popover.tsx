@@ -26,7 +26,8 @@ export function Popover({ at, label, onClose, children, role = 'dialog' }: Reado
     };
     document.addEventListener('pointerdown', onPointer, true);
     document.addEventListener('keydown', onKey, true);
-    ref.current?.querySelector<HTMLElement>('[data-autofocus], button, textarea, input')?.focus({ preventScroll: true });
+    const target = ref.current?.querySelector<HTMLElement>('[data-autofocus]') ?? ref.current?.querySelector<HTMLElement>('button, textarea, input');
+    target?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener('pointerdown', onPointer, true);
       document.removeEventListener('keydown', onKey, true);

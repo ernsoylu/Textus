@@ -59,7 +59,7 @@ export function Contributors() {
       )}
 
       <Input aria-label="Filter contributors" placeholder="Filter contributors…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      {shown?.length === 0 && <p role="status" className="text-body text-muted">{filter.trim() ? 'No contributors match your search.' : 'No contributors yet.'}</p>}
+      {shown?.length === 0 && <output className="block text-body text-muted">{filter.trim() ? 'No contributors match your search.' : 'No contributors yet.'}</output>}
       <ul className="flex flex-col gap-1">
         {shown?.map((c) => (
           <li key={c.id}>{link(c)}{c.status === 'provisional' && <span className="text-small text-yellow"> · provisional</span>}</li>

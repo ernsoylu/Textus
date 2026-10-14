@@ -42,7 +42,8 @@ export function AnnotationForm({ label, quote, notice, autoFocus, onSubmit, onCa
       setNote('');
       onDirtyChange?.(false);
     } catch (err) {
-      setError(navigator.onLine ? (err instanceof Error ? err.message : 'Could not save.') : 'You’re offline. Not saved yet.');
+      const message = err instanceof Error ? err.message : 'Could not save.';
+      setError(navigator.onLine ? message : 'You’re offline. Not saved yet.');
       onDirtyChange?.(true);
     } finally {
       setSaving(false);
@@ -54,37 +55,39 @@ export function AnnotationForm({ label, quote, notice, autoFocus, onSubmit, onCa
     else onCancel?.();
   }
 
+  const offlineMessage = !online && !error ? 'Offline: saving will fail until you reconnect' : '';
+
   // The dialog sits outside the form: its buttons must not submit the comment.
   return (
     <>
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 rounded-8 border border-border p-3">
-      <UnsavedChangesGuard dirty={dirty || !!error} subject="comment" />
-      {quote && <p className="line-clamp-4 font-serif text-small italic text-muted">“{quote}”</p>}
-      {notice && <p className="text-small text-yellow">{notice}</p>}
-      <div className="flex flex-wrap" role="radiogroup" aria-label="Color">
-        {ANNOTATION_COLORS.map((c) => (
-          <ColorSwatch key={c} role="radio" aria-checked={color === c} aria-label={c} selected={color === c} fill={highlightFill(c)} onClick={() => setColor(c)} />
-        ))}
-      </div>
-      <textarea
-        aria-label="Comment"
-        placeholder="Comment (optional)"
-        rows={2}
-        value={note}
-        data-autofocus={autoFocus || undefined}
-        onChange={(e) => edit(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSubmit(e);
-        }}
-        className="w-full resize-y rounded-4 border border-muted bg-dim p-2 text-small text-fg"
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" variant="secondary" isLoading={saving}>{error ? 'Retry' : label}</Button>
-        {onCancel && <Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>}
-        <span className="text-small text-muted" aria-live="polite">{saving ? 'Saving…' : !online && !error ? 'Offline: saving will fail until you reconnect' : ''}</span>
-      </div>
-      {error && <p role="alert" className="text-small text-red">Could not save: {error} Your comment is kept here.</p>}
-    </form>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 rounded-8 border border-border p-3">
+        <UnsavedChangesGuard dirty={dirty || !!error} subject="comment" />
+        {quote && <p className="line-clamp-4 font-serif text-small italic text-muted">“{quote}”</p>}
+        {notice && <p className="text-small text-yellow">{notice}</p>}
+        <div className="flex flex-wrap" role="radiogroup" aria-label="Color">
+          {ANNOTATION_COLORS.map((c) => (
+            <ColorSwatch key={c} role="radio" aria-checked={color === c} aria-label={c} selected={color === c} fill={highlightFill(c)} onClick={() => setColor(c)} />
+          ))}
+        </div>
+        <textarea
+          aria-label="Comment"
+          placeholder="Comment (optional)"
+          rows={2}
+          value={note}
+          data-autofocus={autoFocus || undefined}
+          onChange={(e) => edit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSubmit(e);
+          }}
+          className="w-full resize-y rounded-4 border border-muted bg-dim p-2 text-small text-fg"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" variant="secondary" isLoading={saving}>{error ? 'Retry' : label}</Button>
+          {onCancel && <Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>}
+          <span className="text-small text-muted" aria-live="polite">{saving ? 'Saving…' : offlineMessage}</span>
+        </div>
+        {error && <p role="alert" className="text-small text-red">Could not save: {error} Your comment is kept here.</p>}
+      </form>
       <ConfirmDialog
         open={discarding}
         title="Discard this comment?"

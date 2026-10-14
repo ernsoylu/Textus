@@ -285,7 +285,7 @@ const CACHE_TTL_MS = 30 * 86_400_000;
 export function needsJournalRefresh(value: unknown): boolean {
   const data = object(value);
   // null means the provider supplied no journal; an absent key predates journal parsing.
-  return ['crossref', 'crossref_journal', 'semantic_scholar'].includes(String(data.source_provider)) && !Object.hasOwn(data, 'container_title');
+  return ['crossref', 'crossref_journal', 'semantic_scholar'].includes(typeof data.source_provider === 'string' ? data.source_provider : '') && !Object.hasOwn(data, 'container_title');
 }
 
 async function queueCover(ctx: SupabaseContext, cover: z.infer<typeof CoverSchema>): Promise<Response> {
@@ -331,14 +331,8 @@ export async function lookupAcrossProviders(ctx: Pick<SupabaseContext, 'supabase
     const providerId = name === 'semantic_scholar' ? `${scheme.toUpperCase()}:${id}` : id;
     const result = await provider(name, providerId);
     if (result.kind === 'success') {
-      const fetchedAt = new Date().toISOString();
-      const { error } = await ctx.supabaseAdmin.from('metadata_cache').upsert({ identifier_scheme: scheme, identifier_value: id, provider: name, response_data: result.data, fetched_at: fetchedAt, expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString() }, { onConflict: 'identifier_scheme,identifier_value,provider' });
-      if (error) console.error('metadata cache write failed:', error);
-      if (!data) data = result.data;
-      else for (const [key, value] of Object.entries(result.data)) {
-        const current = data[key as keyof Metadata];
-        if ((!current || (Array.isArray(current) && !current.length)) && value) Object.assign(data, { [key]: value });
-      }
+      await cacheProviderResult(ctx, scheme, id, name, result.data);
+      data = mergeProviderData(data, result.data);
       continue;
     }
     if (result.kind !== 'not_found') failure = { provider: name, result };
@@ -347,6 +341,21 @@ export async function lookupAcrossProviders(ctx: Pick<SupabaseContext, 'supabase
   if (failure?.result.kind === 'rate_limited') return Response.json({ status: 'rate_limited', provider: failure.provider, retryAfterMs: failure.result.retryAfterMs });
   if (failure?.result.kind === 'provider_error') return Response.json({ status: 'provider_error', provider: failure.provider, message: failure.result.message });
   return Response.json({ status: 'not_found', identifier: id, searchedProviders: providers });
+}
+
+async function cacheProviderResult(ctx: Pick<SupabaseContext, 'supabaseAdmin'>, scheme: IdentifierScheme, id: string, name: string, data: Metadata) {
+  const fetchedAt = new Date().toISOString();
+  const { error } = await ctx.supabaseAdmin.from('metadata_cache').upsert({ identifier_scheme: scheme, identifier_value: id, provider: name, response_data: data, fetched_at: fetchedAt, expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString() }, { onConflict: 'identifier_scheme,identifier_value,provider' });
+  if (error) console.error('metadata cache write failed:', error);
+}
+
+function mergeProviderData(data: Metadata | undefined, incoming: Metadata) {
+  if (!data) return incoming;
+  for (const [key, value] of Object.entries(incoming)) {
+    const current = data[key as keyof Metadata];
+    if ((!current || (Array.isArray(current) && !current.length)) && value) Object.assign(data, { [key]: value });
+  }
+  return data;
 }
 
 const TitleSearchSchema = z.object({ action: z.literal('search-title'), recordId: z.string().uuid(), title: z.string().trim().min(1).max(200), author: z.string().trim().max(200), consent: z.literal(true) }).strict();
@@ -360,27 +369,33 @@ export async function searchTitleMetadata(title: string, author: string) {
   const settled = await Promise.allSettled([get(open), get(cross)]);
   const candidates: { data: Metadata; identifier?: { scheme: 'isbn' | 'doi'; value: string } }[] = [];
   for (const [index, result] of settled.entries()) {
-    if (result.status !== 'fulfilled' || !result.value.response.ok) continue;
-    const root = object(JSON.parse(result.value.body));
-    const entries = index === 0 ? root.docs : object(root.message).items;
-    if (!Array.isArray(entries)) continue;
+    const entries = titleSearchEntries(result, index);
+    if (!entries) continue;
     for (const item of entries.slice(0, 3)) {
       const row = object(item);
-      if (index === 0) {
-        const name = str(row.title), key = str(row.key);
-        if (!name || !key || !/^\/works\/OL\d+W$/.test(key)) continue;
-        const values = Array.isArray(row.isbn) ? row.isbn : [];
-        const identifier = values.flatMap((value) => { const parsed = typeof value === 'string' ? parseIdentifier('isbn', value) : null; return parsed?.ok ? [{ scheme: 'isbn' as const, value: parsed.normalized }] : []; })[0];
-        candidates.push({ data: { title: name, work_type: 'book', source_provider: 'openlibrary_title_search', source_url: new URL(key, open).href, publication_date: year(row.first_publish_year), publication_date_precision: 'year', publisher: first(row.publisher), contributors: (Array.isArray(row.author_name) ? row.author_name : []).slice(0, 12).flatMap((name) => typeof name === 'string' ? [{ name, role: 'author' as const }] : []), role_warning: EDITOR_WARNING }, ...(identifier ? { identifier } : {}) });
-      } else {
-        const data = parseCrossref({ message: row }, 'crossref');
-        if (!data.title) continue;
-        const parsed = typeof row.DOI === 'string' ? parseIdentifier('doi', row.DOI) : null;
-        candidates.push({ data, ...(parsed?.ok ? { identifier: { scheme: 'doi' as const, value: parsed.normalized } } : {}) });
-      }
+      const candidate = index === 0 ? openLibraryCandidate(row, open) : crossrefCandidate(row);
+      if (candidate) candidates.push(candidate);
     }
   }
   return candidates;
+}
+
+type TitleCandidate = { data: Metadata; identifier?: { scheme: 'isbn' | 'doi'; value: string } };
+
+function openLibraryCandidate(row: Record<string, unknown>, open: URL): TitleCandidate | undefined {
+  const name = str(row.title), key = str(row.key);
+  if (!name || !key || !/^\/works\/OL\d+W$/.test(key)) return;
+  const values = Array.isArray(row.isbn) ? row.isbn : [];
+  const identifier = values.flatMap((value) => { const parsed = typeof value === 'string' ? parseIdentifier('isbn', value) : null; return parsed?.ok ? [{ scheme: 'isbn' as const, value: parsed.normalized }] : []; })[0];
+  const contributors = (Array.isArray(row.author_name) ? row.author_name : []).slice(0, 12).flatMap((name) => typeof name === 'string' ? [{ name, role: 'author' as const }] : []);
+  return { data: { title: name, work_type: 'book', source_provider: 'openlibrary_title_search', source_url: new URL(key, open).href, publication_date: year(row.first_publish_year), publication_date_precision: 'year', publisher: first(row.publisher), contributors, role_warning: EDITOR_WARNING }, ...(identifier ? { identifier } : {}) };
+}
+
+function crossrefCandidate(row: Record<string, unknown>): TitleCandidate | undefined {
+  const data = parseCrossref({ message: row }, 'crossref');
+  if (!data.title) return;
+  const parsed = typeof row.DOI === 'string' ? parseIdentifier('doi', row.DOI) : null;
+  return { data, ...(parsed?.ok ? { identifier: { scheme: 'doi' as const, value: parsed.normalized } } : {}) };
 }
 
 export default {
@@ -408,3 +423,10 @@ export default {
     return await lookupAcrossProviders(ctx, scheme, identifier.normalized);
   })),
 };
+
+function titleSearchEntries(result: PromiseSettledResult<Awaited<ReturnType<typeof get>>>, index: number): unknown[] | undefined {
+  if (result.status !== 'fulfilled' || !result.value.response.ok) return;
+  const root = object(JSON.parse(result.value.body));
+  const entries = index === 0 ? root.docs : object(root.message).items;
+  return Array.isArray(entries) ? entries : undefined;
+}

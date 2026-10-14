@@ -44,13 +44,14 @@ async function queueMetadata(admin: any, asset: { id: string; user_id: string },
   if (!found.length && !aiConfig().enabled) return;
   const { data: links, error } = await admin.from('record_assets').select('record_id').eq('asset_id', asset.id);
   if (error) throw error;
+  const jobs = [];
   for (const link of links ?? []) {
-    if (!found.length) await checked(admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'extract_metadata_ai', payload: { asset_id: asset.id, record_id: link.record_id }, idempotency_key: `extract_metadata_ai:${asset.id}:${link.record_id}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true }));
+    if (!found.length) jobs.push({ user_id: asset.user_id, job_type: 'extract_metadata_ai', payload: { asset_id: asset.id, record_id: link.record_id }, idempotency_key: `extract_metadata_ai:${asset.id}:${link.record_id}` });
     for (const identifier of found.slice(0, 3)) {
-      const { error: queueError } = await admin.from('jobs').upsert({ user_id: asset.user_id, job_type: 'fetch_metadata', payload: { record_id: link.record_id, ...identifier }, idempotency_key: `fetch_metadata:${link.record_id}:${identifier.scheme}:${identifier.value}` }, { onConflict: 'idempotency_key', ignoreDuplicates: true });
-      if (queueError) throw queueError;
+      jobs.push({ user_id: asset.user_id, job_type: 'fetch_metadata', payload: { record_id: link.record_id, ...identifier }, idempotency_key: `fetch_metadata:${link.record_id}:${identifier.scheme}:${identifier.value}` });
     }
   }
+  if (jobs.length) await checked(admin.from('jobs').upsert(jobs, { onConflict: 'idempotency_key', ignoreDuplicates: true }));
 }
 
 // deno-lint-ignore no-explicit-any
@@ -307,34 +308,41 @@ export const AI_JOB_TYPES = ['extract_metadata_ai', 'embed_passages'];
 export async function processJobs(admin: any, clientFor: (jobType: string) => unknown, options: { types?: string[]; worker?: string } = {}) {
   const jobs = await checked(admin.rpc('claim_jobs', { p_limit: 1, p_lease: `${JOB_WORKER_MS / 1000 + 20} seconds`,
     ...(options.types ? { p_types: options.types } : {}), ...(options.worker ? { p_worker: options.worker } : {}) })) as Job[];
-  const results = [];
-  for (const job of jobs ?? []) {
-    try {
-      const handler = HANDLERS[job.job_type];
-      if (!handler) throw new Error('unsupported job type');
-      const result = await handler(clientFor(job.job_type), job);
-      if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
-        const committed = result.committed || await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
-        results.push({ id: job.id, status: committed ? 'checkpointed' : 'lease_lost' });
-        continue;
-      }
-      const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
-      results.push({ id: job.id, status: committed ? 'succeeded' : 'lease_lost' });
-    } catch (error) {
-      if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && AI_JOB_TYPES.includes(job.job_type)) {
-        await checked(admin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
-        results.push({ id: job.id, status: 'paused' });
-        continue;
-      }
-      // Log identifiers and error codes only: never file text, URLs or credentials.
-      console.error(JSON.stringify({ event: 'job_failure', id: job.id, type: job.job_type,
-        code: error instanceof HttpError ? error.code : error && typeof error === 'object' && 'code' in error ? String(error.code) : error instanceof Error ? error.name : 'unknown' }));
-      // Logs/results contain neither provider URLs, book text nor credentials.
-      const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
-      results.push({ id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' });
-    }
-  }
+  const results = await Promise.all((jobs ?? []).map((job) => processJob(admin, clientFor, job)));
   return { claimed: jobs?.length ?? 0, results };
+}
+
+// claim_jobs above leases at most one job; keep its completion and retry handling together.
+// deno-lint-ignore no-explicit-any
+async function processJob(admin: any, clientFor: (jobType: string) => unknown, job: Job) {
+  try {
+    const handler = HANDLERS[job.job_type];
+    if (!handler) throw new Error('unsupported job type');
+    const result = await handler(clientFor(job.job_type), job);
+    if (result && typeof result === 'object' && 'checkpointed' in result && 'committed' in result) {
+      const committed = result.committed || await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: { skipped: true, reason: 'Asset or index is no longer available.' } }));
+      return { id: job.id, status: committed ? 'checkpointed' : 'lease_lost' };
+    }
+    const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_result: result }));
+    return { id: job.id, status: committed ? 'succeeded' : 'lease_lost' };
+  } catch (error) {
+    if (error instanceof HttpError && ['ai_disabled', 'ai_unreachable', 'ai_busy', 'model_missing', 'model_changed', 'timeout'].includes(error.code) && AI_JOB_TYPES.includes(job.job_type)) {
+      await checked(admin.rpc('defer_ai_job', { p_id: job.id, p_generation: job.claim_generation, p_reason: error.code }));
+      return { id: job.id, status: 'paused' };
+    }
+    // Log identifiers and error codes only: never file text, URLs or credentials.
+    console.error(JSON.stringify({ event: 'job_failure', id: job.id, type: job.job_type,
+      code: jobErrorCode(error) }));
+    // Logs/results contain neither provider URLs, book text nor credentials.
+    const committed = await checked(admin.rpc('finish_job', { p_id: job.id, p_generation: job.claim_generation, p_error: 'Processing failed. Retry from Activity.' }));
+    return { id: job.id, status: committed ? 'retry_or_failed' : 'lease_lost' };
+  }
+}
+
+function jobErrorCode(error: unknown) {
+  if (error instanceof HttpError) return error.code;
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') return error.code;
+  return error instanceof Error ? error.name : 'unknown';
 }
 
 export default {

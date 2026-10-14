@@ -75,21 +75,8 @@ export function textUnderStroke(layer: Element, box: DOMRectReadOnly, points: In
     range.selectNodeContents(node);
     const r = range.getBoundingClientRect();
     if ((r.right - box.left) / box.width < minX || (r.left - box.left) / box.width > maxX || (r.bottom - box.top) / box.height < minY || (r.top - box.top) / box.height > maxY) continue;
-    let first = -1;
-    let last = -1;
-    for (let i = 0; i < text.length; i++) {
-      range.setStart(node, i);
-      range.setEnd(node, i + 1);
-      const c = range.getBoundingClientRect();
-      if (!c.width || !c.height) continue;
-      const x = (c.left + c.width / 2 - box.left) / box.width;
-      const y = (c.top + c.height / 2 - box.top) / box.height;
-      if (touchesStroke(points, x, y, radius, aspect)) {
-        if (first < 0) first = i;
-        last = i;
-      }
-    }
-    if (first >= 0) parts.push(text.slice(first, last + 1));
+    const covered = coveredText(node, text, range, box, points, radius, aspect);
+    if (covered) parts.push(covered);
   }
   return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, INK_TEXT_MAX);
 }
@@ -101,4 +88,22 @@ export function pageRectsOf(a: ViewerAnnotation, page: number): PageRect[] {
 /** The most recent highlight on `page` under the point (x, y in page fractions), if any. */
 export function hitTest(annotations: ViewerAnnotation[], page: number, x: number, y: number): ViewerAnnotation | undefined {
   return [...annotations].reverse().find((a) => pageRectsOf(a, page).some((r) => x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2));
+}
+
+function coveredText(node: Node, text: string, range: Range, box: DOMRectReadOnly, points: InkPoint[], radius: number, aspect: number): string {
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < text.length; i++) {
+    range.setStart(node, i);
+    range.setEnd(node, i + 1);
+    const c = range.getBoundingClientRect();
+    if (!c.width || !c.height) continue;
+    const x = (c.left + c.width / 2 - box.left) / box.width;
+    const y = (c.top + c.height / 2 - box.top) / box.height;
+    if (touchesStroke(points, x, y, radius, aspect)) {
+      if (first < 0) first = i;
+      last = i;
+    }
+  }
+  return first >= 0 ? text.slice(first, last + 1) : '';
 }

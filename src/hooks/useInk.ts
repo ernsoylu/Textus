@@ -17,8 +17,8 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
   const { session } = useAuth();
   const [unsaved, setUnsaved] = useState<Map<string, InkStroke>>(new Map());
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [undoStack, setUndo] = useState<Action[]>([]);
-  const [redoStack, setRedo] = useState<Action[]>([]);
+  const [undoStack, setUndoStack] = useState<Action[]>([]);
+  const [redoStack, setRedoStack] = useState<Action[]>([]);
   const [pending, setPending] = useState(0);
   const [failed, setFailed] = useState<{ op: () => Promise<void>; message: string }[]>([]);
   const [everSaved, setEverSaved] = useState(false);
@@ -33,7 +33,10 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
           setEverSaved(true);
           void queryClient.invalidateQueries({ queryKey: ['annotations'] });
         },
-        (e: unknown) => setFailed((f) => [...f, { op, message: navigator.onLine ? (e instanceof Error ? e.message : 'Could not save.') : 'You’re offline.' }]),
+        (e: unknown) => {
+          const message = e instanceof Error ? e.message : 'Could not save.';
+          setFailed((f) => [...f, { op, message: navigator.onLine ? message : 'You’re offline.' }]);
+        },
       )
       .finally(() => setPending((n) => n - 1));
   }, [queryClient]);
@@ -73,32 +76,32 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
 
   const add = useCallback((data: InkData, color: string, text?: string) => {
     const stroke: InkStroke = { id: crypto.randomUUID(), data, color, text: data.tool === 'highlighter' ? text || null : null };
-    setUndo((u) => [...u, { kind: 'add', strokes: [stroke] }]);
-    setRedo([]);
+    setUndoStack((u) => [...u, { kind: 'add', strokes: [stroke] }]);
+    setRedoStack([]);
     persistAdd([stroke]);
   }, [persistAdd]);
 
   const erase = useCallback((ids: string[]) => {
     const gone = strokes.filter((s) => ids.includes(s.id));
     if (!gone.length) return;
-    setUndo((u) => [...u, { kind: 'erase', strokes: gone }]);
-    setRedo([]);
+    setUndoStack((u) => [...u, { kind: 'erase', strokes: gone }]);
+    setRedoStack([]);
     persistErase(gone);
   }, [strokes, persistErase]);
 
   const undo = useCallback(() => {
     const a = undoStack.at(-1);
     if (!a) return;
-    setUndo((u) => u.slice(0, -1));
-    setRedo((r) => [...r, a]);
+    setUndoStack((u) => u.slice(0, -1));
+    setRedoStack((r) => [...r, a]);
     apply(a, false);
   }, [undoStack, apply]);
 
   const redo = useCallback(() => {
     const a = redoStack.at(-1);
     if (!a) return;
-    setRedo((r) => r.slice(0, -1));
-    setUndo((u) => [...u, a]);
+    setRedoStack((r) => r.slice(0, -1));
+    setUndoStack((u) => [...u, a]);
     apply(a, true);
   }, [redoStack, apply]);
 
@@ -108,6 +111,15 @@ export function useInk(recordId: string, assetId: string, rows: AnnotationItem[]
     for (const f of ops) run(f.op);
   }, [failed, run]);
 
-  const status: InkStatus = failed.length ? 'error' : pending ? 'saving' : everSaved ? 'saved' : 'idle';
+  let status: InkStatus;
+  if (failed.length) {
+    status = 'error';
+  } else if (pending) {
+    status = 'saving';
+  } else if (everSaved) {
+    status = 'saved';
+  } else {
+    status = 'idle';
+  }
   return { strokes, add, erase, undo, redo, retry, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, status, error: failed[0]?.message ?? null, unsavedCount: unsaved.size + failed.length };
 }

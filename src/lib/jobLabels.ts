@@ -31,8 +31,14 @@ export function metadataJobMessages(jobs: JobItem[], links: { record_id: string;
   for (const job of jobs) {
     if (job.status !== 'queued' && job.status !== 'running') continue;
     const payload = payloadOf(job);
-    const records = job.job_type === 'fetch_metadata' ? recordIds.filter((id) => id === payload.record_id)
-      : job.job_type === 'extract_text' ? links.filter((link) => link.asset_id === payload.asset_id).map((link) => link.record_id) : [];
+    let records: string[];
+    if (job.job_type === 'fetch_metadata') {
+      records = recordIds.filter((id) => id === payload.record_id);
+    } else if (job.job_type === 'extract_text') {
+      records = links.filter((link) => link.asset_id === payload.asset_id).map((link) => link.record_id);
+    } else {
+      records = [];
+    }
     const message = job.job_type === 'extract_text' ? 'Searching file for ISBN or DOI…' : jobLabel(job);
     for (const id of records) messages[id] ??= `${job.status === 'queued' ? 'Queued: ' : ''}${message}`;
   }

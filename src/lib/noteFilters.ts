@@ -20,7 +20,7 @@ export interface NoteGroup {
 }
 
 // Case- and accent-insensitive ("Çelik" matches "celik", "İstanbul" matches "istanbul").
-const fold = (s: string) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+const fold = (s: string) => s.toLocaleLowerCase('tr').replaceAll('ı', 'i').normalize('NFKD').replaceAll(/\p{M}/gu, '').toLowerCase();
 
 const pageOf = (a: AnnotationItem) => notePage(a) ?? 0;
 const time = (a: AnnotationItem) => (a.created_at ? Date.parse(a.created_at) : 0);
@@ -39,8 +39,11 @@ export function filterNotes(items: AnnotationItem[], f: NoteFilters, tagNames: M
 
 /** Notes grouped by book. In page order books go A–Z and notes by page; otherwise both follow the notes' dates. */
 export function groupNotes(items: AnnotationItem[], sort: NoteSort): NoteGroup[] {
-  const order = (a: AnnotationItem, b: AnnotationItem) =>
-    sort === 'oldest' ? time(a) - time(b) : sort === 'page' ? pageOf(a) - pageOf(b) || time(a) - time(b) : time(b) - time(a);
+  const order = (a: AnnotationItem, b: AnnotationItem) => {
+    if (sort === 'oldest') return time(a) - time(b);
+    if (sort === 'page') return pageOf(a) - pageOf(b) || time(a) - time(b);
+    return time(b) - time(a);
+  };
   const groups = new Map<string, NoteGroup>();
   for (const a of [...items].sort(order)) {
     const g = groups.get(a.record_id) ?? { recordId: a.record_id, workId: a.records?.work_id, title: bookTitle(a), items: [] };

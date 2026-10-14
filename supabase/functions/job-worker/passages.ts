@@ -74,12 +74,12 @@ export function epubSections(bytes: Uint8Array) {
     const url = new URL(href, new URL(path, 'https://epub.invalid/'));
     if (url.origin !== 'https://epub.invalid') throw new Error('External EPUB spine item');
     return { section, read: () => {
-      const document = xml(read(decodeURIComponent(url.pathname.slice(1))), 'application/xhtml+xml');
-      const body = document.getElementsByTagName('body')[0];
-      if (!body) throw new Error('EPUB body missing');
-      // Section-start CFIs use the actual OPF/body paths, rather than assuming /6 or /4.
-      return { text: visibleText(body), cfi: `epubcfi(${cfiPath(ref)}!${cfiPath(body)}:0)` };
-    } };
+        const document = xml(read(decodeURIComponent(url.pathname.slice(1))), 'application/xhtml+xml');
+        const body = document.getElementsByTagName('body')[0];
+        if (!body) throw new Error('EPUB body missing');
+        // Section-start CFIs use the actual OPF/body paths, rather than assuming /6 or /4.
+        return { text: visibleText(body), cfi: `epubcfi(${cfiPath(ref)}!${cfiPath(body)}:0)` };
+      } };
   });
 }
 
@@ -139,55 +139,88 @@ export async function indexPassages(admin: SupabaseClient, job: IndexJob) {
   const assetId = job.payload.asset_id;
   const asset = await checked(admin.from('assets').select('id,user_id,bucket,storage_path,file_size,file_format,metadata').eq('id', assetId).eq('user_id', job.user_id!).is('deleting_at', null).maybeSingle());
   if (!asset || asset.metadata?.passage_index?.version !== job.payload.index_version) return { checkpointed: true, committed: false };
-  const from = Number(job.payload.from ?? 0);
-  let done = from, total = Number(asset.metadata.passage_index.total ?? 0), ordinal = Number(job.payload.ordinal ?? 0);
-  let reason: string | null = asset.metadata.passage_index.reason ?? null;
-  const passages: Passage[] = [];
-  const started = Date.now();
+  const batch: PassageBatch = {
+    from: Number(job.payload.from ?? 0), done: Number(job.payload.from ?? 0),
+    total: Number(asset.metadata.passage_index.total ?? 0), ordinal: Number(job.payload.ordinal ?? 0),
+    reason: asset.metadata.passage_index.reason ?? null, passages: [], started: Date.now(),
+  };
   try {
-    if (asset.file_format === 'epub') {
-      if (asset.file_size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser memory limit');
-      const file = await checked(admin.storage.from(asset.bucket).download(asset.storage_path));
-      if (!file || file.size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser limit');
-      const sections = epubSections(new Uint8Array(await file.arrayBuffer()));
-      total = sections.length;
-      for (const section of sections.slice(from, from + 48)) {
-        const result = section.read();
-        const parts = chunks(result.text);
-        if (parts.length > MAX_PASSAGES) { reason = 'A section exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
-        if (passages.length + parts.length > MAX_PASSAGES && done > from) break;
-        passages.push(...parts.map((content) => ({ ordinal: ordinal++, section: section.section, cfi: result.cfi, content })));
-        done++;
-        if (Date.now() - started > WORK_MS) break;
-      }
-    } else if (asset.file_format === 'pdf') {
-      const signed = await checked(admin.storage.from(asset.bucket).createSignedUrl(asset.storage_path, 120));
-      const task = await pdfDocument(signed!.signedUrl);
-      try {
-        total = task.doc.numPages;
-        const labels = await task.wait(task.doc.getPageLabels()).catch(() => null);
-        for (let page = from + 1; page <= Math.min(total, from + 96); page++) {
-          const pdfPage = await task.wait(task.doc.getPage(page));
-          const text = await task.wait(pdfPage.getTextContent());
-          const parts = chunks(text.items.map((item) => 'str' in item ? item.str : '').join(' '));
-          if (parts.length > MAX_PASSAGES) { reason = 'A page exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
-          if (passages.length + parts.length > MAX_PASSAGES && done > from) break;
-          passages.push(...parts.map((content) => ({ ordinal: ordinal++, page, ...(labels?.[page - 1] ? { page_label: labels[page - 1] } : {}), content })));
-          pdfPage.cleanup();
-          done = page;
-          if (Date.now() - started > WORK_MS) break;
-        }
-      } finally { await task.destroy(); }
-    } else throw new ParserLimit('Unsupported format');
+    if (asset.file_format === 'epub') await indexEpubBatch(admin, asset, batch);
+    else if (asset.file_format === 'pdf') await indexPdfBatch(admin, asset, batch);
+    else throw new ParserLimit('Unsupported format');
   } catch (error) {
     const limit = error instanceof Error && error.name === 'PasswordException' ? new ParserLimit('Encrypted PDF needs an unlocked copy for indexing') : error;
     if (!(limit instanceof ParserLimit)) throw error;
-    reason = limit.message;
-    total = Math.max(total, done);
+    batch.reason = limit.message;
+    batch.total = Math.max(batch.total, batch.done);
   }
   const previous = Number(asset.metadata.passage_index.passages ?? 0);
-  const status = reason ? (done < total && passages.length ? 'indexing' : previous + passages.length ? 'partial' : 'not_indexable')
-    : done < total ? 'indexing' : previous + passages.length ? 'complete' : 'no_text';
-  const committed = await checked(admin.rpc('commit_passage_batch', { p_job: job.id, p_generation: job.claim_generation, p_passages: passages, p_done: done, p_total: total, p_status: status, p_reason: reason }));
+  const status = passageBatchStatus(batch, previous);
+  const committed = await checked(admin.rpc('commit_passage_batch', { p_job: job.id, p_generation: job.claim_generation, p_passages: batch.passages, p_done: batch.done, p_total: batch.total, p_status: status, p_reason: batch.reason }));
   return { checkpointed: true, committed };
+}
+
+interface PassageBatch {
+  from: number; done: number; total: number; ordinal: number;
+  reason: string | null; passages: Passage[]; started: number;
+}
+interface PassageAsset { file_size: number; bucket: string; storage_path: string }
+
+function passageBatchStatus(batch: PassageBatch, previous: number) {
+  const { reason, done, total, passages } = batch;
+  if (reason) {
+    if (done < total && passages.length) return 'indexing';
+    return previous + passages.length ? 'partial' : 'not_indexable';
+  }
+  if (done < total) return 'indexing';
+  return previous + passages.length ? 'complete' : 'no_text';
+}
+
+async function indexEpubBatch(admin: SupabaseClient, asset: PassageAsset, batch: PassageBatch) {
+  const { from, passages, started } = batch;
+  let { done, total, ordinal, reason } = batch;
+  try {
+    if (asset.file_size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser memory limit');
+    const file = await checked(admin.storage.from(asset.bucket).download(asset.storage_path));
+    if (!file || file.size > MAX_BUFFER) throw new ParserLimit('EPUB exceeds the parser limit');
+    const sections = epubSections(new Uint8Array(await file.arrayBuffer()));
+    total = sections.length;
+    for (const section of sections.slice(from, from + 48)) {
+      const result = section.read();
+      const parts = chunks(result.text);
+      if (parts.length > MAX_PASSAGES) { reason = 'A section exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
+      if (passages.length + parts.length > MAX_PASSAGES && done > from) break;
+      passages.push(...parts.map((content) => ({ ordinal: ordinal++, section: section.section, cfi: result.cfi, content })));
+      done++;
+      if (Date.now() - started > WORK_MS) break;
+    }
+  } finally {
+    Object.assign(batch, { done, total, ordinal, reason });
+  }
+}
+
+async function indexPdfBatch(admin: SupabaseClient, asset: PassageAsset, batch: PassageBatch) {
+  const { from, passages, started } = batch;
+  let { done, total, ordinal, reason } = batch;
+  try {
+    const signed = await checked(admin.storage.from(asset.bucket).createSignedUrl(asset.storage_path, 120));
+    const task = await pdfDocument(signed!.signedUrl);
+    try {
+      total = task.doc.numPages;
+      const labels = await task.wait(task.doc.getPageLabels()).catch(() => null);
+      for (let page = from + 1; page <= Math.min(total, from + 96); page++) {
+        const pdfPage = await task.wait(task.doc.getPage(page));
+        const text = await task.wait(pdfPage.getTextContent());
+        const parts = chunks(text.items.map((item) => 'str' in item ? item.str : '').join(' '));
+        if (parts.length > MAX_PASSAGES) { reason = 'A page exceeds the passage batch limit; partial text retained'; parts.length = MAX_PASSAGES; }
+        if (passages.length + parts.length > MAX_PASSAGES && done > from) break;
+        passages.push(...parts.map((content) => ({ ordinal: ordinal++, page, ...(labels?.[page - 1] ? { page_label: labels[page - 1] } : {}), content })));
+        pdfPage.cleanup();
+        done = page;
+        if (Date.now() - started > WORK_MS) break;
+      }
+    } finally { await task.destroy(); }
+  } finally {
+    Object.assign(batch, { done, total, ordinal, reason });
+  }
 }
