@@ -447,7 +447,7 @@ Matching runs whenever credits come from outside: metadata apply, file extractio
 4. **Score:** `exact` +3, `full` +2, `initials` +1; already credited on another record of the same work +4; each shared co-author (by `match_key`) +2, counting at most 2; same normalized affiliation +2.
 5. **Decide:**
    - **Link** (`resolved_by = 'match'`) if there is exactly one candidate and the name is `exact` or `full`, or if the best score is ≥ 5 and at least 2 above the runner-up.
-   - **Provisional:** otherwise, if any candidate exists, create a new contributor with `status = 'provisional'`. It appears in the review queue as "possibly the same as …".
+   - **Provisional:** otherwise, if any candidate exists, create a new contributor with `status = 'provisional'`. It appears in the review queue as "possibly the same as …". Provisional contributors left in no compatible duplicate pair (agent `create_work` names, bulk imports) can be confirmed together from the queue; the queue pages past PostgREST's 1000-row cap.
    - **New:** if there is no candidate, create a new contributor (`resolved_by = 'new'`).
 6. Names from the PDF Info `Author` field that are a single token, a username, or junk (see validation below) never create contributors automatically. They are only shown as suggestions.
 

@@ -3,17 +3,30 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { compareGiven, parseName } from 'shared/names';
 
+// PostgREST returns at most 1000 rows per request (PGRST_DB_MAX_ROWS); bulk imports leave thousands of contributors.
+const PAGE_SIZE = 1000;
+
+export async function fetchAllPages<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < PAGE_SIZE) return rows;
+  }
+}
+
 // FR-CONTRIB-7..9. Merge and split go only through merge_contributors() / reassign_credits()
 // (CLAUDE.md invariant 8); the SPA never rewrites record_contributors directly.
 export function useContributors() {
   return useQuery({
     queryKey: ['contributors'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const data = await fetchAllPages((from, to) => supabase
         .from('contributors')
         .select('id, display_name, sort_name, kind, given_names, status, record_contributors(count)')
-        .order('sort_name');
-      if (error) throw error;
+        .order('sort_name').order('id')
+        .range(from, to));
       return data.map((c) => ({ ...c, credits: c.record_contributors[0]?.count ?? 0 }));
     },
   });
@@ -28,8 +41,7 @@ export function useDuplicatePairs() {
     queryKey: ['contributor-duplicates', contributors.dataUpdatedAt],
     enabled: !!contributors.data,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('possible_duplicate_contributors');
-      if (error) throw error;
+      const data = await fetchAllPages((from, to) => supabase.rpc('possible_duplicate_contributors').order('contributor_a').order('contributor_b').range(from, to));
       const byId = new Map(contributors.data!.map((c) => [c.id, c]));
       return data.flatMap((p) => {
         const a = byId.get(p.contributor_a);
@@ -86,6 +98,22 @@ export function useConfirmContributor() {
   return useInvalidatingMutation(async (id: string) => {
     const { error } = await supabase.from('contributors').update({ status: 'confirmed' }).eq('id', id);
     if (error) throw error;
+  });
+}
+
+// Provisional contributors with no possible duplicate left to review: nothing to merge, so they can be confirmed in bulk.
+export function unmatchedProvisional(contributors: ContributorListItem[], pairs: { a: { id: string }; b: { id: string } }[]): string[] {
+  const paired = new Set(pairs.flatMap(({ a, b }) => [a.id, b.id]));
+  return contributors.filter((c) => c.status === 'provisional' && !paired.has(c.id)).map((c) => c.id);
+}
+
+export function useConfirmContributors() {
+  return useInvalidatingMutation(async (ids: string[]) => {
+    // Chunked so the id list stays within URL limits.
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error } = await supabase.from('contributors').update({ status: 'confirmed' }).in('id', ids.slice(i, i + 100));
+      if (error) throw error;
+    }
   });
 }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useContributors, useDuplicatePairs, useMergeContributors, useNotSamePerson, useConfirmContributor, type ContributorListItem } from '@/hooks/useContributors';
+import { useContributors, useDuplicatePairs, useMergeContributors, useNotSamePerson, useConfirmContributor, useConfirmContributors, unmatchedProvisional, type ContributorListItem } from '@/hooks/useContributors';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -18,9 +18,12 @@ export function Contributors() {
   const merge = useMergeContributors();
   const notSame = useNotSamePerson();
   const confirm = useConfirmContributor();
+  const confirmMany = useConfirmContributors();
   const provisional = data?.filter((c) => c.status === 'provisional') ?? [];
+  // Only once the duplicate pairs have loaded; before that every provisional contributor would look unmatched.
+  const unmatched = data && pairs.data ? unmatchedProvisional(data, pairs.data) : [];
   const shown = data?.filter((c) => c.display_name.toLowerCase().includes(filter.trim().toLowerCase()));
-  const actionError = merge.error ?? notSame.error ?? confirm.error;
+  const actionError = merge.error ?? notSame.error ?? confirm.error ?? confirmMany.error;
 
   return (
     <div className="flex max-w-[640px] flex-col gap-6">
@@ -33,6 +36,14 @@ export function Contributors() {
         <section className="flex flex-col gap-2 rounded-8 border border-border p-4">
           <p className="text-label text-fg">Review queue · {provisional.length}</p>
           <p className="text-small text-muted">Imported names that matched an existing contributor only loosely.</p>
+          {unmatched.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-small text-muted">{unmatched.length} have no possible duplicate left to review.</p>
+              <Button variant="secondary" disabled={confirmMany.isPending} onClick={() => confirmMany.mutate(unmatched)}>
+                {confirmMany.isPending ? 'Confirming…' : `Confirm ${unmatched.length}`}
+              </Button>
+            </div>
+          )}
           {provisional.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
               {link(c)}
