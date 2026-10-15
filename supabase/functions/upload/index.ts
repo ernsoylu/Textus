@@ -16,7 +16,7 @@ import { fetchPublic } from '../_shared/fetchPublic.ts';
 import { jsonBody, rateLimit } from '../_shared/limits.ts';
 import { deadline, checked, withBudget } from '../_shared/budget.ts';
 
-const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
+export const MAX_UPLOAD_SIZE = 524_288_000; // 500 MB — documents/staging bucket limit (§7.4)
 
 const DOCUMENT_MIME_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -34,6 +34,8 @@ const COVER_MIME_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 };
 
+export const SafeFilename = z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\') && n !== '.' && n !== '..');
+
 const IntentSchema = z.object({
   uploadId: z.string().uuid(),
   recordId: z.string().uuid(),
@@ -41,7 +43,7 @@ const IntentSchema = z.object({
   // defense in depth against that constraint being lost in a future edit. Path traversal
   // (security review, 2026-09-28): a raw client filename in a storage key lets a caller write
   // outside their own {userId}/{uploadId}/ prefix via "../" segments.
-  filename: z.string().min(1).max(255).refine((n) => !n.includes('/') && !n.includes('\\') && n !== '.' && n !== '..'),
+  filename: SafeFilename,
   size: z.number().int().positive(),
 });
 
@@ -165,7 +167,7 @@ async function handleComplete(req: Request, ctx: UploadContext, signal: AbortSig
 export async function completeStaged(ctx: UploadContext, { uploadId, recordId, role, filename }: z.infer<typeof CompleteSchema>, signal: AbortSignal): Promise<Response> {
   const userId = ctx.userId;
   const request = { role, filename: filename ?? '' };
-  const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
+  const attempt = await checked(ctx.supabaseAdmin.from('upload_attempts').select('record_id,intent,request,result').eq('user_id', userId).eq('id', uploadId).maybeSingle());
   if (!attempt || attempt.record_id !== recordId) return Response.json({ error: 'upload_intent_missing' }, { status: 409 });
   if (uploadRequestChanged(attempt.request, request)) return Response.json({ error: 'upload_request_changed' }, { status: 409 });
   if (attempt.result) return Response.json(attempt.result);
@@ -175,6 +177,9 @@ export async function completeStaged(ctx: UploadContext, { uploadId, recordId, r
   if (!await freezeStaged(ctx, folder, stagingPath)) return Response.json({ status: 'rejected', reason: 'missing' });
   const staged = await inspectStaged(ctx, stagingPath, signal);
   if (staged.kind !== 'ok') return Response.json({ status: 'rejected', reason: staged.kind === 'missing' ? 'missing' : 'size_mismatch' });
+  // begin_upload reserved quota for the declared size; bytes of another size would get around that check.
+  const declared = (attempt.intent as { size?: unknown } | null)?.size;
+  if (typeof declared === 'number' && declared !== staged.size) return Response.json({ status: 'rejected', reason: 'size_mismatch' });
   return publishVerifiedUpload(ctx, uploadId, request, staged, signal);
 }
 

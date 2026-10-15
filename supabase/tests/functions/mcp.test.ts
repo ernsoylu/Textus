@@ -1,3 +1,4 @@
+import { textPdf } from '../fixtures/pdf.ts';
 const api = Deno.env.get('SUPABASE_URL') ?? 'http://127.0.0.1:54321';
 const anon = Deno.env.get('ANON_KEY') ?? '';
 const service = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -88,6 +89,39 @@ Deno.test('MCP read_write tokens write directly, reject confirmation flags, repl
       console.log('MCP invalid TLS destination rejected.');
       downloadArgs.requestId = crypto.randomUUID();
     }
+    // create_work + upload_file: an owner-supplied title becomes a work, and local bytes go through a signed staging URL
+    // and the normal finalizer. Both replay; a reused contributorId credits the same person.
+    const result = (response: { result: { content: { text: string }[] } }) => JSON.parse(response.result.content[0].text).data;
+    const workArgs = { requestId: crypto.randomUUID(), title: 'Agent upload fixture', authors: [{ name: 'Ada Lovelace' }] };
+    const created = result(await call('create_work', workArgs));
+    if (created.status !== 'created' || JSON.stringify(result(await call('create_work', workArgs))) !== JSON.stringify(created)) throw new Error(`create_work failed or did not replay: ${JSON.stringify(created)}`);
+    const credit = await body(await fetch(`${api}/rest/v1/record_contributors?record_id=eq.${created.recordId}&select=contributor_id,contributors(display_name,status)`, { headers: adminHeaders }));
+    if (credit.length !== 1 || credit[0].contributors.display_name !== 'Ada Lovelace' || credit[0].contributors.status !== 'provisional') throw new Error(`create_work credit wrong: ${JSON.stringify(credit)}`);
+    const second = result(await call('create_work', { requestId: crypto.randomUUID(), title: 'Second agent fixture', authors: [{ contributorId: credit[0].contributor_id }] }));
+    const reused = await body(await fetch(`${api}/rest/v1/record_contributors?record_id=eq.${second.recordId}&select=contributor_id`, { headers: adminHeaders }));
+    if (reused[0]?.contributor_id !== credit[0].contributor_id) throw new Error('contributorId was not reused');
+    const pdf = textPdf();
+    const uploadArgs = { requestId: crypto.randomUUID(), recordId: created.recordId, filename: 'fixture.pdf', size: pdf.length };
+    const pending = result(await call('upload_file', uploadArgs));
+    if (pending.status !== 'upload_required' || !pending.uploadUrl) throw new Error(`upload_file did not issue a URL: ${JSON.stringify(pending)}`);
+    // The URL names the public origin; the test reaches the same gateway locally.
+    const put = await fetch(`${api}${new URL(pending.uploadUrl).pathname}${new URL(pending.uploadUrl).search}`, { method: 'PUT', headers: pending.headers, body: pdf });
+    await put.text(); if (!put.ok) throw new Error(`signed staging PUT failed: ${put.status}`);
+    const uploaded = result(await call('upload_file', uploadArgs));
+    if (uploaded.status !== 'created' || JSON.stringify(result(await call('upload_file', uploadArgs))) !== JSON.stringify(uploaded)) throw new Error(`upload_file did not finish or replay: ${JSON.stringify(uploaded)}`);
+    const attached = await body(await fetch(`${api}/rest/v1/record_assets?record_id=eq.${created.recordId}&role=eq.primary`, { headers: adminHeaders }));
+    if (attached.length !== 1) throw new Error('upload_file did not link exactly one asset');
+    const againArgs = { ...uploadArgs, requestId: crypto.randomUUID(), recordId: second.recordId };
+    const again = result(await call('upload_file', againArgs));
+    const putAgain = await fetch(`${api}${new URL(again.uploadUrl).pathname}${new URL(again.uploadUrl).search}`, { method: 'PUT', headers: again.headers, body: pdf }); await putAgain.text();
+    const duplicate = result(await call('upload_file', againArgs));
+    if (duplicate.status !== 'duplicate' || duplicate.workId !== created.workId) throw new Error(`same file in another work was not rejected: ${JSON.stringify(duplicate)}`);
+    // Quota is reserved for the declared size, so other-sized bytes are refused.
+    const understated = { ...againArgs, requestId: crypto.randomUUID(), size: 1 };
+    const small = result(await call('upload_file', understated));
+    const putSmall = await fetch(`${api}${new URL(small.uploadUrl).pathname}${new URL(small.uploadUrl).search}`, { method: 'PUT', headers: small.headers, body: pdf }); await putSmall.text();
+    const mismatch = result(await call('upload_file', understated));
+    if (mismatch.status !== 'rejected' || mismatch.reason !== 'size_mismatch') throw new Error(`understated size accepted: ${JSON.stringify(mismatch)}`);
     // A revoked token stops writing at once.
     await body(await fetch(`${api}/rest/v1/agent_tokens?id=eq.${tokenRow.id}`, { method: 'DELETE', headers: adminHeaders }));
     const revoked = await fetch(`${api}/functions/v1/mcp`, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add_file_from_url', arguments: downloadArgs } }) });
